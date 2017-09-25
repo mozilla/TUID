@@ -1,5 +1,3 @@
-import unittest
-
 from mo_logs import constants, startup, Log
 from mo_testing.fuzzytestcase import FuzzyTestCase
 
