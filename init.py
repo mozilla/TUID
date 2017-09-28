@@ -7,7 +7,7 @@ print ("Opened database successfully");
 
 conn.execute('''CREATE TABLE Temporal
          (TID INTEGER PRIMARY KEY     AUTOINCREMENT,
-         REVISION CHAR(12)		  NOT NULL,
+         REVISION CHAR(40)		  NOT NULL,
          FILE TEXT,
 		 LINE INT,
 		 UNIQUE(REVISION,FILE,LINE));''')
