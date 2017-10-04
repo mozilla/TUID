@@ -2,18 +2,37 @@ import sqlite3
 import json
 from urllib.request import urlopen
 
-class Fetch:
-    def __init__(self,conn=None):
-        f = open('config.json', 'r')
+class TIDService:
+    def __init__(self,conn=None): #pass in conn for testing purposes
+        try:
+            f=open('config.json', 'r',encoding='utf8')
+        except Exception:
+            print("Config file not found")
+            exit(-1)
+        config = json.load(f)
         if conn is None:
             try:
-                config = json.load(f)
                 self.conn = sqlite3.connect(config['database']['name'])
-            except Exception as e:
-                print(e)
-                print("Failed to connect to DB")
+            except Exception:
+                print("Could not connect to database")
+                exit(-1)
+
         else:
             self.conn = conn
+        try:
+            self.conn.execute("select * from Temporal")
+        except Exception:
+            self.initDB()
+
+
+    def initDB(self):
+        self.conn.execute('''CREATE TABLE Temporal
+                 (TID INTEGER PRIMARY KEY     AUTOINCREMENT,
+                 REVISION CHAR(40)		  NOT NULL,
+                 FILE TEXT,
+        		 LINE INT,
+        		 UNIQUE(REVISION,FILE,LINE));''')
+        print("Table created successfully");
 
     def grabTID(self,ID):
         cursor = self.conn.execute("SELECT * from Temporal WHERE TID=? LIMIT 1;",(ID,))
