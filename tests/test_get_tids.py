@@ -1,15 +1,16 @@
-from mo_logs import constants, startup, Log
-from mo_testing.fuzzytestcase import FuzzyTestCase
+import tidservice
 
 config = None
 
 
-class TestGetTIDS(FuzzyTestCase):
+class TestGetTIDS():
 
 
     def setUp(self):
         # MAKE AN INSTANCE OF THE SERVICE
-        self.service = TIDService(config)
+        self.service = tidservice()
+
+
 
     def test_tids_on_changed_file(self):
         # https://hg.mozilla.org/integration/mozilla-inbound/rev/a6fdd6eae583/taskcluster/ci/test/tests.yml
@@ -41,12 +42,3 @@ class TestGetTIDS(FuzzyTestCase):
         # EXPECTING
         self.assertEqual(len(new_lines), len(old_lines)-4)
 
-
-try:
-    # WILL READ config.json WHICH WILL BE USED TO CALL THE TID SERVICE CONSTRUCTOR
-    config = startup.read_settings()
-    constants.set(config.constants)
-    Log.start(config.debug)
-
-except Exception as e:
-    Log.error("Problem with etl", e)
