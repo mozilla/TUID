@@ -19,10 +19,11 @@ class TIDService:
 
         else:
             self.conn = conn
-        try:
-            self.conn.execute("select * from Temporal")
-        except Exception:
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        if cursor.fetchone() is None:
             self.initDB()
+        f.close();
 
 
     def initDB(self):
@@ -32,6 +33,12 @@ class TIDService:
                  FILE TEXT,
         		 LINE INT,
         		 UNIQUE(REVISION,FILE,LINE));''')
+        self.conn.execute('''CREATE TABLE Changesets
+        		 (
+        		 REVISION CHAR(40) PRIMARY KEY,
+        		 LENGTH INTEGER
+        		 );
+        ''')
         print("Table created successfully");
 
     def grabTID(self,ID):

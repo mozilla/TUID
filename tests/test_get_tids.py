@@ -1,15 +1,16 @@
-import tidservice
-
+from tidservice import TIDService
+import unittest
 config = None
 
 
-class TestGetTIDS():
+class TestGetTIDS(unittest.TestCase):
 
 
     def setUp(self):
         # MAKE AN INSTANCE OF THE SERVICE
-        self.service = tidservice()
+        self.service = TIDService()
 
+    
 
 
     def test_tids_on_changed_file(self):
@@ -42,3 +43,5 @@ class TestGetTIDS():
         # EXPECTING
         self.assertEqual(len(new_lines), len(old_lines)-4)
 
+if __name__ == '__main__':
+    unittest.main()
