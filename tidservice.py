@@ -2,8 +2,12 @@ import sqlite3
 import json
 from urllib.request import urlopen
 
+
+
 class TIDService:
+    __grabTIDQuery = "SELECT * from Temporal WHERE file=? and revision=?;"
     def __init__(self,conn=None): #pass in conn for testing purposes
+
         try:
             f=open('config.json', 'r',encoding='utf8')
         except Exception:
@@ -32,13 +36,8 @@ class TIDService:
                  REVISION CHAR(40)		  NOT NULL,
                  FILE TEXT,
         		 LINE INT,
+        		 DATE INTEGER,
         		 UNIQUE(REVISION,FILE,LINE));''')
-        self.conn.execute('''CREATE TABLE Changesets
-        		 (
-        		 REVISION CHAR(40) PRIMARY KEY,
-        		 LENGTH INTEGER
-        		 );
-        ''')
         print("Table created successfully");
 
     def grabTID(self,ID):
@@ -46,20 +45,24 @@ class TIDService:
         return cursor.fetchone()
 
     def grabTIDs(self,file,revision):
-        cursor = self.conn.execute("SELECT * from Temporal WHERE file=? and revision=?;",(file,revision,))
-        if cursor.arraysize != 0:
+        cursor = self.conn.execute(self.__grabTIDQuery,(file,revision,))
+        first = cursor.fetchone()
+        if  cursor.fetchone() is not None:
             return cursor
         else:
-            return self.grabTIDsFromFile(file,revision)
+            self.makeTIDsFromWeb(file,revision)
+            return self.conn.execute(self.__grabTIDQuery,(file,revision,))
 
 
 
-    def addTIDsFromFile(self,file,revision):
+
+    def makeTIDsFromWeb(self,file,revision):
         print(('https://hg.mozilla.org/mozilla-central/json-file/' + revision) + file)
         response = urlopen('https://hg.mozilla.org/mozilla-central/json-file/' + revision + file)
         mozobj = json.load(response)
         rev = mozobj['node']
+        date = mozobj['date'][0]
         length = len(mozobj['lines'])
         for i in range(1,length):
-            self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE) values (?,?,?);",(rev,file,str(i),))
+            self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,DATE) values (?,?,?,?);",(rev,file,str(i),date,))
         self.conn.commit()
