@@ -7,12 +7,7 @@ from urllib.request import urlopen
 class TIDService:
     __grabTIDQuery = "SELECT * from Temporal WHERE file=? and revision=?;"
     def __init__(self,conn=None): #pass in conn for testing purposes
-
-        try:
-            f=open('config.json', 'r',encoding='utf8')
-        except Exception:
-            print("Config file not found")
-            exit(-1)
+        f=open('config.json', 'r',encoding='utf8')
         config = json.load(f)
         if conn is None:
             try:
@@ -37,7 +32,14 @@ class TIDService:
                  FILE TEXT,
         		 LINE INT,
         		 DATE INTEGER,
+        		 OPERATOR CHAR(1),
         		 UNIQUE(REVISION,FILE,LINE));''')
+        self.conn.execute('''CREATE TABLE Changeset
+        (cid CHAR(40) PRIMARY KEY,
+        LENGTH INTEGER          NOT NULL,
+        DATE INTEGER            NOT NULL
+        );
+        ''')
         print("Table created successfully");
 
     def grabTID(self,ID):
@@ -46,23 +48,35 @@ class TIDService:
 
     def grabTIDs(self,file,revision):
         cursor = self.conn.execute(self.__grabTIDQuery,(file,revision,))
-        first = cursor.fetchone()
-        if  cursor.fetchone() is not None:
-            return cursor
+        list = cursor.fetchall()
+        if  len(list)>0:
+            return list
         else:
-            self.makeTIDsFromWeb(file,revision)
-            return self.conn.execute(self.__grabTIDQuery,(file,revision,))
+            self._makeTIDsFromRevision(file, revision)
+            cursor = self.conn.execute(self.__grabTIDQuery,(file,revision,))
+            return cursor.fetchall()
 
-
-
-
-    def makeTIDsFromWeb(self,file,revision):
+    def _makeTIDsFromRevision(self, file, revision):
         print(('https://hg.mozilla.org/mozilla-central/json-file/' + revision) + file)
         response = urlopen('https://hg.mozilla.org/mozilla-central/json-file/' + revision + file)
         mozobj = json.load(response)
         rev = mozobj['node']
         date = mozobj['date'][0]
         length = len(mozobj['lines'])
-        for i in range(1,length):
-            self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,DATE) values (?,?,?,?);",(rev,file,str(i),date,))
+        for i in range(1,length+1):
+            self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,DATE,OPERATOR) values (?,?,?,?,?);",(rev,file,str(i),date,'+',))
+        self.conn.execute("INSERT into Changeset (CID,LENGTH,DATE) values (?,?,?);",(rev,length,date,))
         self.conn.commit()
+
+    def _makeTIDsFromChangeset(self, file, cid):
+        url = 'https://hg.mozilla.org/mozilla-central/json-diff/' + cid + file
+        print(url)
+        response = urlopen(url)
+        mozobj = json.load(response)
+        curline = 1
+        for line in mozobj['diff'][0]['lines']:
+            print(line)
+
+
+
+
