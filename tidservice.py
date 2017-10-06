@@ -32,7 +32,6 @@ class TIDService:
                  REVISION CHAR(40)		  NOT NULL,
                  FILE TEXT,
         		 LINE INT,
-        		 DATE INTEGER,
         		 OPERATOR CHAR(1),
         		 UNIQUE(REVISION,FILE,LINE));''')
         self.conn.execute('''CREATE TABLE Changeset
@@ -65,7 +64,7 @@ class TIDService:
         date = mozobj['date'][0]
         length = len(mozobj['lines'])
         for i in range(1,length+1):
-            self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,DATE,OPERATOR) values (?,?,?,?,?);",(rev,file,str(i),date,'+',))
+            self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (?,?,?,?);",(rev,file,str(i),'+',))
         self.conn.execute("INSERT into Changeset (CID,LENGTH,DATE) values (?,?,?);",(rev,length,date,))
         self.conn.commit()
 
@@ -81,10 +80,9 @@ class TIDService:
                     m=re.search('(?<=\+)\d+',line['l'])
                     curline=m.group(0)
                 if line['t']=='+':
-                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,DATE,OPERATOR) values (?,?,?,?,?);",(cid,file,curline,0,'+',))
-
+                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (?,?,?,?);",(cid,file,curline,'+',))
                 if line['t']=='-':
-                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,DATE,OPERATOR) values (?,?,?,?,?);",(cid, file, curline, 0, '+',))
+                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (?,?,?,?);",(cid, file, curline, '-',))
             curline += 1
         self.conn.commit()
 
