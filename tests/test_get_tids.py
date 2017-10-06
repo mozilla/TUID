@@ -11,7 +11,7 @@ class TestGetTIDS(unittest.TestCase):
         self.service = TIDService()
 
     def test_makeTIDsFromChangeset(self):
-        self.service._makeTIDsFromChangeset("/js/examples/jorendb.js", '21ba906b3fdb5fe5cdcf3289663d51de1f0591f4')
+        self.service._makeTIDsFromChangeset("/browser/extensions/formautofill/test/browser/head.js", '19b32a138d08')
 
 
     def test_grabTIDs(self):

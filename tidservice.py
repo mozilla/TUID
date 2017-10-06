@@ -1,6 +1,7 @@
 import sqlite3
 import json
 from urllib.request import urlopen
+import re
 
 
 
@@ -73,9 +74,19 @@ class TIDService:
         print(url)
         response = urlopen(url)
         mozobj = json.load(response)
-        curline = 1
+        curline = -1
         for line in mozobj['diff'][0]['lines']:
-            print(line)
+            if curline>0:
+                if line['t']=='@':
+                    m=re.search('(?<=\+)\d+',line['l'])
+                    curline=m.group(0)
+                if line['t']=='+':
+                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,DATE,OPERATOR) values (?,?,?,?,?);",(cid,file,curline,0,'+',))
+
+                if line['t']=='-':
+                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,DATE,OPERATOR) values (?,?,?,?,?);",(cid, file, curline, 0, '+',))
+            curline += 1
+        self.conn.commit()
 
 
 
