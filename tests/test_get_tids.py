@@ -10,13 +10,23 @@ class TestGetTIDS(unittest.TestCase):
         # MAKE AN INSTANCE OF THE SERVICE
         self.service = TIDService()
 
-    def test_makeTIDsFromChangeset(self):
-        self.service._makeTIDsFromChangeset("/browser/extensions/formautofill/test/browser/head.js", '19b32a138d08')
+    #def test_makeTIDsFromChangeset(self):
+    #    self.service._makeTIDsFromChangeset("/devtools/client/inspector/fonts/fonts.js",'bb6f23916cb1')
+
+    def test_addChangsetToRev(self):
+        self.service._makeTIDsFromChangeset("/devtools/client/inspector/fonts/fonts.js", 'bb6f23916cb1')
+        revision = self.service.grabTIDs("/devtools/client/inspector/fonts/fonts.js","2559f86f67f6")
+        file="/devtools/client/inspector/fonts/fonts.js"
+        rev="bb6f23916cb1"
+        cursor = self.service.conn.execute(self.service._grabTIDQuery,(file,rev,))
+        cset=cursor.fetchall()
+        result = self.service._addChangesetToRev(revision,cset)
 
 
     def test_grabTIDs(self):
-        cursor = self.service.grabTIDs("/js/examples/jorendb.js", "e54a3d60d9fd5f48154f1013f8f63ecea1ebf06f")
-        self.assertEqual(len(cursor),891)
+        cursor = self.service.grabTIDs("/devtools/client/inspector/fonts/fonts.js","2559f86f67f6")
+        self.assertEqual(len(cursor),189)
+
 
 
 

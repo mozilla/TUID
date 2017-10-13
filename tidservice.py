@@ -6,7 +6,7 @@ import re
 
 
 class TIDService:
-    __grabTIDQuery = "SELECT * from Temporal WHERE file=? and revision=?;"
+    _grabTIDQuery = "SELECT * from Temporal WHERE file=? and substr(revision,0,12)=substr(?,0,12);"
     def __init__(self,conn=None): #pass in conn for testing purposes
         f=open('config.json', 'r',encoding='utf8')
         config = json.load(f)
@@ -27,13 +27,14 @@ class TIDService:
 
 
     def initDB(self):
+        #Operator is 1 to add a line, negative to delete specified lines
         self.conn.execute('''CREATE TABLE Temporal
                  (TID INTEGER PRIMARY KEY     AUTOINCREMENT,
                  REVISION CHAR(40)		  NOT NULL,
                  FILE TEXT,
         		 LINE INT,
-        		 OPERATOR CHAR(1),
-        		 UNIQUE(REVISION,FILE,LINE));''')
+        		 OPERATOR INTEGER,
+        		 UNIQUE(REVISION,FILE,LINE,OPERATOR));''')
         self.conn.execute('''CREATE TABLE Changeset
         (cid CHAR(40) PRIMARY KEY,
         LENGTH INTEGER          NOT NULL,
@@ -42,18 +43,21 @@ class TIDService:
         ''')
         print("Table created successfully");
 
+    def _addChangesetToRev(self,rev,cset):
+        print("Todo")
+
     def grabTID(self,ID):
         cursor = self.conn.execute("SELECT * from Temporal WHERE TID=? LIMIT 1;",(ID,))
         return cursor.fetchone()
 
     def grabTIDs(self,file,revision):
-        cursor = self.conn.execute(self.__grabTIDQuery,(file,revision,))
+        cursor = self.conn.execute(self._grabTIDQuery, (file, revision,))
         list = cursor.fetchall()
         if  len(list)>0:
             return list
         else:
             self._makeTIDsFromRevision(file, revision)
-            cursor = self.conn.execute(self.__grabTIDQuery,(file,revision,))
+            cursor = self.conn.execute(self._grabTIDQuery, (file, revision,))
             return cursor.fetchall()
 
     def _makeTIDsFromRevision(self, file, revision):
@@ -64,7 +68,7 @@ class TIDService:
         date = mozobj['date'][0]
         length = len(mozobj['lines'])
         for i in range(1,length+1):
-            self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (?,?,?,?);",(rev,file,str(i),'+',))
+            self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (?,?,?,?);",(rev,file,str(i),'1',))
         self.conn.execute("INSERT into Changeset (CID,LENGTH,DATE) values (?,?,?);",(rev,length,date,))
         self.conn.commit()
 
@@ -73,17 +77,27 @@ class TIDService:
         print(url)
         response = urlopen(url)
         mozobj = json.load(response)
-        curline = -1
+        minuscount = 0
+        curline = -1    #skip the first two lines
         for line in mozobj['diff'][0]['lines']:
             if curline>0:
+                if line['t']=='-':
+                    minuscount-=1
+                elif minuscount<0:
+                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (?,?,?,?);",(cid, file, curline, minuscount,))
+                    minuscount=0
                 if line['t']=='@':
                     m=re.search('(?<=\+)\d+',line['l'])
-                    curline=m.group(0)
+                    curline=int(m.group(0))-1
+                    minuscount=0
                 if line['t']=='+':
-                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (?,?,?,?);",(cid,file,curline,'+',))
-                if line['t']=='-':
-                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (?,?,?,?);",(cid, file, curline, '-',))
-            curline += 1
+                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (?,?,?,?);",(cid,file,curline,1,))
+                    curline += 1
+                if line['t']=='':
+                    curline+=1
+            else:
+                curline+=1
+
         self.conn.commit()
 
 
