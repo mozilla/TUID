@@ -21,6 +21,7 @@ class TestGetTIDS(unittest.TestCase):
         cursor = self.service.conn.execute(self.service._grabTIDQuery,(file,rev,))
         cset=cursor.fetchall()
         result = self.service._addChangesetToRev(revision,cset)
+        self.assertEqual(len(result),190)
 
 
     def test_grabTIDs(self):

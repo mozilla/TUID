@@ -43,8 +43,13 @@ class TIDService:
         ''')
         print("Table created successfully");
 
-    def _addChangesetToRev(self,rev,cset):
-        print("Todo")
+    def _addChangesetToRev(self,revision,cset):
+        for set in cset:
+            if set[4]==1:
+                revision.insert(set[3],set) #Inserting and deleting will probably be slow
+            if set[4]<0:
+                del revision[set[3]:set[3]+abs(set[4])]
+        return revision
 
     def grabTID(self,ID):
         cursor = self.conn.execute("SELECT * from Temporal WHERE TID=? LIMIT 1;",(ID,))
