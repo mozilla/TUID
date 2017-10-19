@@ -7,6 +7,7 @@ import re
 
 class TIDService:
     _grabTIDQuery = "SELECT * from Temporal WHERE file=? and substr(revision,0,12)=substr(?,0,12);"
+    _grabChangesetQuery = "select cid from changeset where file=? and substr(cid,0,12)=substr(?,0,12)"
     def __init__(self,conn=None): #pass in conn for testing purposes
         f=open('config.json', 'r',encoding='utf8')
         config = json.load(f)
@@ -35,8 +36,11 @@ class TIDService:
         		 LINE INT,
         		 OPERATOR INTEGER,
         		 UNIQUE(REVISION,FILE,LINE,OPERATOR));''')
+        #Changeset and Revision are for telling which TIDs are from a Revision and which are from a Changeset
+        #Also for date information and stuff
         self.conn.execute('''CREATE TABLE Changeset
         (cid CHAR(12) PRIMARY KEY,
+        FILE TEXT               NOT NULL,
         LENGTH INTEGER          NOT NULL,
         DATE INTEGER            NOT NULL
         );
@@ -56,6 +60,17 @@ class TIDService:
     def _getRevBeforeDate(self,file,date):
         cursor = self.conn.execute("select * from revision where date<=?",(date,)) #TODO make it grab the max
         return cursor.fetchall();
+
+    def applyChangesetsToRev(self,file,newrev,oldrev):
+        rev = self._grabRevision(file,oldrev)
+        changesets = self._changesetsBetween(file,newrev,oldrev)
+        changesets = changesets[1:]
+        for cs in changesets:
+            csTIDs = self._grabChangeset(file,cs)
+            rev = self._addChangesetToRev(rev,csTIDs)
+
+
+
 
     def _changesetsBetween(self,file,newcs,oldcs):
         url = "https://hg.mozilla.org/mozilla-central/json-log/"+newcs+file+"?revcount=50"; #adjust this number to optimize
@@ -87,11 +102,8 @@ class TIDService:
         cursor = self.conn.execute("SELECT * from Temporal WHERE TID=? LIMIT 1;",(ID,))
         return cursor.fetchone()
 
-    #def _addCSetsToRevision(self,file,startrev,endrev):
-     #
 
-
-    def _grabRevision(self,file,revision):  #Possibly useless
+    def _grabRevision(self,file,revision): #probably useless
         cursor = self.conn.execute(self._grabTIDQuery, (file, revision,))
         list = cursor.fetchall()
         if  len(list)>0:
@@ -100,6 +112,15 @@ class TIDService:
             self._makeTIDsFromRevision(file, revision)
             cursor = self.conn.execute(self._grabTIDQuery, (file, revision,))
             return cursor.fetchall()
+
+    def _grabChangeset(self,file,cid):
+        cursor = self.conn.execute(self._grabChangesetQuery,(file,cid,))
+        cids = cursor.fetchall()
+        if len(cids)==0:
+            self._makeTIDsFromChangeset(file,cid)
+        cursor=self.conn.execute(self._grabTIDQuery,(file,cid,))
+        return cursor.fetchall()
+
 
     def _makeTIDsFromRevision(self,file,revision):
         print(('https://hg.mozilla.org/mozilla-central/json-file/' + revision) + file)
@@ -120,6 +141,9 @@ class TIDService:
         mozobj = json.load(response)
         minuscount = 0
         curline = -1    #skip the first two lines
+        length = len(mozobj['diff'][0]['lines'])
+        date = mozobj['date'][0]
+        self.conn.execute("INSERT into CHANGESET (CID,FILE,LENGTH,DATE) values (substr(?,0,12),?,?,?)",(cid,file,length,date,))
         for line in mozobj['diff'][0]['lines']:
             if curline>0:
                 if line['t']=='-':
