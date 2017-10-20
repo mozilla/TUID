@@ -6,8 +6,8 @@ import re
 
 
 class TIDService:
-    _grabTIDQuery = "SELECT * from Temporal WHERE file=? and substr(revision,0,12)=substr(?,0,12);"
-    _grabChangesetQuery = "select cid from changeset where file=? and substr(cid,0,12)=substr(?,0,12)"
+    _grabTIDQuery = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
+    _grabChangesetQuery = "select cid from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
     def __init__(self,conn=None): #pass in conn for testing purposes
         f=open('config.json', 'r',encoding='utf8')
         config = json.load(f)
@@ -54,23 +54,31 @@ class TIDService:
         ''')
         print("Table created successfully");
 
-    #def _getDate(self,file,rev):
-    #    cursor = self.conn.execute("select rev,date from revision UNION select cid,date from changeset;")
+    def _getDate(self,file,rev):
+        cursor = self.conn.execute("select date from (select rev,date from revision UNION select cid,date from changeset);")
+        dates = cursor.fetchall()
+        return dates[0][0]
+
+
+    def grabTIDs(self,file,revision):
+        date = self._getDate(file,revision)
+        rev = self._getRevBeforeDate(file,date)
+        result = self._applyChangesetsToRev(file,revision,rev[0][0])
+        return result
+
 
     def _getRevBeforeDate(self,file,date):
-        cursor = self.conn.execute("select * from revision where date<=?",(date,)) #TODO make it grab the max
+        cursor = self.conn.execute("select * from revision where date<=? and file=?",(date,file,)) #TODO make it grab the max
         return cursor.fetchall();
 
-    def applyChangesetsToRev(self,file,newrev,oldrev):
+    def _applyChangesetsToRev(self,file,newrev,oldrev):
         rev = self._grabRevision(file,oldrev)
         changesets = self._changesetsBetween(file,newrev,oldrev)
         changesets = changesets[1:]
         for cs in changesets:
             csTIDs = self._grabChangeset(file,cs)
             rev = self._addChangesetToRev(rev,csTIDs)
-
-
-
+        return rev
 
     def _changesetsBetween(self,file,newcs,oldcs):
         url = "https://hg.mozilla.org/mozilla-central/json-log/"+newcs+file+"?revcount=50"; #adjust this number to optimize
@@ -130,8 +138,8 @@ class TIDService:
         date = mozobj['date'][0]
         length = len(mozobj['lines'])
         for i in range(1,length+1):
-            self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (substr(?,0,12),?,?,?);",(rev,file,str(i),'1',))
-        self.conn.execute("INSERT into REVISION (REV,FILE,DATE) values (substr(?,0,12),?,?);",(rev,file,date,))
+            self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (substr(?,0,13),?,?,?);",(rev,file,str(i),'1',))
+        self.conn.execute("INSERT into REVISION (REV,FILE,DATE) values (substr(?,0,13),?,?);",(rev,file,date,))
         self.conn.commit()
 
     def _makeTIDsFromChangeset(self, file, cid):
@@ -143,20 +151,20 @@ class TIDService:
         curline = -1    #skip the first two lines
         length = len(mozobj['diff'][0]['lines'])
         date = mozobj['date'][0]
-        self.conn.execute("INSERT into CHANGESET (CID,FILE,LENGTH,DATE) values (substr(?,0,12),?,?,?)",(cid,file,length,date,))
+        self.conn.execute("INSERT into CHANGESET (CID,FILE,LENGTH,DATE) values (substr(?,0,13),?,?,?)",(cid,file,length,date,))
         for line in mozobj['diff'][0]['lines']:
             if curline>0:
                 if line['t']=='-':
                     minuscount-=1
                 elif minuscount<0:
-                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (substr(?,0,12),?,?,?);",(cid, file, curline, minuscount,))
+                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (substr(?,0,13),?,?,?);",(cid, file, curline, minuscount,))
                     minuscount=0
                 if line['t']=='@':
                     m=re.search('(?<=\+)\d+',line['l'])
                     curline=int(m.group(0))-1
                     minuscount=0
                 if line['t']=='+':
-                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (substr(?,0,12),?,?,?);",(cid,file,curline,1,))
+                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (substr(?,0,13),?,?,?);",(cid,file,curline,1,))
                     curline += 1
                 if line['t']=='':
                     curline+=1

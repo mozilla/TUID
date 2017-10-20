@@ -10,19 +10,25 @@ class TestGetTIDS(unittest.TestCase):
         # MAKE AN INSTANCE OF THE SERVICE
         self.service = TIDService()
 
-    #def test_makeTIDsFromChangeset(self):
-    #    self.service._makeTIDsFromChangeset("/devtools/client/inspector/fonts/fonts.js",'bb6f23916cb1')
+    def test_grabTIDs(self):
+       cursor = self.service.grabTIDs("/taskcluster/ci/test/tests.yml","d1d44405008e")
+       self.assertEqual(len(cursor),2291)
 
-    def test_grabChangesets(self):
-        cursor = self.service._grabChangeset("/taskcluster/ci/test/tests.yml","ad80a6d082c4")
-        self.assertEqual(len(cursor),3)
 
+    # def test_applyChangesetsToRev(self):
+    #     cursor = self.service._applyChangesetsToRev("/taskcluster/ci/test/tests.yml","d1d44405008e","61340c7debf6")
+    #     self.assertEqual(len(cursor),2291)
+    #
+    # def test_grabChangesets(self):
+    #     cursor = self.service._grabChangeset("/taskcluster/ci/test/tests.yml","ad80a6d082c4")
+    #     self.assertEqual(len(cursor),3)
+    #
     # def test_changesetsBetween(self):
     #     csets = self.service._changesetsBetween("/taskcluster/ci/test/tests.yml","ad80a6d082c4","ed32591c2394")
     #     self.assertEqual(len(csets),3)
     #     csets = self.service._changesetsBetween("/taskcluster/ci/test/tests.yml","c8dece9996b7","a6fdd6eae583")
     #     self.assertEqual(csets,None)
-
+    #
     # def test_addChangsetToRev(self):
     #     self.service._makeTIDsFromChangeset("/devtools/client/inspector/fonts/fonts.js", 'bb6f23916cb1')
     #     revision = self.service._grabRevision("/devtools/client/inspector/fonts/fonts.js","2559f86f67f6")
@@ -32,8 +38,8 @@ class TestGetTIDS(unittest.TestCase):
     #     cset=cursor.fetchall()
     #     result = self.service._addChangesetToRev(revision,cset)
     #     self.assertEqual(len(result),190)
-
-
+    #
+    #
     # def test_grabRevision(self):
     #     cursor = self.service._grabRevision("/devtools/client/inspector/fonts/fonts.js","2559f86f67f6")
     #     self.assertEqual(len(cursor),189)
