@@ -57,13 +57,24 @@ class TIDService:
     def _getDate(self,file,rev):
         cursor = self.conn.execute("select date from (select rev,date from revision UNION select cid,date from changeset);")
         dates = cursor.fetchall()
+        if len(dates) == 0:
+            return None
         return dates[0][0]
 
 
     def grabTIDs(self,file,revision):
         date = self._getDate(file,revision)
-        rev = self._getRevBeforeDate(file,date)
+        if (date != None):
+            rev = self._getRevBeforeDate(file,date)
+        else:
+            rev = []
+        if len(rev) == 0:
+            self._makeTIDsFromRevision(file,revision)
+            cursor = self.conn.execute(self._grabTIDQuery,(revision,file,))
+            return cursor
         result = self._applyChangesetsToRev(file,revision,rev[0][0])
+        if result == None:
+            return self._grabRevision(file,revision)
         return result
 
 
@@ -74,6 +85,10 @@ class TIDService:
     def _applyChangesetsToRev(self,file,newrev,oldrev):
         rev = self._grabRevision(file,oldrev)
         changesets = self._changesetsBetween(file,newrev,oldrev)
+        if changesets == None:
+            return None
+        if changesets == []:
+            return None
         changesets = changesets[1:]
         for cs in changesets:
             csTIDs = self._grabChangeset(file,cs)
@@ -131,8 +146,9 @@ class TIDService:
 
 
     def _makeTIDsFromRevision(self,file,revision):
-        print(('https://hg.mozilla.org/mozilla-central/json-file/' + revision) + file)
-        response = urlopen('https://hg.mozilla.org/mozilla-central/json-file/' + revision + file)
+        url = 'https://hg.mozilla.org/mozilla-central/json-file/' + revision + file
+        print(url)
+        response = urlopen(url)
         mozobj = json.load(response)
         rev = mozobj['node']
         date = mozobj['date'][0]
