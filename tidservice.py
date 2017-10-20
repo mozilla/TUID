@@ -64,14 +64,12 @@ class TIDService:
 
     def grabTIDs(self,file,revision):
         date = self._getDate(file,revision)
-        if (date != None):
-            rev = self._getRevBeforeDate(file,date)
-        else:
-            rev = []
+        rev = self._getRevBeforeDate(file,date)
         if len(rev) == 0:
             self._makeTIDsFromRevision(file,revision)
-            cursor = self.conn.execute(self._grabTIDQuery,(revision,file,))
-            return cursor
+            cursor = self.conn.execute(self._grabTIDQuery,(file,revision,))
+            fetch = cursor.fetchall()
+            return fetch
         result = self._applyChangesetsToRev(file,revision,rev[0][0])
         if result == None:
             return self._grabRevision(file,revision)
@@ -177,7 +175,7 @@ class TIDService:
                     minuscount=0
                 if line['t']=='@':
                     m=re.search('(?<=\+)\d+',line['l'])
-                    curline=int(m.group(0))-1
+                    curline=int(m.group(0))-2
                     minuscount=0
                 if line['t']=='+':
                     self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (substr(?,0,13),?,?,?);",(cid,file,curline,1,))

@@ -45,35 +45,43 @@ class TestgrabTIDs(unittest.TestCase):
     #     self.assertEqual(len(cursor),189)
 
 
+    def test_grabTIDs(self):
+        old = self.service.grabTIDs("/testing/geckodriver/CONTRIBUTING.md","5ee7725a416c")
+        new = self.service.grabTIDs("/testing/geckodriver/CONTRIBUTING.md","65e2ad9a6e30")
+
+        print("old:",len(old))
+        print("new:",len(new))
+        self.assertEqual(len(old),97)
+        self.assertEqual(len(new),232)
 
 
-    def test_tids_on_changed_file(self):
-        # https://hg.mozilla.org/integration/mozilla-inbound/rev/a6fdd6eae583/taskcluster/ci/test/tests.yml
-        old_lines = self.service.grabTIDs(
-            "/taskcluster/ci/test/tests.yml","a6fdd6eae583"
-        )
-
-        # THE FILE HAS NOT CHANGED, SO WE EXPECT THE SAME SET OF TIDs AND LINES TO BE RETURNED
-        # https://hg.mozilla.org/integration/mozilla-inbound/file/a0bd70eac827/taskcluster/ci/test/tests.yml
-        same_lines = self.service.grabTIDs(
-
-            "/taskcluster/ci/test/tests.yml","c8dece9996b7"
-        )
-
-        # assertAlmostEqual PERFORMS A STRUCURAL COMPARISION
-        #self.assertAlmostEqual(old_lines, same_lines)
-        #self.assertAlmostEqual(same_lines, old_lines)
-
-
-        # THE FILE HAS FOUR LINES REMOVED
-        # https://hg.mozilla.org/integration/mozilla-inbound/rev/c8dece9996b7
-        # https://hg.mozilla.org/integration/mozilla-inbound/file/c8dece9996b7/taskcluster/ci/test/tests.yml
-        new_lines = self.service.grabTIDs(
-            "/taskcluster/ci/test/tests.yml","c8dece9996b7"
-        )
-
-        # EXPECTING
-        self.assertEqual(len(new_lines), len(old_lines)-4)
+    # def test_tids_on_changed_file(self):
+    #     # https://hg.mozilla.org/integration/mozilla-inbound/rev/a6fdd6eae583/taskcluster/ci/test/tests.yml
+    #     old_lines = self.service.grabTIDs(
+    #         "/taskcluster/ci/test/tests.yml","a6fdd6eae583"
+    #     )
+    #
+    #     # THE FILE HAS NOT CHANGED, SO WE EXPECT THE SAME SET OF TIDs AND LINES TO BE RETURNED
+    #     # https://hg.mozilla.org/integration/mozilla-inbound/file/a0bd70eac827/taskcluster/ci/test/tests.yml
+    #     # same_lines = self.service.grabTIDs(
+    #     #
+    #     #     "/taskcluster/ci/test/tests.yml","c8dece9996b7"
+    #     # )
+    #
+    #     # assertAlmostEqual PERFORMS A STRUCURAL COMPARISION
+    #     #self.assertAlmostEqual(old_lines, same_lines)
+    #     #self.assertAlmostEqual(same_lines, old_lines)
+    #
+    #
+    #     # THE FILE HAS FOUR LINES REMOVED
+    #     # https://hg.mozilla.org/integration/mozilla-inbound/rev/c8dece9996b7
+    #     # https://hg.mozilla.org/integration/mozilla-inbound/file/c8dece9996b7/taskcluster/ci/test/tests.yml
+    #     new_lines = self.service.grabTIDs(
+    #         "/taskcluster/ci/test/tests.yml","c8dece9996b7"
+    #     )
+    #
+    #     # EXPECTING
+    #     self.assertEqual(len(new_lines), len(old_lines)-4)
 
 if __name__ == '__main__':
     unittest.main()
