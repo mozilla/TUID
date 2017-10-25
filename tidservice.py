@@ -1,7 +1,8 @@
 import sqlite3
 import json
-from urllib.request import urlopen
+import requests
 import re
+
 
 
 
@@ -52,7 +53,7 @@ class TIDService:
         PRIMARY KEY(REV,FILE)
         );
         ''')
-        print("Table created successfully");
+        print("Table created successfully")
 
     def _getDate(self,file,rev):
         cursor = self.conn.execute("select date from (select rev,date from revision UNION select cid,date from changeset);")
@@ -78,7 +79,7 @@ class TIDService:
 
     def _getRevBeforeDate(self,file,date):
         cursor = self.conn.execute("select * from revision where date<=? and file=?",(date,file,)) #TODO make it grab the max
-        return cursor.fetchall();
+        return cursor.fetchall()
 
     def _applyChangesetsToRev(self,file,newrev,oldrev):
         rev = self._grabRevision(file,oldrev)
@@ -96,8 +97,8 @@ class TIDService:
     def _changesetsBetween(self,file,newcs,oldcs):
         url = "https://hg.mozilla.org/mozilla-central/json-log/"+newcs+file+"?revcount=50"; #adjust this number to optimize
         print(url)
-        response = urlopen(url)
-        mozobj = json.load(response)
+        response = requests.get(url)
+        mozobj = json.loads(response.text)
         mozobj = mozobj['entries']
         length = len(mozobj)
         changesets = []
@@ -146,8 +147,8 @@ class TIDService:
     def _makeTIDsFromRevision(self,file,revision):
         url = 'https://hg.mozilla.org/mozilla-central/json-file/' + revision + file
         print(url)
-        response = urlopen(url)
-        mozobj = json.load(response)
+        response = requests.get(url)
+        mozobj = json.loads(response.text)
         rev = mozobj['node']
         date = mozobj['date'][0]
         length = len(mozobj['lines'])
@@ -159,8 +160,8 @@ class TIDService:
     def _makeTIDsFromChangeset(self, file, cid):
         url = 'https://hg.mozilla.org/mozilla-central/json-diff/' + cid + file
         print(url)
-        response = urlopen(url)
-        mozobj = json.load(response)
+        response = requests.get(url)
+        mozobj = json.loads(response.text)
         minuscount = 0
         curline = -1    #skip the first two lines
         length = len(mozobj['diff'][0]['lines'])
