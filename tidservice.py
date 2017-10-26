@@ -8,10 +8,10 @@ class TIDService:
     _grabChangesetQuery = "select cid from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
     def __init__(self,conn=None): #pass in conn for testing purposes
         f=open('config.json', 'r',encoding='utf8')
-        config = json.load(f)
+        self.config = json.load(f)
         if conn is None:
             try:
-                self.conn = sqlite3.connect(config['database']['name'])
+                self.conn = sqlite3.connect(self.config['database']['name'])
             except Exception:
                 print("Could not connect to database")
                 exit(-1)
@@ -96,7 +96,7 @@ class TIDService:
         currentChangeset = oldcs
         while currentChangeset != newcs:
             changesets.append(currentChangeset)
-            url = 'https://hg.mozilla.org/mozilla-central/json-diff/' + currentChangeset + file
+            url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-diff/' + currentChangeset + file
             print(url)
             response = requests.get(url)
             mozobj = json.loads(response.text)
@@ -136,7 +136,11 @@ class TIDService:
 
 
     def _makeTIDsFromRevision(self,file,revision):
-        url = 'https://hg.mozilla.org/mozilla-central/json-file/' + revision + file
+        cursor = self.conn.execute(self._grabTIDQuery,(file,revision,))
+        el = cursor.fetchone()
+        if el != None:
+            return
+        url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-file/' + revision + file
         print(url)
         response = requests.get(url)
         mozobj = json.loads(response.text)
@@ -149,7 +153,7 @@ class TIDService:
         self.conn.commit()
 
     def _makeTIDsFromChangeset(self,file,cid):
-        url = 'https://hg.mozilla.org/mozilla-central/json-diff/' + cid + file
+        url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-diff/' + cid + file
         print(url)
         response = requests.get(url)
         self._makeTIDsFromDiff(response.text)
