@@ -23,9 +23,9 @@ class TestgrabTIDs(unittest.TestCase):
     #     cursor = self.service._grabChangeset("/taskcluster/ci/test/tests.yml","ad80a6d082c4")
     #     self.assertEqual(len(cursor),3)
 
-    def test_changesetsBetween(self):
-        csets = self.service._changesetsBetween("/taskcluster/ci/test/tests.yml","ad80a6d082c4","ed32591c2394")
-        self.assertEqual(len(csets),2)
+    # def test_changesetsBetween(self):
+    #     csets = self.service._changesetsBetween("/taskcluster/ci/test/tests.yml","ad80a6d082c4","ed32591c2394")
+    #     self.assertEqual(len(csets),3)
     #
     # def test_addChangsetToRev(self):
     #     self.service._makeTIDsFromChangeset("/devtools/client/inspector/fonts/fonts.js", 'bb6f23916cb1')
@@ -44,14 +44,14 @@ class TestgrabTIDs(unittest.TestCase):
 
 
 
-    # def test_grabTIDs(self):
-    #     old = self.service.grabTIDs("/testing/geckodriver/CONTRIBUTING.md","5ee7725a416c")
-    #     new = self.service.grabTIDs("/testing/geckodriver/CONTRIBUTING.md","65e2ad9a6e30")
-    #
-    #     print("old:",len(old))
-    #     print("new:",len(new))
-    #     self.assertEqual(len(old),97)
-    #     self.assertEqual(len(new),232)
+    def test_grabTIDs(self):
+        old = self.service.grabTIDs("/testing/geckodriver/CONTRIBUTING.md","5ee7725a416c")
+        new = self.service.grabTIDs("/testing/geckodriver/CONTRIBUTING.md","65e2ad9a6e30")
+
+        print("old:",len(old))
+        print("new:",len(new))
+        self.assertEqual(len(old),97)
+        self.assertEqual(len(new),232)
 
 
     # def test_tids_on_changed_file(self):

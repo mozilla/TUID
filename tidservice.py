@@ -101,7 +101,7 @@ class TIDService:
             response = requests.get(url)
             mozobj = json.loads(response.text)
             currentChangeset = mozobj['children'][0][:12]
-        return changesets
+        return changesets.append(newcs)
 
     def _addChangesetToRev(self,revision,cset):
         for set in cset:
