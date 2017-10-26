@@ -3,9 +3,6 @@ import json
 import requests
 import re
 
-
-
-
 class TIDService:
     _grabTIDQuery = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
     _grabChangesetQuery = "select cid from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
@@ -94,22 +91,16 @@ class TIDService:
             rev = self._addChangesetToRev(rev,csTIDs)
         return rev
 
-    def _changesetsBetween(self,file,newcs,oldcs):
-        url = "https://hg.mozilla.org/mozilla-central/json-log/"+newcs+file+"?revcount=50"; #adjust this number to optimize
-        print(url)
-        response = requests.get(url)
-        mozobj = json.loads(response.text)
-        mozobj = mozobj['entries']
-        length = len(mozobj)
+    def _changesetsBetween(self,file,newcs,oldcs): #only works with one branch
         changesets = []
-        found = False
-        for i in range(length-1,-1,-1):
-            if not found and mozobj[i]['node'][:12]==oldcs[:12]:
-                found=True
-            if found:
-                changesets.append(mozobj[i]['node'][:12])
-        if not found:
-            return None
+        currentChangeset = oldcs
+        while currentChangeset != newcs:
+            changesets.append(currentChangeset)
+            url = 'https://hg.mozilla.org/mozilla-central/json-diff/' + currentChangeset + file
+            print(url)
+            response = requests.get(url)
+            mozobj = json.loads(response.text)
+            currentChangeset = mozobj['children'][0][:12]
         return changesets
 
     def _addChangesetToRev(self,revision,cset):
@@ -157,11 +148,17 @@ class TIDService:
         self.conn.execute("INSERT into REVISION (REV,FILE,DATE) values (substr(?,0,13),?,?);",(rev,file,date,))
         self.conn.commit()
 
-    def _makeTIDsFromChangeset(self, file, cid):
+    def _makeTIDsFromChangeset(self,file,cid):
         url = 'https://hg.mozilla.org/mozilla-central/json-diff/' + cid + file
         print(url)
         response = requests.get(url)
-        mozobj = json.loads(response.text)
+        self._makeTIDsFromDiff(response.text)
+        
+
+    def _makeTIDsFromDiff(self, diff):
+        mozobj = json.loads(diff)
+        cid = mozobj['node'][:12]
+        file = "/"+mozobj['path']
         minuscount = 0
         curline = -1    #skip the first two lines
         length = len(mozobj['diff'][0]['lines'])
