@@ -81,5 +81,24 @@ class TestgrabTIDs(unittest.TestCase):
         # EXPECTING
         self.assertEqual(len(new_lines), len(old_lines)-4)
 
+
+    # def test_file_with_line_replacement(self):
+    # https://hg.mozilla.org/mozilla-central/diff/e3f24e165618/python/mozbuild/mozbuild/action/test_archive.py
+    #
+    # def test_file_removal(self):
+    # https://hg.mozilla.org/mozilla-central/diff/e3f24e165618/third_party/speedometer/InteractiveRunner.html
+    #
+    #
+    # def test_multiple_files_changed(self):  #add some lines, remove some lines
+    # https://hg.mozilla.org/mozilla-central/rev/84cb594525ad
+    #
+    # def test_create_files(self):  # plus make changes to existing, very good test!!
+    # https://hg.mozilla.org/mozilla-central/rev/53967c00d476
+    #
+    # def test_distant_revisions(self):
+    # before:  https://hg.mozilla.org/mozilla-central/file/c730f942ce30/python/mozbuild/mozbuild/action/test_archive.py
+    # change:  https://hg.mozilla.org/mozilla-central/rev/e3f24e165618/python/mozbuild/mozbuild/action/test_archive.py
+    # after:   https://hg.mozilla.org/mozilla-central/file/0d1e55d87931/python/mozbuild/mozbuild/action/test_archive.py
+
 if __name__ == '__main__':
     unittest.main()
