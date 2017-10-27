@@ -60,18 +60,21 @@ class TIDService:
         return mozobj['date'][0]
 
 
+    # def grabTIDs(self,file,revision):
+    #     date = self._getDate(file,revision)
+    #     rev = self._getRevBeforeDate(file,date)
+    #     if len(rev) == 0:
+    #         self._makeTIDsFromRevision(file,revision)
+    #         cursor = self.conn.execute(self._grabTIDQuery,(file,revision,))
+    #         fetch = cursor.fetchall()
+    #         return fetch
+    #     result = self._applyChangesetsToRev(file,revision,rev[0][0])
+    #     if result == None:
+    #         return rev
+    #     return result
+
     def grabTIDs(self,file,revision):
-        date = self._getDate(file,revision)
-        rev = self._getRevBeforeDate(file,date)
-        if len(rev) == 0:
-            self._makeTIDsFromRevision(file,revision)
-            cursor = self.conn.execute(self._grabTIDQuery,(file,revision,))
-            fetch = cursor.fetchall()
-            return fetch
-        result = self._applyChangesetsToRev(file,revision,rev[0][0])
-        if result == None:
-            return rev
-        return result
+        return self._grabRevision(file,revision)
 
 
     def _getRevBeforeDate(self,file,date):
@@ -121,14 +124,21 @@ class TIDService:
 
 
     def _grabRevision(self,file,revision): #probably useless
-        cursor = self.conn.execute(self._grabTIDQuery, (file, revision,))
-        list = cursor.fetchall()
-        if  len(list)>0:
-            return list
-        else:
-            self._makeTIDsFromRevision(file, revision)
-            cursor = self.conn.execute(self._grabTIDQuery, (file, revision,))
-            return cursor.fetchall()
+        url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-annotate/' + revision + file
+        print(url)
+        response = requests.get(url)
+        mozobj = json.loads(response.text)
+        tidList = []
+        for el in mozobj['annotate']:
+            try:
+                self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (?,?,?,?);",(el['node'][:12], file, el['targetline'], '1',))
+            except sqlite3.IntegrityError:
+                print("Already exists")
+            cursor = self.conn.execute("select * from Temporal where REVISION=? AND FILE=? AND LINE=?",(el['node'][:12],file,el['targetline'],))
+            res = cursor.fetchone()
+            tidList.append(res)
+        self.conn.commit()
+        return tidList
 
     def _grabChangeset(self,file,cid):
         cursor = self.conn.execute(self._grabChangesetQuery,(file,cid,))

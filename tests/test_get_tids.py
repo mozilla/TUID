@@ -38,9 +38,9 @@ class TestgrabTIDs(unittest.TestCase):
     #     self.assertEqual(len(result),190)
     #
     #
-    # def test_grabRevision(self):
-    #     cursor = self.service._grabRevision("/devtools/client/inspector/fonts/fonts.js","2559f86f67f6")
-    #     self.assertEqual(len(cursor),189)
+    def test_grabRevision(self):
+        cursor = self.service._grabRevision("/taskcluster/ci/test/tests.yml","c8dece9996b7")
+        self.assertEqual(len(cursor),2201)
 
 
 
@@ -53,8 +53,8 @@ class TestgrabTIDs(unittest.TestCase):
     #     self.assertEqual(len(old),97)
     #     self.assertEqual(len(new),232)
 
-    def test_makeTIDsFromRevision(self):
-        self.service._makeTIDsFromRevision("/testing/geckodriver/CONTRIBUTING.md","5ee7725a416c")
+    # def test_makeTIDsFromRevision(self):
+    #     self.service._makeTIDsFromRevision("/testing/geckodriver/CONTRIBUTING.md","5ee7725a416c")
 
 
     def test_new_then_old(self):
