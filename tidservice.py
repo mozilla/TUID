@@ -94,14 +94,15 @@ class TIDService:
     def _changesetsBetween(self,file,newcs,oldcs): #only works with one branch
         changesets = []
         currentChangeset = oldcs
-        while currentChangeset != newcs:
+        while currentChangeset != oldcs:
             changesets.append(currentChangeset)
             url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-diff/' + currentChangeset + file
             print(url)
             response = requests.get(url)
             mozobj = json.loads(response.text)
-            currentChangeset = mozobj['children'][0][:12]
-        return changesets.append(newcs)
+            currentChangeset = mozobj['parent'][0][:12]
+        changesets.append(newcs)
+        return changesets.reverse()
 
     def _addChangesetToRev(self,revision,cset):
         for set in cset:

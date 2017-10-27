@@ -53,6 +53,11 @@ class TestgrabTIDs(unittest.TestCase):
     #     self.assertEqual(len(old),97)
     #     self.assertEqual(len(new),232)
 
+    def test_new_then_old(self):
+        new = self.service.grabTIDs("/testing/geckodriver/CONTRIBUTING.md","06b1a22c5e62")
+        old = self.service.grabTIDs("/testing/geckodriver/CONTRIBUTING.md","6162f89a4838")
+        self.assertEqual(len(new),len(old))
+
 
     def test_tids_on_changed_file(self):
         # https://hg.mozilla.org/integration/mozilla-inbound/rev/a6fdd6eae583/taskcluster/ci/test/tests.yml
@@ -68,7 +73,7 @@ class TestgrabTIDs(unittest.TestCase):
         )
 
         # assertAlmostEqual PERFORMS A STRUCURAL COMPARISION
-        self.assertEqual(len(old_lines),len(same_lines))
+        self.assertEqual(len(old_lines)-4,len(same_lines))
 
 
         # THE FILE HAS FOUR LINES REMOVED
