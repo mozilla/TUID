@@ -52,12 +52,12 @@ class TIDService:
         ''')
         print("Table created successfully")
 
-    def _getDate(self,file,rev):
-        cursor = self.conn.execute("select date from (select rev,date from revision UNION select cid,date from changeset);")
-        dates = cursor.fetchall()
-        if len(dates) == 0:
-            return None
-        return dates[0][0]
+    def _getDate(self,file,rev): #TODO make it fetch from Database
+        url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-file/' + rev + file
+        print(url)
+        response = requests.get(url)
+        mozobj = json.loads(response.text)
+        return mozobj['date'][0]
 
 
     def grabTIDs(self,file,revision):
