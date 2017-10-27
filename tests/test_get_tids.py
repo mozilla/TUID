@@ -53,10 +53,15 @@ class TestgrabTIDs(unittest.TestCase):
     #     self.assertEqual(len(old),97)
     #     self.assertEqual(len(new),232)
 
+
     def test_new_then_old(self):
+        #delete database then run this test
         new = self.service.grabTIDs("/testing/geckodriver/CONTRIBUTING.md","06b1a22c5e62")
         old = self.service.grabTIDs("/testing/geckodriver/CONTRIBUTING.md","6162f89a4838")
+
         self.assertEqual(len(new),len(old))
+        for i in range(0,len(old)):
+            self.assertEqual(old[i],new[i])
 
 
     def test_tids_on_changed_file(self):
