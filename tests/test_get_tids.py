@@ -53,6 +53,9 @@ class TestgrabTIDs(unittest.TestCase):
     #     self.assertEqual(len(old),97)
     #     self.assertEqual(len(new),232)
 
+    def test_makeTIDsFromRevision(self):
+        self.service._makeTIDsFromRevision("/testing/geckodriver/CONTRIBUTING.md","5ee7725a416c")
+
 
     def test_new_then_old(self):
         #delete database then run this test
