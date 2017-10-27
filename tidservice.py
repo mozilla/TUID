@@ -70,7 +70,7 @@ class TIDService:
             return fetch
         result = self._applyChangesetsToRev(file,revision,rev[0][0])
         if result == None:
-            return self._grabRevision(file,revision)
+            return rev
         return result
 
 
@@ -80,12 +80,13 @@ class TIDService:
 
     def _applyChangesetsToRev(self,file,newrev,oldrev):
         rev = self._grabRevision(file,oldrev)
+        if oldrev == newrev:
+            return rev
         changesets = self._changesetsBetween(file,newrev,oldrev)
         if changesets == None:
             return None
         if changesets == []:
             return None
-        changesets = changesets[1:]
         for cs in changesets:
             csTIDs = self._grabChangeset(file,cs)
             rev = self._addChangesetToRev(rev,csTIDs)
@@ -102,7 +103,8 @@ class TIDService:
             mozobj = json.loads(response.text)
             currentChangeset = mozobj['parent'][0][:12]
         changesets.append(newcs)
-        return changesets.reverse()
+        changesets.reverse()
+        return changesets
 
     def _addChangesetToRev(self,revision,cset):
         for set in cset:
@@ -162,6 +164,8 @@ class TIDService:
 
     def _makeTIDsFromDiff(self, diff):
         mozobj = json.loads(diff)
+        if mozobj['diff']==[]:
+            return None
         cid = mozobj['node'][:12]
         file = "/"+mozobj['path']
         minuscount = 0
