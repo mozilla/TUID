@@ -7,22 +7,19 @@ class TIDService:
     _grabTIDQuery = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
     _grabChangesetQuery = "select cid from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
     def __init__(self,conn=None): #pass in conn for testing purposes
-        with open('config.json', 'r') as f:
-            self.config = json.load(f, encoding='utf8')
-        if conn is None:
-            try:
+        try:
+            with open('config.json', 'r') as f:
+                self.config = json.load(f, encoding='utf8')
+            if conn is None:
                 self.conn = sqlite3.connect(self.config['database']['name'])
-            except Exception:
-                print("Could not connect to database")
-                exit(-1)
-
-        else:
-            self.conn = conn
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        if cursor.fetchone() is None:
-            self.initDB()
-        f.close();
+            else:
+                self.conn = conn
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            if cursor.fetchone() is None:
+                self.initDB()
+        except Exception as e:
+            raise Exception("can not setup service") from e
 
 
     def initDB(self):
