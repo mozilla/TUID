@@ -24,23 +24,27 @@ class TIDService:
 
     def init_db(self):
         # Operator is 1 to add a line, negative to delete specified lines
-        self.conn.execute('''CREATE TABLE Temporal
+        self.conn.execute('''
+                CREATE TABLE Temporal
                 (TID INTEGER PRIMARY KEY     AUTOINCREMENT,
                 REVISION CHAR(12)		  NOT NULL,
                 FILE TEXT,
                 LINE INT,
                 OPERATOR INTEGER,
-                UNIQUE(REVISION,FILE,LINE,OPERATOR));''')
+                UNIQUE(REVISION,FILE,LINE,OPERATOR));
+                ''')
         # Changeset and Revision are for telling which TIDs are from a Revision and which are from a Changeset
         # Also for date information and stuff
-        self.conn.execute('''CREATE TABLE Changeset
+        self.conn.execute('''
+        CREATE TABLE Changeset
         (cid CHAR(12) PRIMARY KEY,
         FILE TEXT               NOT NULL,
         LENGTH INTEGER          NOT NULL,
         DATE INTEGER            NOT NULL
         );
         ''')
-        self.conn.execute('''CREATE TABLE Revision
+        self.conn.execute('''
+        CREATE TABLE Revision
         (REV CHAR(12),
         FILE TEXT,
         DATE INTEGER,
