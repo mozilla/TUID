@@ -7,8 +7,8 @@ class TIDService:
     _grabTIDQuery = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
     _grabChangesetQuery = "select cid from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
     def __init__(self,conn=None): #pass in conn for testing purposes
-        f=open('config.json', 'r',encoding='utf8')
-        self.config = json.load(f)
+        with open('config.json', 'r') as f:
+            self.config = json.load(f, encoding='utf8')
         if conn is None:
             try:
                 self.conn = sqlite3.connect(self.config['database']['name'])
