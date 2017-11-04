@@ -3,6 +3,7 @@ import json
 import requests
 import re
 
+
 class TIDService:
     _grabTIDQuery = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
     _grabChangesetQuery = "select * from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
@@ -59,6 +60,8 @@ class TIDService:
         url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-file/' + rev + file
         print(url)
         response = requests.get(url)
+        if response.status_code == 404:
+            raise Exception("Cannot find date")
         mozobj = json.loads(response.text)
         return mozobj['date'][0]
 
@@ -68,17 +71,15 @@ class TIDService:
         # TODO make it grab the max
         cursor = self.conn.execute("select * from revision where date<=? and file=?", (date, file,))
         old_rev = cursor.fetchall()
-        if old_rev == []:
+        if old_rev == [] or old_rev[0][0] == revision:
             return self._grab_revision(file,revision)
 
-        if old_rev[0][0] == revision:
-            cursor = self.conn.execute(self._grabTIDQuery,(file,revision,))
-            return cursor.fetchall()
+        old_rev_id = old_rev[0][0]
         current_changeset = old_rev[0][3] # Grab child
         current_date = old_rev[0][2]
-        old_rev = self.conn.execute(self._grabTIDQuery,(file,current_changeset,)).fetchall()
+        old_rev = self._grab_revision(file,old_rev_id)
         cs_list = []
-        while current_date <= date:
+        while True:
             cursor = self.conn.execute(self._grabChangesetQuery, (file, current_changeset,))
             change_set = cursor.fetchall()
             if change_set == []:
@@ -89,14 +90,17 @@ class TIDService:
                 self._make_tids_from_diff(mozobj)
                 cursor = self.conn.execute(self._grabTIDQuery, (file, current_changeset))
                 cs_list = cursor.fetchall()
-                current_changeset = mozobj['children'][0][:12]
+                current_changeset = mozobj['children']
+                if current_changeset != []:
+                    current_changeset = current_changeset[0][:12]
                 current_date = mozobj['date'][0]
             else:
                 cursor = self.conn.execute(self._grabTIDQuery,(file,current_changeset))
                 cs_list = cursor.fetchall()
                 current_changeset = change_set[0][4]
                 current_date = change_set[0][3]
-
+            if current_date > date:
+                break
             old_rev = self._add_changeset_to_rev(self,old_rev,cs_list)
         return old_rev
 
@@ -135,17 +139,24 @@ class TIDService:
         response = requests.get(url)
         mozobj = json.loads(response.text)
         date = mozobj['date'][0]
-        child = mozobj['children'][0][:12]
+        child = mozobj['children']
+        if child != []:
+            child = child[0][:12]
+        else:
+            child = None
         tid_list = []
         for el in mozobj['annotate']:
             try:
                 self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (?,?,?,?);",(el['node'][:12], file, el['targetline'], '1',))
             except sqlite3.IntegrityError:
-                print("Already exists")
+                pass
             cursor = self.conn.execute("select * from Temporal where REVISION=? AND FILE=? AND LINE=?",(el['node'][:12],file,el['targetline'],))
             res = cursor.fetchone()
             tid_list.append(res)
-        self.conn.execute("INSERT into REVISION (REV,FILE,DATE,CHILD) values (substr(?,0,13),?,?,?);", (revision, file, date,child,))
+        try:
+            self.conn.execute("INSERT into REVISION (REV,FILE,DATE,CHILD) values (substr(?,0,13),?,?,?);", (revision, file, date,child,))
+        except sqlite3.IntegrityError:
+            pass
         self.conn.commit()
         return tid_list
 
@@ -187,16 +198,22 @@ class TIDService:
                 if line['t'] == '-':
                     minus_count -= 1
                 elif minus_count<0:
-                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values "
-                                      "(substr(?,0,13),?,?,?);", (cid, file, current_line, minus_count,))
+                    try:
+                        self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values "
+                                          "(substr(?,0,13),?,?,?);", (cid, file, current_line, minus_count,))
+                    except sqlite3.IntegrityError:
+                        print("Already exists")
                     minus_count=0
                 if line['t'] == '@':
                     m=re.search('(?<=\+)\d+',line['l'])
                     current_line= int(m.group(0)) - 2
                     minus_count=0
                 if line['t'] == '+':
-                    self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values "
-                                      "(substr(?,0,13),?,?,?);", (cid, file, current_line, 1,))
+                    try:
+                        self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values "
+                                          "(substr(?,0,13),?,?,?);", (cid, file, current_line, 1,))
+                    except sqlite3.IntegrityError:
+                        print("Already exists")
                     current_line += 1
                 if line['t'] == '':
                     current_line += 1
