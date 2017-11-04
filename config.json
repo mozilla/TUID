@@ -1,0 +1,8 @@
+{
+  "database": {
+    "name":"TID.db"
+  },
+  "hg" : {
+    "branch":"mozilla-central"
+  }
+}
