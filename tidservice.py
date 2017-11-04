@@ -51,7 +51,9 @@ class TIDService:
         FILE TEXT,
         DATE INTEGER,
         CHILD CHAR(12),
-        PRIMARY KEY(REV,FILE)
+        TID INTEGER,
+        LINE INTEGER,
+        PRIMARY KEY(REV,FILE,LINE)
         );
         ''')
         print("Table created successfully")
@@ -104,22 +106,6 @@ class TIDService:
             old_rev = self._add_changeset_to_rev(self,old_rev,cs_list)
         return old_rev
 
-
-    def _apply_changesets_to_rev(self, file, newrev, oldrev):
-        rev = self._grab_revision(file, oldrev)
-        if oldrev == newrev:
-            return rev
-        changesets = self._changesets_between(file, newrev, oldrev)
-        if changesets is None:
-            return None
-        if changesets is []:
-            return None
-        for cs in changesets:
-            cs_tids = self._grab_changeset(file, cs)
-            rev = self._add_changeset_to_rev(rev, cs_tids)
-        return rev
-
-
     @staticmethod
     def _add_changeset_to_rev(self, revision, cset):
         for set in cset:
@@ -133,7 +119,12 @@ class TIDService:
         cursor = self.conn.execute("SELECT * from Temporal WHERE TID=? LIMIT 1;",(ID,))
         return cursor.fetchone()
 
-    def _grab_revision(self, file, revision): # TODO cache in DB
+    def _grab_revision(self, file, revision):
+        cursor = self.conn.execute("select * from TEMPORAL where TID in "
+                                   "(select TID from REVISION where file=? and rev=?);",(file,revision[:12],))
+        res = cursor.fetchall()
+        if res != []:
+            return res
         url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-annotate/' + revision + file
         print(url)
         response = requests.get(url)
@@ -144,37 +135,26 @@ class TIDService:
             child = child[0][:12]
         else:
             child = None
-        tid_list = []
+        count = 1
         for el in mozobj['annotate']:
             try:
-                self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (?,?,?,?);",(el['node'][:12], file, el['targetline'], '1',))
+                self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (?,?,?,?);",
+                                  (el['node'][:12], file, el['targetline'], '1',))
             except sqlite3.IntegrityError:
                 pass
             cursor = self.conn.execute("select * from Temporal where REVISION=? AND FILE=? AND LINE=?",(el['node'][:12],file,el['targetline'],))
-            res = cursor.fetchone()
-            tid_list.append(res)
-        try:
-            self.conn.execute("INSERT into REVISION (REV,FILE,DATE,CHILD) values (substr(?,0,13),?,?,?);", (revision, file, date,child,))
-        except sqlite3.IntegrityError:
-            pass
+            res2 = cursor.fetchone()
+            try:
+                self.conn.execute("INSERT into REVISION (REV,FILE,DATE,CHILD,TID,LINE) values (substr(?,0,13),?,?,?,?,?);",
+                                  (revision, file, date, child,res2[0],count,))
+            except sqlite3.IntegrityError:
+                pass
+            count+=1
+
         self.conn.commit()
-        return tid_list
-
-    def _grab_changeset(self, file, cid):
-        cursor = self.conn.execute(self._grabChangesetQuery,(file,cid,))
-        cids = cursor.fetchall()
-        if len(cids)==0:
-            self._make_tids_from_changeset(file, cid)
-        cursor=self.conn.execute(self._grabTIDQuery,(file,cid,))
+        cursor = self.conn.execute("select * from TEMPORAL where TID in "
+                                   "(select TID from REVISION where file=? and rev=?);", (file, revision[:12],))
         return cursor.fetchall()
-
-
-    def _make_tids_from_changeset(self, file, cid):
-        url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-diff/' + cid + file
-        print(url)
-        response = requests.get(url)
-        mozobj = json.loads(response.text)
-        self._make_tids_from_diff(mozobj)
 
     def _make_tids_from_diff(self, diff):
         mozobj = diff
@@ -221,7 +201,3 @@ class TIDService:
                 current_line += 1
 
         self.conn.commit()
-
-
-
-
