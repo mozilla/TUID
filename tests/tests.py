@@ -55,3 +55,5 @@ class TestgrabTIDs(unittest.TestCase):
         new = self.service.grab_tids("/gfx/ipc/GPUParent.cpp","3acb30b37718")
         self.assertEqual(len(old),467)
         self.assertEqual(len(new),476)
+        for i in range(1,207):
+            self.assertEqual(old[i],new[i])
