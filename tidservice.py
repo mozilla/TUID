@@ -63,7 +63,7 @@ class TIDService:
         cursor = self.conn.execute("select date from (select cid,file,date from changeset union "
                                    "select rev,file,date from revision) where cid=? and file=?;",(revision,file,))
         date_list = cursor.fetchall()
-        if date_list != []:
+        if date_list:
             date = date_list[0][0]
         else:
             url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-file/' + revision + file
@@ -78,7 +78,7 @@ class TIDService:
         # TODO make it grab the max
         cursor = self.conn.execute("select * from revision where date<=? and file=?", (date, file,))
         old_rev = cursor.fetchall()
-        if old_rev == [] or old_rev[0][0] == revision:
+        if not old_rev or old_rev[0][0] == revision:
             return self._grab_revision(file,revision)
         old_rev_id = old_rev[0][0]
         current_changeset = old_rev[0][3] # Grab child
@@ -88,7 +88,7 @@ class TIDService:
         while True:
             cursor = self.conn.execute(self._grabChangesetQuery, (file, current_changeset,))
             change_set = cursor.fetchall()
-            if change_set == []:
+            if not change_set:
                 url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-diff/' + current_changeset + file
                 print(url)
                 response = requests.get(url)
@@ -97,7 +97,7 @@ class TIDService:
                 cursor = self.conn.execute(self._grabTIDQuery, (file, current_changeset))
                 cs_list = cursor.fetchall()
                 current_changeset = mozobj['children']
-                if current_changeset != []:
+                if current_changeset:
                     current_changeset = current_changeset[0][:12]
                 current_date = mozobj['date'][0]
             else:
@@ -124,7 +124,7 @@ class TIDService:
         cursor = self.conn.execute("select * from TEMPORAL where TID in "
                                    "(select TID from REVISION where file=? and rev=?);",(file,revision[:12],))
         res = cursor.fetchall()
-        if res != []:
+        if res:
             return res
         url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-annotate/' + revision + file
         print(url)
@@ -132,7 +132,7 @@ class TIDService:
         mozobj = json.loads(response.text)
         date = mozobj['date'][0]
         child = mozobj['children']
-        if child != []:
+        if child:
             child = child[0][:12]
         else:
             child = None
@@ -168,7 +168,7 @@ class TIDService:
         length = len(mozobj['diff'][0]['lines'])
         date = mozobj['date'][0]
         child = mozobj['children']
-        if child != []:
+        if child:
             child = child[0][:12]
         else:
             child = None
