@@ -88,6 +88,8 @@ class TIDService:
         while True:
             cursor = self.conn.execute(self._grabChangesetQuery, (file, current_changeset,))
             change_set = cursor.fetchall()
+            if not current_changeset:
+                return old_rev
             if not change_set:
                 url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-diff/' + current_changeset + file
                 print(url)

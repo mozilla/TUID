@@ -45,7 +45,13 @@ class TestgrabTIDs(unittest.TestCase):
         self.assertEqual(len(new_lines), len(old_lines)-4)
 
     def test_remove_file(self):
-        with_file = self.service.grab_tids("/third_party/speedometer/InteractiveRunner.html","881688d7d7fc")
-        without_file = self.service.grab_tids("/third_party/speedometer/InteractiveRunner.html","e3f24e165618")
-        self.assertEqual(len(with_file),173)
-        self.assertEqual(len(without_file),0)
+        try:
+            self.service.grab_tids("/third_party/speedometer/InteractiveRunner.html","e3f24e165618")
+        except:
+            self.assertTrue("something")
+
+    def test_generic_1(self):
+        old = self.service.grab_tids("/gfx/ipc/GPUParent.cpp","a5a2ae162869")
+        new = self.service.grab_tids("/gfx/ipc/GPUParent.cpp","3acb30b37718")
+        self.assertEqual(len(old),467)
+        self.assertEqual(len(new),476)
