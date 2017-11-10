@@ -5,7 +5,6 @@ config = None
 
 class TestgrabTIDs(unittest.TestCase):
 
-
     def setUp(self):
         # MAKE AN INSTANCE OF THE SERVICE
         self.service = TIDService()

@@ -58,24 +58,28 @@ class TIDService:
         ''')
         print("Table created successfully")
 
-    def _get_date(self, file, rev): #TODO make it fetch from Database
-        url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-file/' + rev + file
-        print(url)
-        response = requests.get(url)
-        if response.status_code == 404:
-            raise Exception("Cannot find date")
-        mozobj = json.loads(response.text)
-        return mozobj['date'][0]
-
-
     def grab_tids(self,file,revision):
-        date = self._get_date(file,revision)
+        # Grabs date
+        cursor = self.conn.execute("select date from (select cid,file,date from changeset union "
+                                   "select rev,file,date from revision) where cid=? and file=?;",(revision,file,))
+        date_list = cursor.fetchall()
+        if date_list != []:
+            date = date_list[0][0]
+        else:
+            url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-file/' + revision + file
+            print(url)
+            response = requests.get(url)
+            if response.status_code == 404:
+                raise Exception("Cannot find date")
+            mozobj = json.loads(response.text)
+            date = mozobj['date'][0]
+        # End Grab Date
+
         # TODO make it grab the max
         cursor = self.conn.execute("select * from revision where date<=? and file=?", (date, file,))
         old_rev = cursor.fetchall()
         if old_rev == [] or old_rev[0][0] == revision:
             return self._grab_revision(file,revision)
-
         old_rev_id = old_rev[0][0]
         current_changeset = old_rev[0][3] # Grab child
         current_date = old_rev[0][2]
@@ -97,7 +101,7 @@ class TIDService:
                     current_changeset = current_changeset[0][:12]
                 current_date = mozobj['date'][0]
             else:
-                cursor = self.conn.execute(self._grabTIDQuery,(file,current_changeset))
+                cursor = self.conn.execute(self._grabTIDQuery, (file,current_changeset))
                 cs_list = cursor.fetchall()
                 current_changeset = change_set[0][4]
                 current_date = change_set[0][3]
@@ -107,7 +111,7 @@ class TIDService:
         return old_rev
 
     @staticmethod
-    def _add_changeset_to_rev(self, revision, cset):
+    def _add_changeset_to_rev(self, revision, cset): # Single use
         for set in cset:
             if set[4]==1:
                 revision.insert(set[3],set) # Inserting and deleting will probably be slow
@@ -115,9 +119,6 @@ class TIDService:
                 del revision[set[3]:set[3]+abs(set[4])]
         return revision
 
-    def grab_tid(self, ID):
-        cursor = self.conn.execute("SELECT * from Temporal WHERE TID=? LIMIT 1;",(ID,))
-        return cursor.fetchone()
 
     def _grab_revision(self, file, revision):
         cursor = self.conn.execute("select * from TEMPORAL where TID in "
@@ -156,7 +157,7 @@ class TIDService:
                                    "(select TID from REVISION where file=? and rev=?);", (file, revision[:12],))
         return cursor.fetchall()
 
-    def _make_tids_from_diff(self, diff):
+    def _make_tids_from_diff(self, diff): # Single use
         mozobj = diff
         if mozobj['diff'] is []:
             return None
