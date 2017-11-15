@@ -57,3 +57,16 @@ class TestgrabTIDs(unittest.TestCase):
         self.assertEqual(len(new),476)
         for i in range(1,207):
             self.assertEqual(old[i],new[i])
+
+    def test_file_with_line_replacement(self):
+        new = self.service.grab_tids("/python/mozbuild/mozbuild/action/test_archive.py","e3f24e165618")
+        old = self.service.grab_tids("/python/mozbuild/mozbuild/action/test_archive.py","c730f942ce30")
+        self.assertEqual(653,len(new))
+        self.assertEqual(653,len(old))
+        print(old[374])
+        print(new[374])
+        for i in range(0,600):
+            if i==374 or i==376:
+                self.assertNotEqual(old[i],new[i])
+            else:
+                self.assertEqual(old[i],new[i])

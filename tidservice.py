@@ -123,8 +123,8 @@ class TIDService:
 
 
     def _grab_revision(self, file, revision):
-        cursor = self.conn.execute("select * from TEMPORAL where TID in "
-                                   "(select TID from REVISION where file=? and rev=?);",(file,revision[:12],))
+        cursor = self.conn.execute("select t.tid,t.revision,t.file,t.line,t.operator from temporal t, revision r where "
+                                   "t.tid=r.tid and r.file=? and r.rev=? order by r.line;", (file, revision[:12],))
         res = cursor.fetchall()
         if res:
             return res
@@ -155,8 +155,8 @@ class TIDService:
             count+=1
 
         self.conn.commit()
-        cursor = self.conn.execute("select * from TEMPORAL where TID in "
-                                   "(select TID from REVISION where file=? and rev=?);", (file, revision[:12],))
+        cursor = self.conn.execute("select t.tid,t.revision,t.file,t.line,t.operator from temporal t, revision r where "
+                                   "t.tid=r.tid and r.file=? and r.rev=? order by r.line;", (file, revision[:12],))
         return cursor.fetchall()
 
     def _make_tids_from_diff(self, diff): # Single use
