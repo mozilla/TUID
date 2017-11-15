@@ -45,10 +45,7 @@ class TestgrabTIDs(unittest.TestCase):
         self.assertEqual(len(new_lines), len(old_lines)-4)
 
     def test_remove_file(self):
-        try:
-            self.service.grab_tids("/third_party/speedometer/InteractiveRunner.html","e3f24e165618")
-        except:
-            self.assertTrue("something")
+        self.assertEqual(0,len(self.service.grab_tids("/third_party/speedometer/InteractiveRunner.html","e3f24e165618")))
 
     def test_generic_1(self):
         old = self.service.grab_tids("/gfx/ipc/GPUParent.cpp","a5a2ae162869")
@@ -63,8 +60,6 @@ class TestgrabTIDs(unittest.TestCase):
         old = self.service.grab_tids("/python/mozbuild/mozbuild/action/test_archive.py","c730f942ce30")
         self.assertEqual(653,len(new))
         self.assertEqual(653,len(old))
-        print(old[374])
-        print(new[374])
         for i in range(0,600):
             if i==374 or i==376:
                 self.assertNotEqual(old[i],new[i])

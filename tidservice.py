@@ -70,7 +70,7 @@ class TIDService:
             print(url)
             response = requests.get(url)
             if response.status_code == 404:
-                raise Exception("Cannot find date")
+                return ()
             mozobj = json.loads(response.text)
             date = mozobj['date'][0]
         # End Grab Date
