@@ -65,3 +65,11 @@ class TestgrabTIDs(unittest.TestCase):
                 self.assertNotEqual(old[i],new[i])
             else:
                 self.assertEqual(old[i],new[i])
+
+    def test_distant_rev(self):
+        old = self.service.grab_tids("/python/mozbuild/mozbuild/action/test_archive.py","e3f24e165618")
+        new = self.service.grab_tids("/python/mozbuild/mozbuild/action/test_archive.py","0d1e55d87931")
+        self.assertEqual(len(old),653)
+        self.assertEqual(len(new),653)
+        for i in range(0,653):
+            self.assertEqual(new[i],old[i])
