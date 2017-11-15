@@ -73,3 +73,8 @@ class TestgrabTIDs(unittest.TestCase):
         self.assertEqual(len(new),653)
         for i in range(0,653):
             self.assertEqual(new[i],old[i])
+
+    def test_new_file(self):
+        rev = self.service.grab_tids("/media/audioipc/server/src/lib.rs","a39241b3e7b1")
+        self.assertEqual(len(rev),636)
+        
