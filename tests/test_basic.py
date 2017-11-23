@@ -5,10 +5,10 @@ import sqlite3
 config = None
 
 @pytest.fixture
-def service(cmdopt):
-    if cmdopt == 'no':
+def service(new_db):
+    if new_db == 'yes':
         return TIDService(conn=sqlite3.connect(":memory:"))
-    elif cmdopt == 'yes':
+    elif new_db == 'no':
         return TIDService(conn=sqlite3.connect("test.db"))
 
 
