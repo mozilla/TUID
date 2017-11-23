@@ -12,13 +12,13 @@ class TIDService:
         try:
             with open('config.json', 'r') as f:
                 self.config = json.load(f, encoding='utf8')
-            if conn is None:
+            if not conn:
                 self.conn = sqlite3.connect(self.config['database']['name'])
             else:
                 self.conn = conn
             cursor = self.conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-            if cursor.fetchone() is None:
+            if not cursor.fetchone():
                 self.init_db()
         except Exception as e:
             raise Exception("can not setup service") from e
@@ -161,7 +161,7 @@ class TIDService:
 
     def _make_tids_from_diff(self, diff): # Single use
         mozobj = diff
-        if mozobj['diff'] is []:
+        if not mozobj['diff']:
             return None
         cid = mozobj['node'][:12]
         file = "/"+mozobj['path']
