@@ -1,9 +1,9 @@
 import json
 import requests
 import re
-import Log
 import sql
 import sqlite3
+from log import Log
 
 GRAB_TID_QUERY = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
 GRAB_CHANGESET_QUERY = "select * from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
@@ -11,7 +11,6 @@ GRAB_CHANGESET_QUERY = "select * from changeset where file=? and substr(cid,0,13
 class TIDService:
     def __init__(self,conn=None): #pass in conn for testing purposes
         try:
-            self.log = Log.Log
             with open('config.json', 'r') as f:
                 self.config = json.load(f, encoding='utf8')
             if not conn:
@@ -56,7 +55,7 @@ class TIDService:
         PRIMARY KEY(REV,FILE,LINE)
         );
         ''')
-        self.log.note("Table created successfully")
+        Log.note("Table created successfully")
 
     def grab_tids(self,file,revision):
         # Grabs date
@@ -66,7 +65,7 @@ class TIDService:
             date = date_list[0][0]
         else:
             url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-file/' + revision + file
-            self.log.note(url)
+            Log.note(url)
             response = requests.get(url)
             if response.status_code == 404:
                 return ()
@@ -89,7 +88,7 @@ class TIDService:
                 return old_rev
             if not change_set:
                 url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-diff/' + current_changeset + file
-                self.log.note(url)
+                Log.note(url)
                 response = requests.get(url)
                 mozobj = json.loads(response.text)
                 self._make_tids_from_diff(mozobj)
@@ -123,7 +122,7 @@ class TIDService:
         if res:
             return res
         url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-annotate/' + revision + file
-        self.log.note(url)
+        Log.note(url)
         response = requests.get(url)
         mozobj = json.loads(response.text)
         date = mozobj['date'][0]
@@ -177,7 +176,7 @@ class TIDService:
                         self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values "
                                           "(substr(?,0,13),?,?,?);", (cid, file, current_line, minus_count,))
                     except sqlite3.IntegrityError:
-                        self.log.note("Already exists")
+                        Log.note("Already exists")
                     minus_count=0
                 if line['t'] == '@':
                     m=re.search('(?<=\+)\d+',line['l'])
@@ -188,7 +187,7 @@ class TIDService:
                         self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values "
                                           "(substr(?,0,13),?,?,?);", (cid, file, current_line, 1,))
                     except sqlite3.IntegrityError:
-                        self.log.note("Already exists")
+                        Log.note("Already exists")
                     current_line += 1
                 if line['t'] == '':
                     current_line += 1
