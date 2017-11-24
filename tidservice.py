@@ -2,14 +2,15 @@ import sqlite3
 import json
 import requests
 import re
+import Log
 
+GRAB_TID_QUERY = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
+GRAB_CHANGESET_QUERY = "select * from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
 
 class TIDService:
-    _grabTIDQuery = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
-    _grabChangesetQuery = "select * from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
-
     def __init__(self,conn=None): #pass in conn for testing purposes
         try:
+            self.log = Log.Log
             with open('config.json', 'r') as f:
                 self.config = json.load(f, encoding='utf8')
             if not conn:
@@ -56,7 +57,7 @@ class TIDService:
         PRIMARY KEY(REV,FILE,LINE)
         );
         ''')
-        print("Table created successfully")
+        self.log.note("Table created successfully")
 
     def grab_tids(self,file,revision):
         # Grabs date
@@ -67,7 +68,7 @@ class TIDService:
             date = date_list[0][0]
         else:
             url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-file/' + revision + file
-            print(url)
+            self.log.note(url)
             response = requests.get(url)
             if response.status_code == 404:
                 return ()
@@ -86,24 +87,24 @@ class TIDService:
         old_rev = self._grab_revision(file,old_rev_id)
         cs_list = []
         while True:
-            cursor = self.conn.execute(self._grabChangesetQuery, (file, current_changeset,))
+            cursor = self.conn.execute(GRAB_CHANGESET_QUERY, (file, current_changeset,))
             change_set = cursor.fetchall()
             if not current_changeset:
                 return old_rev
             if not change_set:
                 url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-diff/' + current_changeset + file
-                print(url)
+                self.log.note(url)
                 response = requests.get(url)
                 mozobj = json.loads(response.text)
                 self._make_tids_from_diff(mozobj)
-                cursor = self.conn.execute(self._grabTIDQuery, (file, current_changeset))
+                cursor = self.conn.execute(GRAB_TID_QUERY, (file, current_changeset))
                 cs_list = cursor.fetchall()
                 current_changeset = mozobj['children']
                 if current_changeset:
                     current_changeset = current_changeset[0][:12]
                 current_date = mozobj['date'][0]
             else:
-                cursor = self.conn.execute(self._grabTIDQuery, (file,current_changeset))
+                cursor = self.conn.execute(GRAB_TID_QUERY, (file,current_changeset))
                 cs_list = cursor.fetchall()
                 current_changeset = change_set[0][4]
                 current_date = change_set[0][3]
@@ -129,7 +130,7 @@ class TIDService:
         if res:
             return res
         url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-annotate/' + revision + file
-        print(url)
+        self.log.note(url)
         response = requests.get(url)
         mozobj = json.loads(response.text)
         date = mozobj['date'][0]
@@ -185,7 +186,7 @@ class TIDService:
                         self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values "
                                           "(substr(?,0,13),?,?,?);", (cid, file, current_line, minus_count,))
                     except sqlite3.IntegrityError:
-                        print("Already exists")
+                        self.log.note("Already exists")
                     minus_count=0
                 if line['t'] == '@':
                     m=re.search('(?<=\+)\d+',line['l'])
@@ -196,7 +197,7 @@ class TIDService:
                         self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values "
                                           "(substr(?,0,13),?,?,?);", (cid, file, current_line, 1,))
                     except sqlite3.IntegrityError:
-                        print("Already exists")
+                        self.log.note("Already exists")
                     current_line += 1
                 if line['t'] == '':
                     current_line += 1
