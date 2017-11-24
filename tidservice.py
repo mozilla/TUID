@@ -1,8 +1,9 @@
-import sqlite3
 import json
 import requests
 import re
 import Log
+import sql
+import sqlite3
 
 GRAB_TID_QUERY = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
 GRAB_CHANGESET_QUERY = "select * from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
@@ -14,12 +15,10 @@ class TIDService:
             with open('config.json', 'r') as f:
                 self.config = json.load(f, encoding='utf8')
             if not conn:
-                self.conn = sqlite3.connect(self.config['database']['name'])
+                self.conn = sql.Sql(self.config['database']['name'])
             else:
                 self.conn = conn
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-            if not cursor.fetchone():
+            if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
         except Exception as e:
             raise Exception("can not setup service") from e
@@ -61,9 +60,8 @@ class TIDService:
 
     def grab_tids(self,file,revision):
         # Grabs date
-        cursor = self.conn.execute("select date from (select cid,file,date from changeset union "
+        date_list = self.conn.get("select date from (select cid,file,date from changeset union "
                                    "select rev,file,date from revision) where cid=? and file=?;",(revision,file,))
-        date_list = cursor.fetchall()
         if date_list:
             date = date_list[0][0]
         else:
@@ -77,8 +75,7 @@ class TIDService:
         # End Grab Date
 
         # TODO make it grab the max
-        cursor = self.conn.execute("select * from revision where date<=? and file=?", (date, file,))
-        old_rev = cursor.fetchall()
+        old_rev = self.conn.get("select * from revision where date<=? and file=?", (date, file,))
         if not old_rev or old_rev[0][0] == revision:
             return self._grab_revision(file,revision)
         old_rev_id = old_rev[0][0]
@@ -87,8 +84,7 @@ class TIDService:
         old_rev = self._grab_revision(file,old_rev_id)
         cs_list = []
         while True:
-            cursor = self.conn.execute(GRAB_CHANGESET_QUERY, (file, current_changeset,))
-            change_set = cursor.fetchall()
+            change_set = self.conn.get(GRAB_CHANGESET_QUERY, (file, current_changeset,))
             if not current_changeset:
                 return old_rev
             if not change_set:
@@ -97,15 +93,13 @@ class TIDService:
                 response = requests.get(url)
                 mozobj = json.loads(response.text)
                 self._make_tids_from_diff(mozobj)
-                cursor = self.conn.execute(GRAB_TID_QUERY, (file, current_changeset))
-                cs_list = cursor.fetchall()
+                cs_list = self.conn.get(GRAB_TID_QUERY, (file, current_changeset))
                 current_changeset = mozobj['children']
                 if current_changeset:
                     current_changeset = current_changeset[0][:12]
                 current_date = mozobj['date'][0]
             else:
-                cursor = self.conn.execute(GRAB_TID_QUERY, (file,current_changeset))
-                cs_list = cursor.fetchall()
+                cs_list = self.conn.get(GRAB_TID_QUERY, (file,current_changeset))
                 current_changeset = change_set[0][4]
                 current_date = change_set[0][3]
             if current_date > date:
@@ -124,9 +118,8 @@ class TIDService:
 
 
     def _grab_revision(self, file, revision):
-        cursor = self.conn.execute("select t.tid,t.revision,t.file,t.line,t.operator from temporal t, revision r where "
+        res = self.conn.get("select t.tid,t.revision,t.file,t.line,t.operator from temporal t, revision r where "
                                    "t.tid=r.tid and r.file=? and r.rev=? order by r.line;", (file, revision[:12],))
-        res = cursor.fetchall()
         if res:
             return res
         url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-annotate/' + revision + file
@@ -146,8 +139,7 @@ class TIDService:
                                   (el['node'][:12], file, el['targetline'], '1',))
             except sqlite3.IntegrityError:
                 pass
-            cursor = self.conn.execute("select * from Temporal where REVISION=? AND FILE=? AND LINE=?",(el['node'][:12],file,el['targetline'],))
-            res2 = cursor.fetchone()
+            res2 = self.conn.get_one("select * from Temporal where REVISION=? AND FILE=? AND LINE=?",(el['node'][:12],file,el['targetline'],))
             try:
                 self.conn.execute("INSERT into REVISION (REV,FILE,DATE,CHILD,TID,LINE) values (substr(?,0,13),?,?,?,?,?);",
                                   (revision, file, date, child,res2[0],count,))
@@ -156,9 +148,8 @@ class TIDService:
             count+=1
 
         self.conn.commit()
-        cursor = self.conn.execute("select t.tid,t.revision,t.file,t.line,t.operator from temporal t, revision r where "
+        return self.conn.get("select t.tid,t.revision,t.file,t.line,t.operator from temporal t, revision r where "
                                    "t.tid=r.tid and r.file=? and r.rev=? order by r.line;", (file, revision[:12],))
-        return cursor.fetchall()
 
     def _make_tids_from_diff(self, diff): # Single use
         mozobj = diff

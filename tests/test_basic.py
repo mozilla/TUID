@@ -1,15 +1,16 @@
 from tidservice import TIDService
 import pytest
 import sqlite3
+import sql
 
 config = None
 
 @pytest.fixture
 def service(new_db):
     if new_db == 'yes':
-        return TIDService(conn=sqlite3.connect(":memory:"))
+        return TIDService(conn=sql.Sql(":memory:"))
     elif new_db == 'no':
-        return TIDService(conn=sqlite3.connect("test.db"))
+        return TIDService(conn=sql.Sql("test.db"))
 
 
 def test_new_then_old(service):

@@ -4,7 +4,7 @@ def pytest_addoption(parser):
     parser.addoption(
         "--new-db",
         action="store",
-        default="yes",
+        default="no",
         help="`yes` or `no` to use a new database"
     )
 
