@@ -3,8 +3,11 @@ class Sql:
     def __init__(self,dbname):
         self.db = sqlite3.connect(dbname)
 
-    def execute(self,sql):
-        self.db.execute(sql)
+    def execute(self,sql,params=None):
+        if params:
+            self.db.execute(sql,params)
+        else:
+            self.db.execute(sql)
 
     def commit(self):
         self.db.commit()

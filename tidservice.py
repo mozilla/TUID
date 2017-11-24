@@ -75,12 +75,12 @@ class TIDService:
         # End Grab Date
 
         # TODO make it grab the max
-        old_rev = self.conn.get("select * from revision where date<=? and file=?", (date, file,))
+        old_rev = self.conn.get("select REV,DATE,CHILD from revision where date<=? and file=?", (date, file,))
         if not old_rev or old_rev[0][0] == revision:
             return self._grab_revision(file,revision)
         old_rev_id = old_rev[0][0]
-        current_changeset = old_rev[0][3] # Grab child
-        current_date = old_rev[0][2]
+        current_changeset = old_rev[0][2] # Grab child
+        current_date = old_rev[0][1]
         old_rev = self._grab_revision(file,old_rev_id)
         cs_list = []
         while True:
@@ -139,10 +139,10 @@ class TIDService:
                                   (el['node'][:12], file, el['targetline'], '1',))
             except sqlite3.IntegrityError:
                 pass
-            res2 = self.conn.get_one("select * from Temporal where REVISION=? AND FILE=? AND LINE=?",(el['node'][:12],file,el['targetline'],))
+            tid_result = self.conn.get_one("select TID from Temporal where REVISION=? AND FILE=? AND LINE=?",(el['node'][:12],file,el['targetline'],))[0]
             try:
                 self.conn.execute("INSERT into REVISION (REV,FILE,DATE,CHILD,TID,LINE) values (substr(?,0,13),?,?,?,?,?);",
-                                  (revision, file, date, child,res2[0],count,))
+                                  (revision, file, date, child,tid_result,count,))
             except sqlite3.IntegrityError:
                 pass
             count+=1
