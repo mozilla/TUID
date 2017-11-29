@@ -37,7 +37,7 @@ class TIDService:
         # Also for date information and stuff
         self.conn.execute('''
         CREATE TABLE Changeset
-        (cid CHAR(12) PRIMARY KEY,
+        (CID CHAR(12) PRIMARY KEY,
         FILE TEXT               NOT NULL,
         LENGTH INTEGER          NOT NULL,
         DATE INTEGER            NOT NULL,
@@ -55,12 +55,23 @@ class TIDService:
         PRIMARY KEY(REV,FILE,LINE)
         );
         ''')
+
+        self.conn.execute('''
+        CREATE TABLE DATES
+        (CID CHAR(12),
+        FILE TEXT,
+        DATE INTEGER,
+        PRIMARY KEY(CID,FILE)
+        );
+        ''')
+
         Log.note("Table created successfully")
 
     def grab_tids(self,file,revision):
         # Grabs date
         date_list = self.conn.get("select date from (select cid,file,date from changeset union "
-                                   "select rev,file,date from revision) where cid=? and file=?;",(revision,file,))
+                                   "select rev,file,date from revision union "
+                                  "select cid,file,date from dates) where cid=? and file=?;",(revision,file,))
         if date_list:
             date = date_list[0][0]
         else:
@@ -71,6 +82,10 @@ class TIDService:
                 return ()
             mozobj = json.loads(response.text)
             date = mozobj['date'][0]
+            cid = mozobj['node'][:12]
+            file = "/" + mozobj['path']
+            date = mozobj['date'][0]
+            self.conn.execute("INSERT INTO DATES (CID,FILE,DATE) VALUES (?,?,?)",(cid,file,date,))
         # End Grab Date
 
         # TODO make it grab the max
