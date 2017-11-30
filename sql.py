@@ -18,6 +18,7 @@ class Sql:
         else:
             return self.db.execute(sql).fetchall()
 
+
     def get_one(self,sql,params=None):
         if params:
             return self.db.execute(sql,params).fetchone()

@@ -67,6 +67,13 @@ class TIDService:
 
         Log.note("Table created successfully")
 
+    def grab_tids_from_files(self,dir,files,revision):
+        result = []
+        for file in files:
+            Log.note(file)
+            result.append((file,self.grab_tids(dir+file,revision)))
+        return result
+
     def grab_tids(self,file,revision):
         # Grabs date
         date_list = self.conn.get("select date from (select cid,file,date from changeset union "
@@ -89,15 +96,17 @@ class TIDService:
         # End Grab Date
 
         # TODO make it grab the max
-        old_rev = self.conn.get("select REV,DATE,CHILD from revision where date<=? and file=?", (date, file,))
-        if not old_rev or old_rev[0][0] == revision:
+        old_revision = self.conn.get("select REV,DATE,CHILD from revision where date<=? and file=?", (date, file,))
+        if not old_revision or old_revision[0][0] == revision:
             return self._grab_revision(file,revision)
-        old_rev_id = old_rev[0][0]
-        current_changeset = old_rev[0][2] # Grab child
-        current_date = old_rev[0][1]
+        old_rev_id = old_revision[0][0]
+        current_changeset = old_revision[0][2] # Grab child
+        current_date = old_revision[0][1]
         old_rev = self._grab_revision(file,old_rev_id)
         cs_list = []
         while True:
+            if current_changeset == []:
+                return old_rev
             change_set = self.conn.get(GRAB_CHANGESET_QUERY, (file, current_changeset,))
             if not current_changeset:
                 return old_rev
@@ -180,8 +189,11 @@ class TIDService:
             child = child[0][:12]
         else:
             child = None
-        self.conn.execute("INSERT into CHANGESET (CID,FILE,LENGTH,DATE,CHILD) values "
-                          "(substr(?,0,13),?,?,?,?)",(cid,file,length,date,child,))
+        try:
+            self.conn.execute("INSERT into CHANGESET (CID,FILE,LENGTH,DATE,CHILD) values "
+                              "(substr(?,0,13),?,?,?,?)",(cid,file,length,date,child,))
+        except:
+            pass
         for line in mozobj['diff'][0]['lines']:
             if current_line>0:
                 if line['t'] == '-':

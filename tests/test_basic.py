@@ -10,7 +10,7 @@ def service(new_db):
     if new_db == 'yes':
         return TIDService(conn=sql.Sql(":memory:"))
     elif new_db == 'no':
-        return TIDService(conn=sql.Sql("test.db"))
+        return TIDService(conn=sql.Sql("resources/test.db"))
 
 
 def test_new_then_old(service):
