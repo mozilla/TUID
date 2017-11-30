@@ -1,9 +1,9 @@
 import json
-import requests
 import re
 import sql
 import sqlite3
 from log import Log
+from web import Web
 
 GRAB_TID_QUERY = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
 GRAB_CHANGESET_QUERY = "select * from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
@@ -84,7 +84,7 @@ class TIDService:
         else:
             url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-file/' + revision + file
             Log.note(url)
-            response = requests.get(url)
+            response = Web.get_string(url)
             if response.status_code == 404:
                 return ()
             mozobj = json.loads(response.text)
@@ -113,8 +113,7 @@ class TIDService:
             if not change_set:
                 url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-diff/' + current_changeset + file
                 Log.note(url)
-                response = requests.get(url)
-                mozobj = json.loads(response.text)
+                mozobj = Web.get(url)
                 self._make_tids_from_diff(mozobj)
                 cs_list = self.conn.get(GRAB_TID_QUERY, (file, current_changeset))
                 current_changeset = mozobj['children']
@@ -147,8 +146,7 @@ class TIDService:
             return res
         url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-annotate/' + revision + file
         Log.note(url)
-        response = requests.get(url)
-        mozobj = json.loads(response.text)
+        mozobj = Web.get(url)
         date = mozobj['date'][0]
         child = mozobj['children']
         if child:
