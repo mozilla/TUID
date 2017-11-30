@@ -37,11 +37,12 @@ class TIDService:
         # Also for date information and stuff
         self.conn.execute('''
         CREATE TABLE Changeset
-        (CID CHAR(12) PRIMARY KEY,
-        FILE TEXT               NOT NULL,
+        (CID CHAR(12),
+        FILE TEXT,
         LENGTH INTEGER          NOT NULL,
         DATE INTEGER            NOT NULL,
-        CHILD CHAR(12)
+        CHILD CHAR(12),
+        PRIMARY KEY(CID,FILE)
         );
         ''')
         self.conn.execute('''
@@ -190,7 +191,7 @@ class TIDService:
         try:
             self.conn.execute("INSERT into CHANGESET (CID,FILE,LENGTH,DATE,CHILD) values "
                               "(substr(?,0,13),?,?,?,?)",(cid,file,length,date,child,))
-        except:
+        except sqlite3.IntegrityError:
             pass
         for line in mozobj['diff'][0]['lines']:
             if current_line>0:
