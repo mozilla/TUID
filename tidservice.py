@@ -70,8 +70,11 @@ class TIDService:
 
     def grab_tids_from_files(self,dir,files,revision):
         result = []
+        total = len(files)
+        count = 0
         for file in files:
-            Log.note(file)
+            count+=1
+            Log.note(file+" "+str(count/total)+"%")
             result.append((file,self.grab_tids(dir+file,revision)))
         return result
 
