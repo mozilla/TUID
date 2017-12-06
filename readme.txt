@@ -15,3 +15,5 @@ self.service = TIDService()
 self.service.grab_tids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838")
 
 Will grab all the TIDs for revision "6162f89a4838" from the file "/testing/geckodriver/CONTRIBUTING.md"
+
+To grab TIDs for multiple files, call grab_tids_from_files(dir,files,revision). dir is the directory the files is in, files is the list of files, and revision is the revision
