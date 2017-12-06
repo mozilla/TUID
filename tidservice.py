@@ -1,24 +1,23 @@
-import sqlite3
 import json
-import requests
 import re
+import sql
+import sqlite3
+from log import Log
+from web import Web
 
+GRAB_TID_QUERY = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
+GRAB_CHANGESET_QUERY = "select * from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
 
 class TIDService:
-    _grabTIDQuery = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
-    _grabChangesetQuery = "select * from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
-
     def __init__(self,conn=None): #pass in conn for testing purposes
         try:
             with open('config.json', 'r') as f:
                 self.config = json.load(f, encoding='utf8')
-            if conn is None:
-                self.conn = sqlite3.connect(self.config['database']['name'])
+            if not conn:
+                self.conn = sql.Sql(self.config['database']['name'])
             else:
                 self.conn = conn
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-            if cursor.fetchone() is None:
+            if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
         except Exception as e:
             raise Exception("can not setup service") from e
@@ -38,11 +37,12 @@ class TIDService:
         # Also for date information and stuff
         self.conn.execute('''
         CREATE TABLE Changeset
-        (cid CHAR(12) PRIMARY KEY,
-        FILE TEXT               NOT NULL,
+        (CID CHAR(12),
+        FILE TEXT,
         LENGTH INTEGER          NOT NULL,
         DATE INTEGER            NOT NULL,
-        CHILD CHAR(12)
+        CHILD CHAR(12),
+        PRIMARY KEY(CID,FILE)
         );
         ''')
         self.conn.execute('''
@@ -56,49 +56,76 @@ class TIDService:
         PRIMARY KEY(REV,FILE,LINE)
         );
         ''')
-        print("Table created successfully")
 
-    def _get_date(self, file, rev): #TODO make it fetch from Database
-        url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-file/' + rev + file
-        print(url)
-        response = requests.get(url)
-        if response.status_code == 404:
-            raise Exception("Cannot find date")
-        mozobj = json.loads(response.text)
-        return mozobj['date'][0]
+        self.conn.execute('''
+        CREATE TABLE DATES
+        (CID CHAR(12),
+        FILE TEXT,
+        DATE INTEGER,
+        PRIMARY KEY(CID,FILE)
+        );
+        ''')
 
+        Log.note("Table created successfully")
+
+    def grab_tids_from_files(self,dir,files,revision):
+        result = []
+        total = len(files)
+        count = 0
+        for file in files:
+            count+=1
+            Log.note(file+" "+str(count/total)+"%")
+            result.append((file,self.grab_tids(dir+file,revision)))
+        return result
 
     def grab_tids(self,file,revision):
-        date = self._get_date(file,revision)
-        # TODO make it grab the max
-        cursor = self.conn.execute("select * from revision where date<=? and file=?", (date, file,))
-        old_rev = cursor.fetchall()
-        if old_rev == [] or old_rev[0][0] == revision:
-            return self._grab_revision(file,revision)
+        # Grabs date
+        date_list = self.conn.get("select date from (select cid,file,date from changeset union "
+                                   "select rev,file,date from revision union "
+                                  "select cid,file,date from dates) where cid=? and file=?;",(revision,file,))
+        if date_list:
+            date = date_list[0][0]
+        else:
+            url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-file/' + revision + file
+            Log.note(url)
+            response = Web.get_string(url)
+            if response.status_code == 404:
+                return ()
+            mozobj = json.loads(response.text)
+            date = mozobj['date'][0]
+            cid = mozobj['node'][:12]
+            file = "/" + mozobj['path']
+            date = mozobj['date'][0]
+            self.conn.execute("INSERT INTO DATES (CID,FILE,DATE) VALUES (?,?,?)",(cid,file,date,))
+        # End Grab Date
 
-        old_rev_id = old_rev[0][0]
-        current_changeset = old_rev[0][3] # Grab child
-        current_date = old_rev[0][2]
+        # TODO make it grab the max
+        old_revision = self.conn.get("select REV,DATE,CHILD from revision where date<=? and file=?", (date, file,))
+        if not old_revision or old_revision[0][0] == revision:
+            return self._grab_revision(file,revision)
+        old_rev_id = old_revision[0][0]
+        current_changeset = old_revision[0][2] # Grab child
+        current_date = old_revision[0][1]
         old_rev = self._grab_revision(file,old_rev_id)
         cs_list = []
         while True:
-            cursor = self.conn.execute(self._grabChangesetQuery, (file, current_changeset,))
-            change_set = cursor.fetchall()
-            if change_set == []:
+            if current_changeset == []:
+                return old_rev
+            change_set = self.conn.get(GRAB_CHANGESET_QUERY, (file, current_changeset,))
+            if not current_changeset:
+                return old_rev
+            if not change_set:
                 url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-diff/' + current_changeset + file
-                print(url)
-                response = requests.get(url)
-                mozobj = json.loads(response.text)
+                Log.note(url)
+                mozobj = Web.get(url)
                 self._make_tids_from_diff(mozobj)
-                cursor = self.conn.execute(self._grabTIDQuery, (file, current_changeset))
-                cs_list = cursor.fetchall()
+                cs_list = self.conn.get(GRAB_TID_QUERY, (file, current_changeset))
                 current_changeset = mozobj['children']
-                if current_changeset != []:
+                if current_changeset:
                     current_changeset = current_changeset[0][:12]
                 current_date = mozobj['date'][0]
             else:
-                cursor = self.conn.execute(self._grabTIDQuery,(file,current_changeset))
-                cs_list = cursor.fetchall()
+                cs_list = self.conn.get(GRAB_TID_QUERY, (file,current_changeset))
                 current_changeset = change_set[0][4]
                 current_date = change_set[0][3]
             if current_date > date:
@@ -107,7 +134,7 @@ class TIDService:
         return old_rev
 
     @staticmethod
-    def _add_changeset_to_rev(self, revision, cset):
+    def _add_changeset_to_rev(self, revision, cset): # Single use
         for set in cset:
             if set[4]==1:
                 revision.insert(set[3],set) # Inserting and deleting will probably be slow
@@ -115,23 +142,18 @@ class TIDService:
                 del revision[set[3]:set[3]+abs(set[4])]
         return revision
 
-    def grab_tid(self, ID):
-        cursor = self.conn.execute("SELECT * from Temporal WHERE TID=? LIMIT 1;",(ID,))
-        return cursor.fetchone()
 
     def _grab_revision(self, file, revision):
-        cursor = self.conn.execute("select * from TEMPORAL where TID in "
-                                   "(select TID from REVISION where file=? and rev=?);",(file,revision[:12],))
-        res = cursor.fetchall()
-        if res != []:
+        res = self.conn.get("select t.tid,t.revision,t.file,t.line,t.operator from temporal t, revision r where "
+                                   "t.tid=r.tid and r.file=? and r.rev=? order by r.line;", (file, revision[:12],))
+        if res:
             return res
         url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-annotate/' + revision + file
-        print(url)
-        response = requests.get(url)
-        mozobj = json.loads(response.text)
+        Log.note(url)
+        mozobj = Web.get(url)
         date = mozobj['date'][0]
         child = mozobj['children']
-        if child != []:
+        if child:
             child = child[0][:12]
         else:
             child = None
@@ -142,23 +164,21 @@ class TIDService:
                                   (el['node'][:12], file, el['targetline'], '1',))
             except sqlite3.IntegrityError:
                 pass
-            cursor = self.conn.execute("select * from Temporal where REVISION=? AND FILE=? AND LINE=?",(el['node'][:12],file,el['targetline'],))
-            res2 = cursor.fetchone()
+            tid_result = self.conn.get_one("select TID from Temporal where REVISION=? AND FILE=? AND LINE=?",(el['node'][:12],file,el['targetline'],))[0]
             try:
                 self.conn.execute("INSERT into REVISION (REV,FILE,DATE,CHILD,TID,LINE) values (substr(?,0,13),?,?,?,?,?);",
-                                  (revision, file, date, child,res2[0],count,))
+                                  (revision, file, date, child,tid_result,count,))
             except sqlite3.IntegrityError:
                 pass
             count+=1
 
         self.conn.commit()
-        cursor = self.conn.execute("select * from TEMPORAL where TID in "
-                                   "(select TID from REVISION where file=? and rev=?);", (file, revision[:12],))
-        return cursor.fetchall()
+        return self.conn.get("select t.tid,t.revision,t.file,t.line,t.operator from temporal t, revision r where "
+                                   "t.tid=r.tid and r.file=? and r.rev=? order by r.line;", (file, revision[:12],))
 
-    def _make_tids_from_diff(self, diff):
+    def _make_tids_from_diff(self, diff): # Single use
         mozobj = diff
-        if mozobj['diff'] is []:
+        if not mozobj['diff']:
             return None
         cid = mozobj['node'][:12]
         file = "/"+mozobj['path']
@@ -167,12 +187,15 @@ class TIDService:
         length = len(mozobj['diff'][0]['lines'])
         date = mozobj['date'][0]
         child = mozobj['children']
-        if child != []:
+        if child:
             child = child[0][:12]
         else:
             child = None
-        self.conn.execute("INSERT into CHANGESET (CID,FILE,LENGTH,DATE,CHILD) values "
-                          "(substr(?,0,13),?,?,?,?)",(cid,file,length,date,child,))
+        try:
+            self.conn.execute("INSERT into CHANGESET (CID,FILE,LENGTH,DATE,CHILD) values "
+                              "(substr(?,0,13),?,?,?,?)",(cid,file,length,date,child,))
+        except sqlite3.IntegrityError:
+            pass
         for line in mozobj['diff'][0]['lines']:
             if current_line>0:
                 if line['t'] == '-':
@@ -182,7 +205,7 @@ class TIDService:
                         self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values "
                                           "(substr(?,0,13),?,?,?);", (cid, file, current_line, minus_count,))
                     except sqlite3.IntegrityError:
-                        print("Already exists")
+                        Log.note("Already exists")
                     minus_count=0
                 if line['t'] == '@':
                     m=re.search('(?<=\+)\d+',line['l'])
@@ -193,7 +216,7 @@ class TIDService:
                         self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values "
                                           "(substr(?,0,13),?,?,?);", (cid, file, current_line, 1,))
                     except sqlite3.IntegrityError:
-                        print("Already exists")
+                        Log.note("Already exists")
                     current_line += 1
                 if line['t'] == '':
                     current_line += 1
