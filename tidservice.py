@@ -1,3 +1,11 @@
+# encoding: utf-8
+#
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at http://mozilla.org/MPL/2.0/.
+
+
 import json
 import re
 import sql
@@ -25,46 +33,43 @@ class TIDService:
     def init_db(self):
         # Operator is 1 to add a line, negative to delete specified lines
         self.conn.execute('''
-                CREATE TABLE Temporal
-                (TID INTEGER PRIMARY KEY     AUTOINCREMENT,
-                REVISION CHAR(12)		  NOT NULL,
-                FILE TEXT,
-                LINE INT,
-                OPERATOR INTEGER,
-                UNIQUE(REVISION,FILE,LINE,OPERATOR));
-                ''')
+        CREATE TABLE Temporal (
+            TID INTEGER PRIMARY KEY     AUTOINCREMENT,
+            REVISION CHAR(12)		  NOT NULL,
+            FILE TEXT,
+            LINE INT,
+            OPERATOR INTEGER,
+            UNIQUE(REVISION,FILE,LINE,OPERATOR)
+        );''')
         # Changeset and Revision are for telling which TIDs are from a Revision and which are from a Changeset
         # Also for date information and stuff
         self.conn.execute('''
-        CREATE TABLE Changeset
-        (CID CHAR(12),
-        FILE TEXT,
-        LENGTH INTEGER          NOT NULL,
-        DATE INTEGER            NOT NULL,
-        CHILD CHAR(12),
-        PRIMARY KEY(CID,FILE)
-        );
-        ''')
+        CREATE TABLE Changeset (
+            CID CHAR(12),
+            FILE TEXT,
+            LENGTH INTEGER          NOT NULL,
+            DATE INTEGER            NOT NULL,
+            CHILD CHAR(12),
+            PRIMARY KEY(CID,FILE)
+        );''')
         self.conn.execute('''
-        CREATE TABLE Revision
-        (REV CHAR(12),
-        FILE TEXT,
-        DATE INTEGER,
-        CHILD CHAR(12),
-        TID INTEGER,
-        LINE INTEGER,
-        PRIMARY KEY(REV,FILE,LINE)
-        );
-        ''')
+        CREATE TABLE Revision (
+            REV CHAR(12),
+            FILE TEXT,
+            DATE INTEGER,
+            CHILD CHAR(12),
+            TID INTEGER,
+            LINE INTEGER,
+            PRIMARY KEY(REV,FILE,LINE)
+        );''')
 
         self.conn.execute('''
-        CREATE TABLE DATES
-        (CID CHAR(12),
-        FILE TEXT,
-        DATE INTEGER,
-        PRIMARY KEY(CID,FILE)
-        );
-        ''')
+        CREATE TABLE DATES (
+            CID CHAR(12),
+            FILE TEXT,
+            DATE INTEGER,
+            PRIMARY KEY(CID,FILE)
+        );''')
 
         Log.note("Table created successfully")
 
