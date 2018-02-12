@@ -52,7 +52,7 @@ class TIDService:
         CREATE TABLE Changeset (
             CID CHAR(12),
             FILE TEXT,
-            LENGTH INTEGER          NOT NULL,
+            LENGTH INTEGER          NOT NULL,  -- number of lines
             DATE INTEGER            NOT NULL,
             CHILD CHAR(12),
             PRIMARY KEY(CID,FILE)
@@ -78,15 +78,15 @@ class TIDService:
 
         Log.note("Table created successfully")
 
-    def grab_tids_from_files(self, dir, files, revision):
+    def get_tids_from_files(self, dir, files, revision):
         result = []
         total = len(files)
         for count, file in enumerate(files):
             Log.note("{{file}} {{percent|percent(decimal=0)}}", file=file, percent=count / total)
-            result.append((file, self.grab_tids(dir + file, revision)))
+            result.append((file, self.get_tids(dir + file, revision)))
         return result
 
-    def grab_tids(self, file, revision):
+    def get_tids(self, file, revision):
         # Grabs date
         date_list = self.conn.get_one((
             "select date from (" +
@@ -113,14 +113,14 @@ class TIDService:
             self.conn.execute("INSERT INTO DATES (CID,FILE,DATE) VALUES (?,?,?)", (cid, file, date,))
         # End Grab Date
 
-        # TODO make it grab the max
+        # TODO make it get the max
         old_revision = self.conn.get("select REV,DATE,CHILD from revision where date<=? and file=?", (date, file,))
         if not old_revision or old_revision[0][0] == revision:
-            return self._grab_revision(file, revision)
+            return self._get_revision(file, revision)
         old_rev_id = old_revision[0][0]
         current_changeset = old_revision[0][2]  # Grab child
         current_date = old_revision[0][1]
-        old_rev = self._grab_revision(file, old_rev_id)
+        old_rev = self._get_revision(file, old_rev_id)
         cs_list = []
         while True:
             if current_changeset == []:
@@ -129,6 +129,7 @@ class TIDService:
             if not current_changeset:
                 return old_rev
             if not change_set:
+                # /json-rev/  FOR SUMMARY OF CHANGESET (NO DIFF)
                 url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-diff/' + current_changeset + file
                 Log.note(url)
                 mozobj = Web.get(url)
@@ -156,7 +157,7 @@ class TIDService:
                 del revision[set[3]:set[3] + abs(set[4])]
         return revision
 
-    def _grab_revision(self, file, revision):
+    def _get_revision(self, file, revision):
         res = self.conn.get(
             (
                 "select t.tid,t.revision,t.file,t.line,t.operator" +

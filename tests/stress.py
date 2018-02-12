@@ -21,8 +21,8 @@ def test_huge_file(service):
         files = json.load(f)
     count = 0
     total = len(files)
-    old = service.grab_tids_from_files("/dom/base/",files,"6159e19a7c0f")
-    new = service.grab_tids_from_files("/dom/base/",files,"698d4d2ed8c1")
+    old = service.get_tids_from_files("/dom/base/",files,"6159e19a7c0f")
+    new = service.get_tids_from_files("/dom/base/",files,"698d4d2ed8c1")
     print("old:")
     for el in old:
         print("     "+el[0]+":"+str(len(el[1])))
