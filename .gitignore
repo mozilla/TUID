@@ -1,1 +1,5 @@
 /*.db
+/.cache
+/.pytest_cache
+/resources/test.db
+/resources/test.db-journal
