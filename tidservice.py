@@ -4,31 +4,32 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import json
 import re
-import sql
 import sqlite3
-from log import Log
+
+from mo_kwargs import override
+from mo_logs import Log
+
+from pyLibrary.sql.sqlite import Sqlite
 from web import Web
 
 GRAB_TID_QUERY = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
 GRAB_CHANGESET_QUERY = "select * from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
 
 class TIDService:
-    def __init__(self,conn=None): #pass in conn for testing purposes
+    @override
+    def __init__(self, database, hg, kwargs=None):
         try:
-            with open('config.json', 'r') as f:
-                self.config = json.load(f, encoding='utf8')
-            if not conn:
-                self.conn = sql.Sql(self.config['database']['name'])
-            else:
-                self.conn = conn
-            if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
+            self.conn = Sqlite(filename=database.name)
+            if not self.conn.query("SELECT name FROM sqlite_master WHERE type='table';").data:
                 self.init_db()
         except Exception as e:
-            raise Exception("can not setup service") from e
+            Log.error("can not setup service", cause=e)
 
     def init_db(self):
         # Operator is 1 to add a line, negative to delete specified lines
@@ -76,18 +77,23 @@ class TIDService:
     def grab_tids_from_files(self,dir,files,revision):
         result = []
         total = len(files)
-        count = 0
-        for file in files:
-            count+=1
-            Log.note(file+" "+str(count/total)+"%")
+        for count, file in enumerate(files):
+            Log.note("{{file}} {{percent|percent(decimal=0)}}", file=file, percent=count / total)
             result.append((file,self.grab_tids(dir+file,revision)))
         return result
 
     def grab_tids(self,file,revision):
         # Grabs date
-        date_list = self.conn.get("select date from (select cid,file,date from changeset union "
-                                   "select rev,file,date from revision union "
-                                  "select cid,file,date from dates) where cid=? and file=?;",(revision,file,))
+        date_list = self.conn.get(
+            (
+                "select date from (" +
+                "    select cid,file,date from changeset union " +
+                "    select rev,file,date from revision union " +
+                "    select cid,file,date from dates" +
+                ") where cid=? and file=?;"
+            ),
+            (revision, file,)
+        )
         if date_list:
             date = date_list[0][0]
         else:
@@ -95,7 +101,7 @@ class TIDService:
             Log.note(url)
             response = Web.get_string(url)
             if response.status_code == 404:
-                return ()
+                return () 
             mozobj = json.loads(response.text)
             date = mozobj['date'][0]
             cid = mozobj['node'][:12]
