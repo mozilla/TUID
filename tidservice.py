@@ -157,8 +157,15 @@ class TIDService:
 
 
     def _grab_revision(self, file, revision):
-        res = self.conn.get("select t.tid,t.revision,t.file,t.line,t.operator from temporal t, revision r where "
-                                   "t.tid=r.tid and r.file=? and r.rev=? order by r.line;", (file, revision[:12],))
+        res = self.conn.get(
+            (
+                "select t.tid,t.revision,t.file,t.line,t.operator" +
+                " from temporal t, revision r" +
+                " where t.tid=r.tid and r.file=? and r.rev=?" +
+                "order by r.line;"
+            ),
+            (file, revision[:12],)
+        )
         if res:
             return res
         url = 'https://hg.mozilla.org/'+self.config['hg']['branch']+'/json-annotate/' + revision + file
