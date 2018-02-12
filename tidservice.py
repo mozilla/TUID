@@ -10,23 +10,26 @@ from __future__ import unicode_literals
 
 import json
 import re
-import sqlite3
 
-from mo_kwargs import override
 from mo_logs import Log
 
-from pyLibrary.sql.sqlite import Sqlite
+import sql
+import sqlite3
 from web import Web
 
 GRAB_TID_QUERY = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
 GRAB_CHANGESET_QUERY = "select * from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
 
 class TIDService:
-    @override
-    def __init__(self, database, hg, kwargs=None):
+    def __init__(self,conn=None): #pass in conn for testing purposes
         try:
-            self.conn = Sqlite(filename=database.name)
-            if not self.conn.query("SELECT name FROM sqlite_master WHERE type='table';").data:
+            with open('config.json', 'r') as f:
+                self.config = json.load(f, encoding='utf8')
+            if not conn:
+                self.conn = sql.Sql(self.config['database']['name'])
+            else:
+                self.conn = conn
+            if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
         except Exception as e:
             Log.error("can not setup service", cause=e)
@@ -84,24 +87,23 @@ class TIDService:
 
     def grab_tids(self,file,revision):
         # Grabs date
-        date_list = self.conn.get(
-            (
-                "select date from (" +
-                "    select cid,file,date from changeset union " +
-                "    select rev,file,date from revision union " +
-                "    select cid,file,date from dates" +
-                ") where cid=? and file=?;"
-            ),
+        date_list = self.conn.get_one((
+            "select date from (" +
+            "    select cid,file,date from changeset union " +
+            "    select rev,file,date from revision union " +
+            "    select cid,file,date from dates" +
+            ") where cid=? and file=?;"
+        ),
             (revision, file,)
         )
         if date_list:
-            date = date_list[0][0]
+            date = date_list[0]
         else:
             url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-file/' + revision + file
             Log.note(url)
             response = Web.get_string(url)
             if response.status_code == 404:
-                return () 
+                return ()
             mozobj = json.loads(response.text)
             date = mozobj['date'][0]
             cid = mozobj['node'][:12]
