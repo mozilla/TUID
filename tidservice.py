@@ -9,16 +9,31 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import json
-import re
+from collections import deque
 
+from mo_dots import coalesce
+from mo_future import text_type
 from mo_logs import Log
+from mo_times.dates import unicode2Date
+from toposort import toposort_flatten
 
 import sql
-import sqlite3
-from web import Web
+from pyLibrary.env import http
+from pyLibrary.sql import sql_list, sql_iso
+from pyLibrary.sql.sqlite import quote_value
 
-GRAB_TID_QUERY = "SELECT * from Temporal WHERE file=? and substr(revision,0,13)=substr(?,0,13);"
-GRAB_CHANGESET_QUERY = "select * from changeset where file=? and substr(cid,0,13)=substr(?,0,13)"
+DEBUG = True
+RETRY = {"times": 3, "sleep": 5}
+
+GET_LINES_QUERY = (
+    "SELECT tuid, line" +
+    " FROM temporal" +
+    " WHERE file=? and revision=?" +
+    " ORDER BY line"
+)
+
+
+GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE revision=? and file=? and line=?"
 
 
 class TIDService:
@@ -32,51 +47,41 @@ class TIDService:
                 self.conn = conn
             if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
+
+            self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
         except Exception as e:
             Log.error("can not setup service", cause=e)
 
     def init_db(self):
-        # Operator is 1 to add a line, negative to delete specified lines
         self.conn.execute('''
-        CREATE TABLE Temporal (
-            TID INTEGER PRIMARY KEY     AUTOINCREMENT,
-            REVISION CHAR(12)		  NOT NULL,
-            FILE TEXT,
-            LINE INT,
-            OPERATOR INTEGER,
-            UNIQUE(REVISION,FILE,LINE,OPERATOR)
-        );''')
-        # Changeset and Revision are for telling which TIDs are from a Revision and which are from a Changeset
-        # Also for date information and stuff
-        self.conn.execute('''
-        CREATE TABLE Changeset (
-            CID CHAR(12),
-            FILE TEXT,
-            LENGTH INTEGER          NOT NULL,  -- number of lines
-            DATE INTEGER            NOT NULL,
-            CHILD CHAR(12),
-            PRIMARY KEY(CID,FILE)
-        );''')
-        self.conn.execute('''
-        CREATE TABLE Revision (
-            REV CHAR(12),
-            FILE TEXT,
-            DATE INTEGER,
-            CHILD CHAR(12),
-            TID INTEGER,
-            LINE INTEGER,
-            PRIMARY KEY(REV,FILE,LINE)
+        CREATE TABLE temporal (
+            tuid     INTEGER,
+            revision CHAR(12) NOT NULL,
+            file     TEXT,
+            line     INTEGER
         );''')
 
+        self.conn.execute("CREATE UNIQUE INDEX temporal_rev_file ON temporal(revision, file, line)")
+
+        # Changeset to hold all high-level changeset info
         self.conn.execute('''
-        CREATE TABLE DATES (
-            CID CHAR(12),
-            FILE TEXT,
-            DATE INTEGER,
-            PRIMARY KEY(CID,FILE)
+        CREATE TABLE Changeset (
+            cid CHAR(12),
+            date INTEGER,
+            parent CHAR(12),
+            PRIMARY KEY(cid, parent)
         );''')
 
         Log.note("Table created successfully")
+
+    def tuid(self):
+        """
+        :return: next tuid
+        """
+        try:
+            return self.next_tuid
+        finally:
+            self.next_tuid += 1
 
     def get_tids_from_files(self, dir, files, revision):
         result = []
@@ -87,161 +92,148 @@ class TIDService:
         return result
 
     def get_tids(self, file, revision):
-        # Grabs date
-        date_list = self.conn.get_one((
-            "select date from (" +
-            "    select cid,file,date from changeset union " +
-            "    select rev,file,date from revision union " +
-            "    select cid,file,date from dates" +
-            ") where cid=? and file=?;"
-        ),
-            (revision, file,)
-        )
-        if date_list:
-            date = date_list[0]
+        revision = revision[:12]
+        file = file.lstrip('/')
+
+        output = self._get_lines(file, revision)
+        if output is not None:
+            return output
+
+        # if file is unknown, then use blame
+        has_file = self.conn.get_one("select 1 from temporal where file=? limit 1", (file,))
+        if not has_file:
+            self._update_blame(revision, file)
+            desc = self._get_single_changeset(revision)
+            self.conn.execute(
+                "INSERT INTO changeset (cid, date, parent)" +
+                " VALUES " + sql_list(
+                    sql_iso(sql_list([quote_value(desc.node[:12]), quote_value(unicode2Date(desc.date).unix), quote_value(p[:12])]))
+                    for p in desc.parents
+                )
+            )
+            self.conn.commit()
+            return self._get_lines(file, revision)
+
+        self._update_changesets(revision)
+        return self._get_lines(file, revision)
+
+    def _get_lines(self, file, revision):
+        output = self.conn.get(GET_LINES_QUERY, (file, revision))
+        if output:
+            if len(output) == 1 and output[0] == (0, 0):
+                return []  # file does not exist
+            return output
         else:
-            url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-file/' + revision + file
-            Log.note(url)
-            response = Web.get_string(url)
-            if response.status_code == 404:
-                return ()
-            mozobj = json.loads(response.text)
-            date = mozobj['date'][0]
-            cid = mozobj['node'][:12]
-            file = "/" + mozobj['path']
-            date = mozobj['date'][0]
-            self.conn.execute("INSERT INTO DATES (CID,FILE,DATE) VALUES (?,?,?)", (cid, file, date,))
-        # End Grab Date
-
-        # TODO make it get the max
-        old_revision = self.conn.get("select REV,DATE,CHILD from revision where date<=? and file=?", (date, file,))
-        if not old_revision or old_revision[0][0] == revision:
-            return self._get_revision(file, revision)
-        old_rev_id = old_revision[0][0]
-        current_changeset = old_revision[0][2]  # Grab child
-        current_date = old_revision[0][1]
-        old_rev = self._get_revision(file, old_rev_id)
-        cs_list = []
-        while True:
-            if current_changeset == []:
-                return old_rev
-            change_set = self.conn.get(GRAB_CHANGESET_QUERY, (file, current_changeset,))
-            if not current_changeset:
-                return old_rev
-            if not change_set:
-                # /json-rev/  FOR SUMMARY OF CHANGESET (NO DIFF)
-                url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-diff/' + current_changeset + file
-                Log.note(url)
-                mozobj = Web.get(url)
-                self._make_tids_from_diff(mozobj)
-                cs_list = self.conn.get(GRAB_TID_QUERY, (file, current_changeset))
-                current_changeset = mozobj['children']
-                if current_changeset:
-                    current_changeset = current_changeset[0][:12]
-                current_date = mozobj['date'][0]
-            else:
-                cs_list = self.conn.get(GRAB_TID_QUERY, (file, current_changeset))
-                current_changeset = change_set[0][4]
-                current_date = change_set[0][3]
-            if current_date > date:
-                break
-            old_rev = self._add_changeset_to_rev(self, old_rev, cs_list)
-        return old_rev
-
-    @staticmethod
-    def _add_changeset_to_rev(self, revision, cset):  # Single use
-        for set in cset:
-            if set[4] == 1:
-                revision.insert(set[3], set)  # Inserting and deleting will probably be slow
-            if set[4] < 0:
-                del revision[set[3]:set[3] + abs(set[4])]
-        return revision
-
-    def _get_revision(self, file, revision):
-        res = self.conn.get(
-            (
-                "select t.tid,t.revision,t.file,t.line,t.operator" +
-                " from temporal t, revision r" +
-                " where t.tid=r.tid and r.file=? and r.rev=?" +
-                "order by r.line;"
-            ),
-            (file, revision[:12],)
-        )
-        if res:
-            return res
-        url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-annotate/' + revision + file
-        Log.note(url)
-        mozobj = Web.get(url)
-        date = mozobj['date'][0]
-        child = mozobj['children']
-        if child:
-            child = child[0][:12]
-        else:
-            child = None
-        count = 1
-        for el in mozobj['annotate']:
-            try:
-                self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values (?,?,?,?);",
-                                  (el['node'][:12], file, el['targetline'], '1',))
-            except sqlite3.IntegrityError:
-                pass
-            tid_result = self.conn.get_one("select TID from Temporal where REVISION=? AND FILE=? AND LINE=?", (el['node'][:12], file, el['targetline'],))[0]
-            try:
-                self.conn.execute("INSERT into REVISION (REV,FILE,DATE,CHILD,TID,LINE) values (substr(?,0,13),?,?,?,?,?);",
-                                  (revision, file, date, child, tid_result, count,))
-            except sqlite3.IntegrityError:
-                pass
-            count += 1
-
-        self.conn.commit()
-        return self.conn.get("select t.tid,t.revision,t.file,t.line,t.operator from temporal t, revision r where "
-                             "t.tid=r.tid and r.file=? and r.rev=? order by r.line;", (file, revision[:12],))
-
-    def _make_tids_from_diff(self, diff):  # Single use
-        mozobj = diff
-        if not mozobj['diff']:
             return None
-        cid = mozobj['node'][:12]
-        file = "/" + mozobj['path']
-        minus_count = 0
-        current_line = -1  # skip the first two lines
-        length = len(mozobj['diff'][0]['lines'])
-        date = mozobj['date'][0]
-        child = mozobj['children']
-        if child:
-            child = child[0][:12]
-        else:
-            child = None
-        try:
-            self.conn.execute("INSERT into CHANGESET (CID,FILE,LENGTH,DATE,CHILD) values "
-                              "(substr(?,0,13),?,?,?,?)", (cid, file, length, date, child,))
-        except sqlite3.IntegrityError:
-            pass
-        for line in mozobj['diff'][0]['lines']:
-            if current_line > 0:
-                if line['t'] == '-':
-                    minus_count -= 1
-                elif minus_count < 0:
-                    try:
-                        self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values "
-                                          "(substr(?,0,13),?,?,?);", (cid, file, current_line, minus_count,))
-                    except sqlite3.IntegrityError:
-                        Log.note("Already exists")
-                    minus_count = 0
-                if line['t'] == '@':
-                    m = re.search('(?<=\+)\d+', line['l'])
-                    current_line = int(m.group(0)) - 2
-                    minus_count = 0
-                if line['t'] == '+':
-                    try:
-                        self.conn.execute("INSERT into Temporal (REVISION,FILE,LINE,OPERATOR) values "
-                                          "(substr(?,0,13),?,?,?);", (cid, file, current_line, 1,))
-                    except sqlite3.IntegrityError:
-                        Log.note("Already exists")
-                    current_line += 1
-                if line['t'] == '':
-                    current_line += 1
-            else:
-                current_line += 1
 
+    def _update_changesets(self, revision):
+        # find all missing changesets up to `revision`
+        if len(revision) != 12 or revision.lower() != revision:
+            Log.error("expecting 12 char lowercase revision")
+        cid = revision
+
+        acc = {}
+        todo = deque([cid])
+        while todo:
+            cid = todo.popleft()[:12]
+            if cid in acc:
+                continue
+            has_changeset = self.conn.get_one("select 1 from changeset where cid = ?", (cid,))
+            if has_changeset:
+                break
+            desc = self._get_single_changeset(cid)
+            acc[desc.node[:12]] = desc
+            todo.extend(desc.parents)
+            todo.extend(desc.children)
+
+        ordering = list(reversed(toposort_flatten({k: set(c[:12] for c in d.children) for k, d in acc.items()})))
+
+        for rev in ordering:
+            if rev not in acc:
+                continue
+            desc = acc[rev]
+            cid = desc.node[:12]
+
+            for f in set(desc.files):
+                self._update_blame(cid, f)
+
+            # copy all unchanged files from parents
+            self.conn.execute(
+                "INSERT INTO temporal (tuid, revision, file, line)" +
+                " SELECT tuid, " + quote_value(cid) + ", file, line" +
+                " FROM temporal" +
+                " WHERE revision IN " + sql_iso(sql_list(p[:12] for p in desc.parent)) + " AND " +
+                " file NOT IN " + sql_iso(sql_list(quote_value(f.lstrip('/')) for f in desc.files)) +
+                " GROUP BY tuid, file, line"  # EXPECTED TO FAIL IF TWO PARENTS ARE DIFFERENT
+            )
+
+            self.conn.execute(
+                "INSERT INTO changeset (cid, date, parent)" +
+                " VALUES " + sql_list(
+                    sql_iso(sql_list([quote_value(cid), quote_value(unicode2Date(desc.date).unix), quote_value(p[:12])]))
+                    for p in desc.parents
+                )
+            )
+
+    def _get_single_changeset(self, cid):
+        url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + "/json-info?node=" + cid
+        response = http.get_json(url, retry=RETRY)
+        if len(response) > 1:
+            Log.error("not expected")
+        desc = list(response.values())[0]
+        if DEBUG:
+            Log.note("HG: {{url}} (date={{date}})", url=url, date=desc.date)
+        return desc
+
+    def _update_blame(self, revision, file):
+        if len(revision) != 12 or revision.lower() != revision:
+            Log.error("expecting 12 char lowercase revision")
+        if file.lstrip() != file:
+            Log.error(" '/' at start of file is not allowed")
+
+        url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-annotate/' + revision + "/" + file
+        if DEBUG:
+            Log.note("HG: {{url}}", url=url)
+        mozobj = http.get_json(url, retry=RETRY)
+        if isinstance(mozobj, (text_type, str)):
+            # does not exist; add dummy record
+            try:
+                self.conn.execute(
+                    "INSERT INTO temporal (tuid, revision, file, line) VALUES (?, ?, ?, ?)",
+                    (0, revision, file, 0)
+                )
+                self.conn.commit()
+                return
+            except Exception as e:
+                Log.error("not expected", cause=e)
+
+        acc = {}
+        for el in mozobj['annotate']:
+            first_rev = el['node'][:12]
+            key = (first_rev, file.lstrip('/'), el['targetline'])
+            tuid = self.conn.get_one(GET_TUID_QUERY, key)
+            if not tuid:
+                tuid = self.tuid()
+                acc[key] = tuid
+            else:
+                tuid = tuid[0]
+
+            key = (revision, file.lstrip('/'), el['lineno'])
+            existing_tuid = self.conn.get_one(GET_TUID_QUERY, key)
+            if existing_tuid:
+                if existing_tuid[0] != tuid:
+                    Log.error("not expected")
+            else:
+                existing_tuid = acc.get(key)
+                if existing_tuid is not None and existing_tuid != tuid:
+                    Log.error("not expected")
+                acc[key] = tuid
+
+        if acc:
+            self.conn.execute(
+                "INSERT INTO temporal (tuid, revision, file, line) VALUES " +
+                sql_list(sql_iso(sql_list(quote_value(v) for v in (t,)+k)) for k, t in acc.items())
+            )
         self.conn.commit()
+
+

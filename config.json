@@ -1,6 +1,6 @@
 {
   "database": {
-    "name":"TID.db"
+    "name":"tuid.db"
   },
   "hg" : {
     "branch":"mozilla-central"
