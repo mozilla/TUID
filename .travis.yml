@@ -21,6 +21,7 @@ install:
   - "sudo cp -f tests/travis/elasticsearch-${ES_VERSION}.yml ./elasticsearch-${ES_VERSION}/config/elasticsearch.yml"
   - "./elasticsearch-${ES_VERSION}/bin/elasticsearch &"
   - "pip install -r tests/requirements.txt"
+  - "pip install -r requirements.txt"
   # - "wget -q --waitretry=1 --retry-connrefused -T 10 -O - http://127.0.0.1:9200"
 
 script:
