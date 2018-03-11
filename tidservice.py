@@ -232,7 +232,6 @@ class TIDService:
 
         already_ann = self._get_annotation(revision, file)
         # If it's not defined, or there is a dummy record
-        print(already_ann)
         if not already_ann or len([[x for x in t.split(',')] for t in already_ann[0].splitlines()][0]) < 2:
             if DEBUG:
                 Log.note("HG: {{url}}", url=url)
@@ -280,7 +279,6 @@ class TIDService:
             if len(annotated_lines) > 0:
                 self._update_file_changesets(annotated_lines)
         else:
-            print('here')
             lines = str(already_ann[0]).splitlines()
             line_origins = []
             for line in lines:
