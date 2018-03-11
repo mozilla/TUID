@@ -6,6 +6,7 @@ branches:
   only:
   - master
   - dev
+  - dev_gmierz
 
 env:
   matrix:
