@@ -9,13 +9,12 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import json
-from collections import deque
+import os
+import subprocess
+import whatthepatch
 
 from mo_dots import coalesce
-from mo_future import text_type
 from mo_logs import Log
-from mo_times.dates import unicode2Date
-from toposort import toposort_flatten
 
 import sql
 from pyLibrary.env import http
@@ -37,7 +36,12 @@ GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE revision=? and file=? and line
 
 
 class TIDService:
-    def __init__(self, conn=None):  # pass in conn for testing purposes
+    def __init__(self, conn=None,
+                 local_hg_source="""C:/mozilla-source/mozilla-central/""",
+                 hg_for_building="""C:/mozilla-build/python/Scripts/hg.exe"""):  # pass in conn for testing purposes
+        self.local_hg_source = local_hg_source
+        self.hg_for_building = hg_for_building
+
         try:
             with open('config.json', 'r') as f:
                 self.config = json.load(f, encoding='utf8')
@@ -45,10 +49,14 @@ class TIDService:
                 self.conn = sql.Sql(self.config['database']['name'])
             else:
                 self.conn = conn
+            created = False
             if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
+                created = True
 
             self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
+            #if created:
+            #    self.build_test_db()
         except Exception as e:
             Log.error("can not setup service", cause=e)
 
@@ -62,17 +70,14 @@ class TIDService:
         );''')
 
         self.conn.execute("CREATE UNIQUE INDEX temporal_rev_file ON temporal(revision, file, line)")
-
-        # Changeset to hold all high-level changeset info
-        self.conn.execute('''
-        CREATE TABLE Changeset (
-            cid CHAR(12),
-            date INTEGER,
-            parent CHAR(12),
-            PRIMARY KEY(cid, parent)
-        );''')
-
         Log.note("Table created successfully")
+
+    def insert_dummy(self, rev, file_name):
+        self.conn.execute(
+            "INSERT INTO temporal (tuid, revision, file, line) VALUES (?, ?, ?, ?)",
+            (-1, rev[:12], file_name, 0)
+        )
+        self.conn.commit()
 
     def tuid(self):
         """
@@ -83,157 +88,281 @@ class TIDService:
         finally:
             self.next_tuid += 1
 
-    def get_tids_from_files(self, dir, files, revision):
+    # Gets the TUIDs for the files modified by a revision.
+    def get_tids_from_revision(self, revision):
         result = []
+        URL_TO_FILES = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-info/' + revision
+        try:
+            mozobject = http.get_json(url=URL_TO_FILES, retry=RETRY)
+        except Exception as e:
+            Log.note("Unexpected error trying to get file list for revision " + revision, cause=e)
+            return None
+
+        files = mozobject[revision]['files']
         total = len(files)
+
         for count, file in enumerate(files):
             Log.note("{{file}} {{percent|percent(decimal=0)}}", file=file, percent=count / total)
-            result.append((file, self.get_tids(dir + file, revision)))
+            tmp_res = self.get_tids(file, revision)
+            if tmp_res:
+                result.append((file, tmp_res))
+            else:
+                Log.note("Error occured for file " + file + " in revision " + revision)
+                result.append([(-1,0)])
         return result
 
+
+    # Gets the TUIDs for a set of files, at a given revision.
+    def get_tids_from_files(self, files, revision):
+        result = []
+        total = len(files)
+
+        for count, file in enumerate(files):
+            Log.note("{{file}} {{percent|percent(decimal=0)}}", file=file, percent=count / total)
+            tmp_res = self.get_tids(file, revision)
+            if tmp_res:
+                result.append((file, tmp_res))
+            else:
+                Log.note("Error occured for file " + file + " in revision " + revision)
+                result.append([(-1, 0)])
+        return result
+
+
+    # Inserts new lines from all changesets (this is all that is required).
+    def _update_file_changesets(self, file, csets):
+        for cset in csets:
+            self._update_file_changeset(file, cset)
+
+
+    # Inserts diff information for the given file at the given revision.
+    def _update_file_changeset(self, file, cset):
+        # Get the diff
+        url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-diff/' + cset + '/' + file
+        if DEBUG:
+            Log.note("HG: {{url}}", url=url)
+
+        # Ensure we get the diff before continuing
+        try:
+            diff_object = http.get_json(url, retry=RETRY)
+        except Exception as e:
+            Log.note("Unexpected error while trying to get diff for: " + url, cause=e)
+            Log.note("Inserting dummy revision...")
+            self.insert_dummy(cset, file)
+            return
+
+        # Convert diff to text for whatthepatch, and parse the diff
+        # TODO: Deal with csets that have changed names.
+        parsed_diff = whatthepatch.parse_patch(
+                         ''.join([line['l'] for line in diff_object['diff'][0]['lines']])
+                      )
+        # Generator manipulation for easier access
+        tmp = [x for x in parsed_diff]
+        changes = tmp[0][1]
+
+        # Add all added lines into the DB.
+        for line in changes:
+            if line[0] == None and line[1] != None: # Signifies added line
+                self.conn.execute(
+                    "INSERT INTO temporal (tuid, revision, file, line)" +
+                    " VALUES (?, ?, ?, ?)", (quote_value(self.tuid()), quote_value(cset), quote_value(file), quote_value(line[1]))
+                )
+        self.conn.commit()
+
+
+    # Returns (TUID, line) tuples for a given file at a given revision.
+    #
+    # Uses json-annotate to find all lines in this revision, then it updates
+    # the database with any missing revisions for the file changes listed
+    # in annotate. Then, we use the information from annotate coupled with the
+    # diff information that was inserted into the DB to return TUIDs. This way
+    # we don't have to deal with child, parents, dates, etc..
     def get_tids(self, file, revision):
         revision = revision[:12]
         file = file.lstrip('/')
 
-        output = self._get_lines(file, revision)
-        if output is not None:
-            return output
-
-        # if file is unknown, then use blame
-        has_file = self.conn.get_one("select 1 from temporal where file=? limit 1", (file,))
-        if not has_file:
-            self._update_blame(revision, file)
-            desc = self._get_single_changeset(revision)
-            self.conn.execute(
-                "INSERT INTO changeset (cid, date, parent)" +
-                " VALUES " + sql_list(
-                    sql_iso(sql_list([quote_value(desc.node[:12]), quote_value(unicode2Date(desc.date).unix), quote_value(p[:12])]))
-                    for p in desc.parents
-                )
-            )
-            self.conn.commit()
-            return self._get_lines(file, revision)
-
-        self._update_changesets(revision)
-        return self._get_lines(file, revision)
-
-    def _get_lines(self, file, revision):
-        output = self.conn.get(GET_LINES_QUERY, (file, revision))
-        if output:
-            if len(output) == 1 and output[0] == (0, 0):
-                return []  # file does not exist
-            return output
-        else:
-            return None
-
-    def _update_changesets(self, revision):
-        # find all missing changesets up to `revision`
-        if len(revision) != 12 or revision.lower() != revision:
-            Log.error("expecting 12 char lowercase revision")
-        cid = revision
-
-        acc = {}
-        todo = deque([cid])
-        while todo:
-            cid = todo.popleft()[:12]
-            if cid in acc:
-                continue
-            has_changeset = self.conn.get_one("select 1 from changeset where cid = ?", (cid,))
-            if has_changeset:
-                break
-            desc = self._get_single_changeset(cid)
-            acc[desc.node[:12]] = desc
-            todo.extend(desc.parents)
-            todo.extend(desc.children)
-
-        ordering = list(reversed(toposort_flatten({k: set(c[:12] for c in d.children) for k, d in acc.items()})))
-
-        for rev in ordering:
-            if rev not in acc:
-                continue
-            desc = acc[rev]
-            cid = desc.node[:12]
-
-            for f in set(desc.files):
-                self._update_blame(cid, f)
-
-            # copy all unchanged files from parents
-            self.conn.execute(
-                "INSERT INTO temporal (tuid, revision, file, line)" +
-                " SELECT tuid, " + quote_value(cid) + ", file, line" +
-                " FROM temporal" +
-                " WHERE revision IN " + sql_iso(sql_list(p[:12] for p in desc.parent)) + " AND " +
-                " file NOT IN " + sql_iso(sql_list(quote_value(f.lstrip('/')) for f in desc.files)) +
-                " GROUP BY tuid, file, line"  # EXPECTED TO FAIL IF TWO PARENTS ARE DIFFERENT
-            )
-
-            self.conn.execute(
-                "INSERT INTO changeset (cid, date, parent)" +
-                " VALUES " + sql_list(
-                    sql_iso(sql_list([quote_value(cid), quote_value(unicode2Date(desc.date).unix), quote_value(p[:12])]))
-                    for p in desc.parents
-                )
-            )
-
-    def _get_single_changeset(self, cid):
-        url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + "/json-info?node=" + cid
-        response = http.get_json(url, retry=RETRY)
-        if len(response) > 1:
-            Log.error("not expected")
-        desc = list(response.values())[0]
-        if DEBUG:
-            Log.note("HG: {{url}} (date={{date}})", url=url, date=desc.date)
-        return desc
-
-    def _update_blame(self, revision, file):
-        if len(revision) != 12 or revision.lower() != revision:
-            Log.error("expecting 12 char lowercase revision")
-        if file.lstrip() != file:
-            Log.error(" '/' at start of file is not allowed")
-
+        # Get annotated file
         url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-annotate/' + revision + "/" + file
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
-        mozobj = http.get_json(url, retry=RETRY)
-        if isinstance(mozobj, (text_type, str)):
-            # does not exist; add dummy record
+
+        # If we can't get the annotated file, return dummy record.
+        try:
+            annotated_object = http.get_json(url, retry=RETRY)
+        except Exception as e:
+            Log.note("Error while obtaining annotated file for file " + file + " in revision " + revision, error=e)
+            Log.note("Inserting dummy entry...")
+            self.insert_dummy(revision, file)
+            return [(-1, 0)]
+
+        # Gather all missing csets and the
+        # corresponding lines.
+        csets = []
+        line_origins = []
+        for node in annotated_object['annotate']:
+            cset_len12 = node['node'][:12]
+
+            # If the cset is not in the database, process it
+            has_cset = self.conn.get_one("select 1 from temporal where file=? and revision=? limit 1", params=(quote_value(file), quote_value(cset_len12)))
+            if not has_cset:
+                csets.append(cset_len12)
+
+            # Used to gather TUIDs later
+            line_origins.append((quote_value(file), quote_value(cset_len12), quote_value(int(node['targetline']))))
+
+        # Update DB with any revisions found in annotated
+        # object that are not in the DB.
+        self._update_file_changesets(file, list(set(csets)))
+
+        # Get the TUIDs for each line (can probably be optimized with a join)
+        tuids = []
+        for line_num in range(1, len(line_origins)+1):
             try:
-                self.conn.execute(
-                    "INSERT INTO temporal (tuid, revision, file, line) VALUES (?, ?, ?, ?)",
-                    (0, revision, file, 0)
-                )
-                self.conn.commit()
-                return
+                tuid_tmp = self.conn.get_one("select tuid from temporal where file=? and revision=? and line=?",
+                                             line_origins[line_num-1])
+
+                # Return dummy line if we can't find the TUID for this entry
+                # (likely because of an error from insertion).
+                if tuid_tmp:
+                    tuids.append((tuid_tmp[0], line_num))
+                else:
+                    tuids.append((-1, 0))
             except Exception as e:
-                Log.error("not expected", cause=e)
+                Log.note("Unexpected error searching for " + line_num, cause=e)
 
-        acc = {}
-        for el in mozobj['annotate']:
-            first_rev = el['node'][:12]
-            key = (first_rev, file.lstrip('/'), el['targetline'])
-            tuid = self.conn.get_one(GET_TUID_QUERY, key)
-            if not tuid:
-                tuid = self.tuid()
-                acc[key] = tuid
-            else:
-                tuid = tuid[0]
+        return tuids
 
-            key = (revision, file.lstrip('/'), el['lineno'])
-            existing_tuid = self.conn.get_one(GET_TUID_QUERY, key)
-            if existing_tuid:
-                if existing_tuid[0] != tuid:
-                    Log.error("not expected")
-            else:
-                existing_tuid = acc.get(key)
-                if existing_tuid is not None and existing_tuid != tuid:
-                    Log.error("not expected")
-                acc[key] = tuid
 
-        if acc:
-            self.conn.execute(
-                "INSERT INTO temporal (tuid, revision, file, line) VALUES " +
-                sql_list(sql_iso(sql_list(quote_value(v) for v in (t,)+k)) for k, t in acc.items())
-            )
+    # Previously used to build test_db. Needs to be rewritten for new system.
+    # TODO: Rewrite for new system.
+    def build_test_db(self, files_to_add=1000):
+        # Get all file names under dom for testing.
+        if not os.path.exists(self.local_hg_source):
+            raise Exception("Can't find local hg source for file information.")
+
+        try:
+            import adr.recipes.all_code_coverage_files as adr_cc
+        except:
+            raise Exception("Active-data-recipes needs to be installed.")
+        rev = '9f87ddff4b02'
+        results = adr_cc.run(['--path', 'dom/', '--rev', '9f87ddff4b02'])
+
+        print(results[1])
+        print(results[1][0])
+        print('here: ' + str(results[1][0]))
+        results = list(set([results[i][0] for i in range(1,len(results))]))    # Get rid of header and duplicates
+
+        # Update to the correct revision
+        cwd = os.getcwd()
+        os.chdir(self.local_hg_source)
+        try:
+            subprocess.check_output([self.hg_for_building, 'pull', 'central'])
+            subprocess.check_output([self.hg_for_building, 'update', '-r', rev])
+        except Exception as e:
+            Log.error("Hg has broken...", cause=e)
+        finally:
+            os.chdir(cwd)
+
+        URL_TO_REV = 'https://hg.mozilla.org/mozilla-central/json-annotate/' + rev + '/'
+        date = None
+
+        # For each covered file, add them into the DB.
+        # (We are creating a database here, no need to check if they exists, etc.)
+        for file_name in results[:files_to_add]:
+            # Get the file info and add the lines into the DB.
+            '''
+            # Slow method...
+            if DEBUG:
+                Log.note("Adding file from HG: {{url}}", url=URL_TO_REV + file_name)
+            try:
+                mozobject = http.get_json(URL_TO_REV + file_name, retry=RETRY)
+                if not date:
+                    date = mozobject['date'][0]
+            except Exception as e:
+                Log.note("Unexpected HG call failure during database building...continuing to next file.", error=e)
+
+            # Ensure it exists.
+            if isinstance(mozobject, (text_type, str)):
+                # File does not exist; add dummy record
+                try:
+                    self.conn.execute(
+                        "INSERT INTO temporal (tuid, revision, file, line) VALUES (?, ?, ?, ?)",
+                        (-1, rev, file_name, 0)
+                    )
+                    self.conn.commit()
+                    continue
+                except Exception as e:
+                    Log.error("not expected", cause=e)
+            '''
+            # Fast method using a local mozilla-central build. Very fast in comparison to hg
+            # until we either use elasticsearch, or something else. Method above takes 27hrs for 50,000 files
+            # and this method takes 3 hours for about 0.2 sec per file.
+
+            # If the file does not exist, insert a dummy copy
+            local_file = os.path.join(self.local_hg_source, file_name)
+            if not os.path.exists(local_file):
+                self.insert_dummy(rev, file_name)
+                continue
+
+            # Count the lines
+            line_count = 0
+            for _ in open(local_file):
+                line_count += 1
+
+            if line_count == 0:
+                self.insert_dummy(rev, file_name)
+                continue
+
+            # Now add all lines, creating new TUID's for each of them.
+            Log.note('file_name: ' + file_name)
+            def sampler(to_print):
+                print(to_print)
+                return to_print
+
+            inserted = False
+            retry_count = 0
+            while (not inserted) and retry_count < 5:
+                try:
+                    self.conn.execute(
+                        "INSERT INTO temporal (tuid, revision, file, line) VALUES " + sql_list(
+                            sql_iso(sql_list([quote_value(self.tuid()), quote_value(rev), quote_value(file_name), quote_value(el)]))
+                            for el in range(1, line_count))
+                    )
+                    self.conn.commit()
+                    inserted = True
+                except Exception as e:
+                    Log.note("Odd unexpected error...retrying...\nError:\n" + str(e))
+                    retry_count += 1
+
+                    if retry_count == 5:
+                        Log.note("Not retrying again, failed to insert file " + file_name + " tried inserting the following: ")
+                        print([[quote_value(self.tuid()), quote_value(rev), quote_value(file_name), quote_value(el)]
+                                for el in range(1, line_count+1)])
+
+        URL_TO_INFO = 'https://hg.mozilla.org/mozilla-central/json-info/'
+        mozobject = http.get_json(URL_TO_INFO + rev, retry=RETRY)
+        if len(mozobject[rev]['children']) != 1:
+            Log.error("Unexpected number of children for revision: Expected 1, Got " + str(len(mozobject[rev]['children'])))
+        if not 0 < len(mozobject[rev]['parents']) <= 2:
+            Log.error("Unexpected number of parents for revision: Expected 1 or 2, Got " + str(len(mozobject[rev]['children'])))
+
+        # Insert the changed files in this revision.
+        self.conn.execute(
+            "INSERT INTO fileModifications (cid, date, file)" +
+            " VALUES " + sql_list(sql_iso(sql_list([quote_value(rev), quote_value(date), quote_value(filep)])) for filep in mozobject[rev]['files'])
+        )
+        # Insert the initial changeset.
+        # If parent2 exists, keep it.
+        if len(mozobject[rev]['parents']) > 1:
+            parent2 = mozobject[rev]['parents'][1]
+        else:
+            parent2 = '-1'
+        self.conn.execute(
+            "INSERT INTO changeset (cid, child, parent1, parent2) VALUES (?, ?, ?, ?)",
+            (quote_value(rev), quote_value(mozobject[rev]['children'][0]), quote_value(mozobject[rev]['parents'][0]), parent2)
+        )
+
         self.conn.commit()
+        Log.note("Initialization complete...")
+        return
 
 

@@ -4,5 +4,8 @@
   },
   "hg" : {
     "branch":"mozilla-central"
+  },
+  "debug": {
+    "trace": true
   }
 }
