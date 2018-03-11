@@ -14,6 +14,7 @@ import subprocess
 import whatthepatch
 
 from mo_dots import coalesce
+from mo_future import text_type
 from mo_logs import Log
 
 import sql
@@ -73,11 +74,13 @@ class TIDService:
         Log.note("Table created successfully")
 
     def insert_dummy(self, rev, file_name):
-        self.conn.execute(
-            "INSERT INTO temporal (tuid, revision, file, line) VALUES (?, ?, ?, ?)",
-            (-1, rev[:12], file_name, 0)
-        )
-        self.conn.commit()
+        if not self.conn.get_one("select 1 from temporal where file=? and revision =? and line=?", (file_name, rev, 0)):
+            self.conn.execute(
+                "INSERT INTO temporal (tuid, revision, file, line) VALUES (?, ?, ?, ?)",
+                (-1, rev[:12], file_name, 0)
+            )
+            self.conn.commit()
+        return [(-1,0)]
 
     def tuid(self):
         """
@@ -129,9 +132,9 @@ class TIDService:
 
 
     # Inserts new lines from all changesets (this is all that is required).
-    def _update_file_changesets(self, file, csets):
-        for cset in csets:
-            self._update_file_changeset(file, cset)
+    def _update_file_changesets(self, annotated_lines):
+        for cset, anline in annotated_lines.items():
+            self._update_file_changeset(anline['abspath'], cset)
 
 
     # Inserts diff information for the given file at the given revision.
@@ -180,7 +183,9 @@ class TIDService:
         revision = revision[:12]
         file = file.lstrip('/')
 
-        # Get annotated file
+        # Get annotated file (cannot get around using this).
+        # Unfortunately, this also means we always have to
+        # deal with a small network delay.
         url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-annotate/' + revision + "/" + file
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
@@ -188,30 +193,37 @@ class TIDService:
         # If we can't get the annotated file, return dummy record.
         try:
             annotated_object = http.get_json(url, retry=RETRY)
+            if isinstance(annotated_object, (text_type, str)):
+                raise Exception("Annotated object does not exist.")
         except Exception as e:
             Log.note("Error while obtaining annotated file for file " + file + " in revision " + revision, error=e)
             Log.note("Inserting dummy entry...")
-            self.insert_dummy(revision, file)
-            return [(-1, 0)]
+            dummy_entry = self.insert_dummy(revision, file)
+            return dummy_entry
 
         # Gather all missing csets and the
         # corresponding lines.
-        csets = []
+        annotated_lines = {}
         line_origins = []
         for node in annotated_object['annotate']:
             cset_len12 = node['node'][:12]
 
             # If the cset is not in the database, process it
-            has_cset = self.conn.get_one("select 1 from temporal where file=? and revision=? limit 1", params=(quote_value(file), quote_value(cset_len12)))
-            if not has_cset:
-                csets.append(cset_len12)
+            #
+            # Use the 'abspath' field to determine the current filename in
+            # case it has changed.
+            has_cset = self.conn.get_one("select 1 from temporal where file=? and revision=? limit 1",
+                                         params=(quote_value(node['abspath']), quote_value(cset_len12)))
+            if not has_cset and cset_len12 not in annotated_lines:
+                annotated_lines[cset_len12] = node
 
             # Used to gather TUIDs later
-            line_origins.append((quote_value(file), quote_value(cset_len12), quote_value(int(node['targetline']))))
+            line_origins.append((quote_value(node['abspath']), quote_value(cset_len12), quote_value(int(node['targetline']))))
 
         # Update DB with any revisions found in annotated
         # object that are not in the DB.
-        self._update_file_changesets(file, list(set(csets)))
+        if len(annotated_lines) > 0:
+            self._update_file_changesets(annotated_lines)
 
         # Get the TUIDs for each line (can probably be optimized with a join)
         tuids = []

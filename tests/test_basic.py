@@ -28,9 +28,9 @@ def test_new_then_old(service):
     # delete database then run this test
     old = service.get_tids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838")
     new = service.get_tids("/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62")
-    assert new == None
-    #for i in range(0, len(old)):
-    #    assert old[i] == new[i]
+    assert len(old) == len(new)
+    for i in range(0, len(old)):
+        assert old[i] == new[i]
 
 
 def test_tids_on_changed_file(service):
@@ -47,13 +47,16 @@ def test_tids_on_changed_file(service):
     )
 
     # assertAlmostEqual PERFORMS A STRUCURAL COMPARISION
-    assert same_lines == None
+    assert same_lines == old_lines
 
+def test_removed_lines(service):
     # THE FILE HAS FOUR LINES REMOVED
     # https://hg.mozilla.org/integration/mozilla-inbound/rev/c8dece9996b7
     # https://hg.mozilla.org/integration/mozilla-inbound/file/c8dece9996b7/taskcluster/ci/test/tests.yml
-    # 2201 lines
-    new_lines = service.get_tids(
+    old_lines = service.get_tids(     # 2205 lines
+        "/taskcluster/ci/test/tests.yml", "a6fdd6eae583"
+    )
+    new_lines = service.get_tids(     # 2201 lines
         "/taskcluster/ci/test/tests.yml", "c8dece9996b7"
     )
 
@@ -61,7 +64,10 @@ def test_tids_on_changed_file(service):
     assert len(new_lines) == len(old_lines) - 4
 
 def test_remove_file(service):
-    assert 0 == len(service.get_tids("/third_party/speedometer/InteractiveRunner.html", "e3f24e165618"))
+    entries = service.get_tids("/third_party/speedometer/InteractiveRunner.html", "e3f24e165618")
+    print(entries)
+    assert 1 == len(entries)
+    assert entries[0][0] == -1 and entries[0][1] == 0
 
 
 def test_generic_1(service):
