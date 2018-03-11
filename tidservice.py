@@ -35,6 +35,8 @@ GET_LINES_QUERY = (
 
 GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE revision=? and file=? and line=?"
 
+GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and file=?"
+
 
 class TIDService:
     def __init__(self, conn=None,
@@ -70,17 +72,58 @@ class TIDService:
             line     INTEGER
         );''')
 
+        self.conn.execute('''
+        CREATE TABLE annotations (
+            revision       CHAR(12) NOT NULL,
+            file           TEXT,
+            annotation     TEXT,
+            PRIMARY KEY(revision, file)
+        );''')
+
         self.conn.execute("CREATE UNIQUE INDEX temporal_rev_file ON temporal(revision, file, line)")
         Log.note("Table created successfully")
 
-    def insert_dummy(self, rev, file_name):
-        if not self.conn.get_one("select 1 from temporal where file=? and revision =? and line=?", (file_name, rev, 0)):
+
+    # True if dummy, false if not.
+    def _dummy_tuid_exists(self, file_name, rev):
+        # None means there is no entry.
+        return None != self.conn.get_one("select 1 from temporal where file=? and revision=? and line=?",
+                                         (quote_value(file_name), quote_value(rev), 0))
+
+
+    # True if dummy, false if not.
+    def _dummy_annotate_exists(self, file_name, rev):
+        # None means there is no entry.
+        return None != self.conn.get_one("select 1 from annotations where file=? and revision=? and annotation=?",
+                                         (quote_value(file_name), quote_value(rev), quote_value('')))
+
+
+    # Inserts a dummy tuid: (-1,rev,file_name,0)
+    def insert_tuid_dummy(self, rev, file_name):
+        if not self._dummy_tuid_exists(file_name, rev):
             self.conn.execute(
                 "INSERT INTO temporal (tuid, revision, file, line) VALUES (?, ?, ?, ?)",
-                (-1, rev[:12], file_name, 0)
+                (-1, quote_value(rev[:12]), quote_value(file_name), 0)
             )
             self.conn.commit()
         return [(-1,0)]
+
+
+    # Inserts annotation dummy: (rev, '')
+    def insert_annotate_dummy(self, rev, file_name):
+        if not self._dummy_annotate_exists(file_name, rev):
+            self.conn.execute(
+                "INSERT INTO annotations (revision, file, annotation) VALUES (?, ?, ?)",
+                (quote_value(rev[:12]), quote_value(file_name), quote_value(''))
+            )
+            self.conn.commit()
+        return [(rev[:12],file_name,'')]
+
+
+    # Returns annotation for this file at the given revision.
+    def _get_annotation(self, rev, file):
+        return self.conn.get_one(GET_ANNOTATION_QUERY, (quote_value(rev), quote_value(file)))
+
 
     def tuid(self):
         """
@@ -150,11 +193,10 @@ class TIDService:
         except Exception as e:
             Log.note("Unexpected error while trying to get diff for: " + url, cause=e)
             Log.note("Inserting dummy revision...")
-            self.insert_dummy(cset, file)
+            self.insert_tuid_dummy(cset, file)
             return
 
         # Convert diff to text for whatthepatch, and parse the diff
-        # TODO: Deal with csets that have changed names.
         parsed_diff = whatthepatch.parse_patch(
                          ''.join([line['l'] for line in diff_object['diff'][0]['lines']])
                       )
@@ -187,43 +229,64 @@ class TIDService:
         # Unfortunately, this also means we always have to
         # deal with a small network delay.
         url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-annotate/' + revision + "/" + file
-        if DEBUG:
-            Log.note("HG: {{url}}", url=url)
 
-        # If we can't get the annotated file, return dummy record.
-        try:
-            annotated_object = http.get_json(url, retry=RETRY)
-            if isinstance(annotated_object, (text_type, str)):
-                raise Exception("Annotated object does not exist.")
-        except Exception as e:
-            Log.note("Error while obtaining annotated file for file " + file + " in revision " + revision, error=e)
-            Log.note("Inserting dummy entry...")
-            dummy_entry = self.insert_dummy(revision, file)
-            return dummy_entry
+        already_ann = self._get_annotation(revision, file)
+        # If it's not defined, or there is a dummy record
+        print(already_ann)
+        if not already_ann or len([[x for x in t.split(',')] for t in already_ann[0].splitlines()][0]) < 2:
+            if DEBUG:
+                Log.note("HG: {{url}}", url=url)
+            try:
+                if already_ann and len([[x for x in t.split(',')] for t in already_ann[0].splitlines()][0]) < 2:
+                    raise Exception("Annotated object not exist.")
 
-        # Gather all missing csets and the
-        # corresponding lines.
-        annotated_lines = {}
-        line_origins = []
-        for node in annotated_object['annotate']:
-            cset_len12 = node['node'][:12]
+                annotated_object = http.get_json(url, retry=RETRY)
+                if isinstance(annotated_object, (text_type, str)):
+                    raise Exception("Annotated object does not exist.")
+            except Exception as e:
+                # If we can't get the annotated file, return dummy record.
+                Log.note("Error while obtaining annotated file for file " + file + " in revision " + revision, error=e)
+                Log.note("Inserting dummy entry...")
+                dummy_entry = self.insert_tuid_dummy(revision, file)
+                self.insert_annotate_dummy(revision, file)
+                return dummy_entry
 
-            # If the cset is not in the database, process it
-            #
-            # Use the 'abspath' field to determine the current filename in
-            # case it has changed.
-            has_cset = self.conn.get_one("select 1 from temporal where file=? and revision=? limit 1",
-                                         params=(quote_value(node['abspath']), quote_value(cset_len12)))
-            if not has_cset and cset_len12 not in annotated_lines:
-                annotated_lines[cset_len12] = node
+            # Gather all missing csets and the
+            # corresponding lines.
+            annotated_lines = {}
+            line_origins = []
+            for node in annotated_object['annotate']:
+                cset_len12 = node['node'][:12]
 
-            # Used to gather TUIDs later
-            line_origins.append((quote_value(node['abspath']), quote_value(cset_len12), quote_value(int(node['targetline']))))
+                # If the cset is not in the database, process it
+                #
+                # Use the 'abspath' field to determine the current filename in
+                # case it has changed.
+                has_cset = self.conn.get_one("select 1 from temporal where file=? and revision=? limit 1",
+                                             params=(quote_value(node['abspath']), quote_value(cset_len12)))
+                if not has_cset and cset_len12 not in annotated_lines:
+                    annotated_lines[cset_len12] = node
 
-        # Update DB with any revisions found in annotated
-        # object that are not in the DB.
-        if len(annotated_lines) > 0:
-            self._update_file_changesets(annotated_lines)
+                # Used to gather TUIDs later
+                line_origins.append((quote_value(node['abspath']), quote_value(cset_len12), quote_value(int(node['targetline']))))
+
+            ann_text = '\n'.join([','.join([x for x in line]) for line in line_origins])
+            self.conn.execute("INSERT INTO annotations (revision, file, annotation) VALUES (?,?,?)",
+                              (quote_value(revision), quote_value(file), quote_value(ann_text)))
+            self.conn.commit()
+
+            # Update DB with any revisions found in annotated
+            # object that are not in the DB.
+            if len(annotated_lines) > 0:
+                self._update_file_changesets(annotated_lines)
+        else:
+            print('here')
+            lines = str(already_ann[0]).splitlines()
+            line_origins = []
+            for line in lines:
+                entry = line.split(',')
+                line_origins.append((quote_value(entry[0].replace("'", "")), quote_value(entry[1].replace("'", "")),
+                                     quote_value(int(entry[2].replace("'", "")))))
 
         # Get the TUIDs for each line (can probably be optimized with a join)
         tuids = []
@@ -231,7 +294,6 @@ class TIDService:
             try:
                 tuid_tmp = self.conn.get_one("select tuid from temporal where file=? and revision=? and line=?",
                                              line_origins[line_num-1])
-
                 # Return dummy line if we can't find the TUID for this entry
                 # (likely because of an error from insertion).
                 if tuid_tmp:
@@ -258,9 +320,6 @@ class TIDService:
         rev = '9f87ddff4b02'
         results = adr_cc.run(['--path', 'dom/', '--rev', '9f87ddff4b02'])
 
-        print(results[1])
-        print(results[1][0])
-        print('here: ' + str(results[1][0]))
         results = list(set([results[i][0] for i in range(1,len(results))]))    # Get rid of header and duplicates
 
         # Update to the correct revision
@@ -312,7 +371,7 @@ class TIDService:
             # If the file does not exist, insert a dummy copy
             local_file = os.path.join(self.local_hg_source, file_name)
             if not os.path.exists(local_file):
-                self.insert_dummy(rev, file_name)
+                self.insert_tuid_dummy(rev, file_name)
                 continue
 
             # Count the lines
@@ -321,7 +380,7 @@ class TIDService:
                 line_count += 1
 
             if line_count == 0:
-                self.insert_dummy(rev, file_name)
+                self.insert_tuid_dummy(rev, file_name)
                 continue
 
             # Now add all lines, creating new TUID's for each of them.
