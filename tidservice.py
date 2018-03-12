@@ -33,7 +33,7 @@ GET_LINES_QUERY = (
 )
 
 
-GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE revision=? and file=? and line=?"
+GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE file=? and revision=? and line=?"
 
 GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and file=?"
 
@@ -176,12 +176,32 @@ class TIDService:
 
     # Inserts new lines from all changesets (this is all that is required).
     def _update_file_changesets(self, annotated_lines):
-        for cset, anline in annotated_lines.items():
-            self._update_file_changeset(anline['abspath'], cset)
+        count = 0
+        total = len(annotated_lines)
+        quickfill_list = []
 
+        for anline in annotated_lines:
+            count += 1
+            cset = anline['node'][:12]
+            if DEBUG:
+                Log.note("{{rev}}|{{file}} {{percent|percent(decimal=0)}}", file=anline['abspath'], rev=cset, percent=count / total)
+            if not self.conn.get_one("select 1 from temporal where revision=? and file=? and line=?", (cset, anline['abspath'], int(anline['targetline']))):
+                quickfill_list.append((self.tuid(), cset, anline['abspath'], int(anline['targetline'])))
+        self._quick_update_file_changeset(quickfill_list)
+
+
+    def _quick_update_file_changeset(self, qf_list):
+        for i in qf_list:
+            self.conn.execute(
+                "INSERT INTO temporal (tuid, revision, file, line)" +
+                " VALUES (?, ?, ?, ?)", i
+            )
+        self.conn.commit()
 
     # Inserts diff information for the given file at the given revision.
-    def _update_file_changeset(self, file, cset):
+    def _update_file_changeset(self, anline, cset):
+        file = anline['abspath']
+
         # Get the diff
         url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-diff/' + cset + '/' + file
         if DEBUG:
@@ -224,6 +244,7 @@ class TIDService:
     def get_tids(self, file, revision):
         revision = revision[:12]
         file = file.lstrip('/')
+        quickfill = self.config['run_params']['quickfill']
 
         # Get annotated file (cannot get around using this).
         # Unfortunately, this also means we always have to
@@ -252,7 +273,7 @@ class TIDService:
 
             # Gather all missing csets and the
             # corresponding lines.
-            annotated_lines = {}
+            annotated_lines = []
             line_origins = []
             for node in annotated_object['annotate']:
                 cset_len12 = node['node'][:12]
@@ -261,45 +282,43 @@ class TIDService:
                 #
                 # Use the 'abspath' field to determine the current filename in
                 # case it has changed.
-                has_cset = self.conn.get_one("select 1 from temporal where file=? and revision=? limit 1",
-                                             params=(quote_value(node['abspath']), quote_value(cset_len12)))
-                if not has_cset and cset_len12 not in annotated_lines:
-                    annotated_lines[cset_len12] = node
+                annotated_lines.append(node)
 
                 # Used to gather TUIDs later
-                line_origins.append((quote_value(node['abspath']), quote_value(cset_len12), quote_value(int(node['targetline']))))
-
-            ann_text = '\n'.join([','.join([x for x in line]) for line in line_origins])
-            self.conn.execute("INSERT INTO annotations (revision, file, annotation) VALUES (?,?,?)",
-                              (quote_value(revision), quote_value(file), quote_value(ann_text)))
-            self.conn.commit()
+                line_origins.append((node['abspath'], cset_len12, int(node['targetline'])))
 
             # Update DB with any revisions found in annotated
             # object that are not in the DB.
             if len(annotated_lines) > 0:
                 self._update_file_changesets(annotated_lines)
+
+            ann_text = '\n'.join([','.join([str(x) for x in line]) for line in line_origins])
+            self.conn.execute("INSERT INTO annotations (revision, file, annotation) VALUES (?,?,?)",
+                              (quote_value(revision), quote_value(file), quote_value(ann_text)))
+            self.conn.commit()
         else:
             lines = str(already_ann[0]).splitlines()
             line_origins = []
             for line in lines:
                 entry = line.split(',')
-                line_origins.append((quote_value(entry[0].replace("'", "")), quote_value(entry[1].replace("'", "")),
-                                     quote_value(int(entry[2].replace("'", "")))))
+                line_origins.append((entry[0].replace("'", ""), entry[1].replace("'", ""),
+                                     int(entry[2].replace("'", ""))))
 
         # Get the TUIDs for each line (can probably be optimized with a join)
         tuids = []
         for line_num in range(1, len(line_origins)+1):
             try:
-                tuid_tmp = self.conn.get_one("select tuid from temporal where file=? and revision=? and line=?",
+                tuid_tmp = self.conn.get_one(GET_TUID_QUERY,
                                              line_origins[line_num-1])
                 # Return dummy line if we can't find the TUID for this entry
                 # (likely because of an error from insertion).
+
                 if tuid_tmp:
                     tuids.append((tuid_tmp[0], line_num))
                 else:
                     tuids.append((-1, 0))
             except Exception as e:
-                Log.note("Unexpected error searching for " + line_num, cause=e)
+                Log.note("Unexpected error searching {{cause}}", cause=e)
 
         return tuids
 
