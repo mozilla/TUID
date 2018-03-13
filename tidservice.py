@@ -258,14 +258,14 @@ class TIDService:
                 Log.note("HG: {{url}}", url=url)
             try:
                 if already_ann and len([[x for x in t.split(',')] for t in already_ann[0].splitlines()][0]) < 2:
-                    raise Exception("Annotated object not exist.")
+                    Log.error("Annotated object not exist.")
 
                 annotated_object = http.get_json(url, retry=RETRY)
                 if isinstance(annotated_object, (text_type, str)):
-                    raise Exception("Annotated object does not exist.")
+                    Log.error("Annotated object does not exist.")
             except Exception as e:
                 # If we can't get the annotated file, return dummy record.
-                Log.note("Error while obtaining annotated file for file " + file + " in revision " + revision, error=e)
+                Log.warning("Error while obtaining annotated file for file {{file}} in revision {{revision}}", file=file, revision=revision, cause=e)
                 Log.note("Inserting dummy entry...")
                 dummy_entry = self.insert_tuid_dummy(revision, file)
                 self.insert_annotate_dummy(revision, file)

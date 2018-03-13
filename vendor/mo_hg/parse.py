@@ -38,7 +38,6 @@ def diff_to_json(unified_diff):
     :param unified_diff: text
     :return: JSON details
     """
-
     output = []
     files = FILE_SEP.split(unified_diff)[1:]
     for file_ in files:
@@ -63,11 +62,12 @@ def diff_to_json(unified_diff):
             for line in line_diffs[1:]:
                 if not line:
                     continue
-                if line.startswith("new file mode") or \
-                    line.startswith("deleted file mode") or \
-                    line.startswith("index ") or \
-                    line.startswith("diff --git") \
-                    :
+                if (
+                    line.startswith("new file mode") or
+                    line.startswith("deleted file mode") or
+                    line.startswith("index ") or
+                    line.startswith("diff --git")
+                ):
                     # HAPPENS AT THE TOP OF NEW FILES
                     # diff --git a/security/sandbox/linux/SandboxFilter.cpp b/security/sandbox/linux/SandboxFilter.cpp
                     # u'new file mode 100644'

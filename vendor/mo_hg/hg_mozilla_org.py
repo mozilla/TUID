@@ -14,24 +14,24 @@ import re
 from collections import Mapping
 from copy import copy
 
-from mo_future import text_type, binary_type
-
 import mo_threads
 from mo_dots import set_default, Null, coalesce, unwraplist, listwrap, wrap, Data
-from mo_hg.parse import diff_to_json
-from mo_hg.repos.changesets import Changeset
-from mo_hg.repos.pushs import Push
-from mo_hg.repos.revisions import Revision, revision_schema
-from mo_json import json2value
+from mo_future import text_type, binary_type
+from mo_json import json2value, value2json
 from mo_kwargs import override
 from mo_logs import Log, strings, machine_metadata
-from mo_logs.exceptions import Explanation, assert_no_exception, Except, suppress_exception, WarnOnException
+from mo_logs.exceptions import Explanation, assert_no_exception, Except, suppress_exception
 from mo_logs.strings import expand_template
 from mo_math.randoms import Random
 from mo_threads import Thread, Lock, Queue, THREAD_STOP
 from mo_threads import Till
 from mo_times.dates import Date
 from mo_times.durations import SECOND, Duration, HOUR, MINUTE, DAY
+
+from mo_hg.parse import diff_to_json
+from mo_hg.repos.changesets import Changeset
+from mo_hg.repos.pushs import Push
+from mo_hg.repos.revisions import Revision, revision_schema
 from pyLibrary.env import http, elasticsearch
 from pyLibrary.meta import cache
 
@@ -236,18 +236,29 @@ class HgMozillaOrg(object):
 
     def _get_from_elasticsearch(self, revision, locale=None, get_diff=False):
         rev = revision.changeset.id
-        query = {
-            "query": {"filtered": {
-                "query": {"match_all": {}},
-                "filter": {"and": [
+        if self.es.cluster.version.startswith("1.7."):
+            query = {
+                "query": {"filtered": {
+                    "query": {"match_all": {}},
+                    "filter": {"and": [
+                        {"term": {"changeset.id12": rev[0:12]}},
+                        {"term": {"branch.name": revision.branch.name}},
+                        {"term": {"branch.locale": coalesce(locale, revision.branch.locale, DEFAULT_LOCALE)}},
+                        {"range": {"etl.timestamp": {"gt": MIN_ETL_AGE}}}
+                    ]}
+                }},
+                "size": 2000
+            }
+        else:
+            query = {
+                "query": {"bool": {"must": [
                     {"term": {"changeset.id12": rev[0:12]}},
                     {"term": {"branch.name": revision.branch.name}},
                     {"term": {"branch.locale": coalesce(locale, revision.branch.locale, DEFAULT_LOCALE)}},
                     {"range": {"etl.timestamp": {"gt": MIN_ETL_AGE}}}
-                ]}
-            }},
-            "size": 2000
-        }
+                ]}},
+                "size": 2000
+            }
 
         for attempt in range(3):
             try:
@@ -301,19 +312,30 @@ class HgMozillaOrg(object):
 
     @cache(duration=HOUR, lock=True)
     def _get_push(self, branch, changeset_id):
+        if self.es.cluster.version.startswith("1.7."):
+            query = {
+                "query": {"filtered": {
+                    "query": {"match_all": {}},
+                    "filter": {"and": [
+                        {"term": {"branch.name": branch.name}},
+                        {"prefix": {"changeset.id": changeset_id[0:12]}}
+                    ]}
+                }},
+                "size": 1
+            }
+        else:
+            query = {
+                "query": {"bool": {"must": [
+                    {"term": {"branch.name": branch.name}},
+                    {"prefix": {"changeset.id": changeset_id[0:12]}}
+                ]}},
+                "size": 1
+            }
+
         try:
             # ALWAYS TRY ES FIRST
             with self.es_locker:
-                response = self.es.search({
-                    "query": {"filtered": {
-                        "query": {"match_all": {}},
-                        "filter": {"and": [
-                            {"term": {"branch.name": branch.name}},
-                            {"prefix": {"changeset.id": changeset_id[0:12]}}
-                        ]}
-                    }},
-                    "size": 1
-                })
+                response = self.es.search(query)
                 json_push = response.hits.hits[0]._source.push
             if json_push:
                 return json_push
@@ -495,19 +517,30 @@ class HgMozillaOrg(object):
         """
         @cache(duration=MINUTE, lock=True)
         def inner(changeset_id):
+            if self.es.cluster.version.startswith("1.7."):
+                query = {
+                    "query": {"filtered": {
+                        "query": {"match_all": {}},
+                        "filter": {"and": [
+                            {"prefix": {"changeset.id": changeset_id}},
+                            {"range": {"etl.timestamp": {"gt": MIN_ETL_AGE}}}
+                        ]}
+                    }},
+                    "size": 1
+                }
+            else:
+                query = {
+                    "query": {"bool": {"must": [
+                        {"prefix": {"changeset.id": changeset_id}},
+                        {"range": {"etl.timestamp": {"gt": MIN_ETL_AGE}}}
+                    ]}},
+                    "size": 1
+                }
+
             try:
                 # ALWAYS TRY ES FIRST
                 with self.es_locker:
-                    response = self.es.search({
-                        "query": {"filtered": {
-                            "query": {"match_all": {}},
-                            "filter": {"and": [
-                                {"prefix": {"changeset.id": changeset_id}},
-                                {"range": {"etl.timestamp": {"gt": MIN_ETL_AGE}}}
-                            ]}
-                        }},
-                        "size": 1
-                    })
+                    response = self.es.search(query)
                     json_diff = response.hits.hits[0]._source.changeset.diff
                 if json_diff:
                     return json_diff
