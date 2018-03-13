@@ -11,16 +11,16 @@ from __future__ import unicode_literals
 import json
 import os
 import subprocess
-import whatthepatch
 
+import whatthepatch
 from mo_dots import coalesce
 from mo_future import text_type
 from mo_logs import Log
 
-import sql
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
+from tuid import sql
 
 DEBUG = True
 RETRY = {"times": 3, "sleep": 5}

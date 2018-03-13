@@ -10,8 +10,8 @@ from __future__ import unicode_literals
 
 import pytest
 
-import sql
-from tidservice import TIDService
+from tuid import sql
+from tuid.service import TIDService
 
 config = None
 
@@ -103,4 +103,4 @@ def test_distant_rev(service):
 def test_new_file(service):
     rev = service.get_tids("/media/audioipc/server/src/lib.rs", "a39241b3e7b1")
     assert len(rev) == 636
-#'''
+
