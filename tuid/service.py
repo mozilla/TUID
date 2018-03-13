@@ -17,7 +17,7 @@ from mo_dots import Null, coalesce
 from mo_future import text_type
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_kwargs import override
-from mo_logs import Log
+from mo_logs import Log, Except
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
@@ -133,7 +133,7 @@ class TUIDService:
         try:
             mozobject = http.get_json(url=URL_TO_FILES, retry=RETRY)
         except Exception as e:
-            Log.note("Unexpected error trying to get file list for revision " + revision, cause=e)
+            Log.warning("Unexpected error trying to get file list for revision {{revision}}", cause=e)
             return None
 
         files = mozobject[revision]['files']
@@ -145,7 +145,7 @@ class TUIDService:
             if tmp_res:
                 result.append((file, tmp_res))
             else:
-                Log.note("Error occured for file " + file + " in revision " + revision)
+                Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=revision)
                 result.append([(-1,0)])
         return result
 
@@ -161,7 +161,7 @@ class TUIDService:
             if tmp_res:
                 result.append((file, tmp_res))
             else:
-                Log.note("Error occured for file " + file + " in revision " + revision)
+                Log.warning("Error occured for file {{file}} in revision {{revision}}", file=file, revision=revision)
                 result.append([(-1, 0)])
         return result
 
@@ -203,7 +203,7 @@ class TUIDService:
         try:
             diff_object = http.get_json(url, retry=RETRY)
         except Exception as e:
-            Log.note("Unexpected error while trying to get diff for: " + url, cause=e)
+            Log.warning("Unexpected error while trying to get diff for: {{url}}", url=url, cause=e)
             Log.note("Inserting dummy revision...")
             self.insert_tuid_dummy(cset, file)
             return
@@ -310,7 +310,7 @@ class TUIDService:
                 else:
                     tuids.append((-1, 0))
             except Exception as e:
-                Log.note("Unexpected error searching {{cause}}", cause=e)
+                Log.warning("Unexpected error searching", cause=e)
 
         return tuids
 
@@ -320,12 +320,12 @@ class TUIDService:
     def build_test_db(self, files_to_add=1000):
         # Get all file names under dom for testing.
         if not os.path.exists(self.local_hg_source):
-            raise Exception("Can't find local hg source for file information.")
+            Log.error("Can't find local hg source for file information.")
 
         try:
             import adr.recipes.all_code_coverage_files as adr_cc
-        except:
-            raise Exception("Active-data-recipes needs to be installed.")
+        except Exception as e:
+            Log.error("Active-data-recipes needs to be installed.", cause=e)
         rev = '9f87ddff4b02'
         results = adr_cc.run(['--path', 'dom/', '--rev', '9f87ddff4b02'])
 
@@ -410,20 +410,26 @@ class TUIDService:
                     self.conn.commit()
                     inserted = True
                 except Exception as e:
-                    Log.note("Odd unexpected error...retrying...\nError:\n" + str(e))
+                    Except.wrap(e)
+                    Log.note("Odd unexpected error...retrying...\nError:\n{{cause}}", cause=e)
                     retry_count += 1
 
                     if retry_count == 5:
-                        Log.note("Not retrying again, failed to insert file " + file_name + " tried inserting the following: ")
-                        print([[quote_value(self.tuid()), quote_value(rev), quote_value(file_name), quote_value(el)]
-                                for el in range(1, line_count+1)])
+                        Log.note(
+                            "Not retrying again, failed to insert file {{filename}} tried inserting the following:\n{{data|json}}",
+                            filename=file_name,
+                            data=[
+                                [self.tuid(), rev, file_name, el]
+                                for el in range(1, line_count + 1)
+                            ]
+                        )
 
         URL_TO_INFO = 'https://hg.mozilla.org/mozilla-central/json-info/'
         mozobject = http.get_json(URL_TO_INFO + rev, retry=RETRY)
         if len(mozobject[rev]['children']) != 1:
-            Log.error("Unexpected number of children for revision: Expected 1, Got " + str(len(mozobject[rev]['children'])))
+            Log.error("Unexpected number of children for revision: Expected 1, Got {{num}}", num=len(mozobject[rev]['children']))
         if not 0 < len(mozobject[rev]['parents']) <= 2:
-            Log.error("Unexpected number of parents for revision: Expected 1 or 2, Got " + str(len(mozobject[rev]['children'])))
+            Log.error("Unexpected number of parents for revision: Expected 1 or 2, Got {{num}}", num=len(mozobject[rev]['children']))
 
         # Insert the changed files in this revision.
         self.conn.execute(
