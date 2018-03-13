@@ -9,6 +9,10 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import pytest
+from mo_files import File
+from mo_json import json2value
+from mo_logs import Log, constants, startup
+
 
 
 def pytest_addoption(parser):
@@ -22,3 +26,12 @@ def pytest_addoption(parser):
 @pytest.fixture
 def new_db(request):
     return request.config.getoption("new_db")
+
+
+@pytest.fixture(scope="session")
+def config():
+    config = json2value(File("config.json").read(), flexible=True, leaves=True)
+    constants.set(config.constants)
+    Log.start(config.debug)
+    return config
+

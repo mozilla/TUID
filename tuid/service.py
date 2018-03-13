@@ -8,15 +8,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
-import json
 import os
 import subprocess
 
 import whatthepatch
-from mo_dots import coalesce
+from mo_dots import Null
 from mo_future import text_type
+from mo_kwargs import override
 from mo_logs import Log
 
+from mo_hg.hg_mozilla_org import HgMozillaOrg
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
@@ -38,28 +39,17 @@ GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE file=? and revision=? and line
 GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and file=?"
 
 
-class TIDService:
-    def __init__(self, conn=None,
-                 local_hg_source="""C:/mozilla-source/mozilla-central/""",
-                 hg_for_building="""C:/mozilla-build/python/Scripts/hg.exe"""):  # pass in conn for testing purposes
-        self.local_hg_source = local_hg_source
-        self.hg_for_building = hg_for_building
+class TUIDService:
 
+    @override
+    def __init__(self, database, hg, hg_cache, conn=None, kwargs=None):
         try:
-            with open('config.json', 'r') as f:
-                self.config = json.load(f, encoding='utf8')
-            if not conn:
-                self.conn = sql.Sql(self.config['database']['name'])
-            else:
-                self.conn = conn
-            created = False
+            self.config = kwargs
+            self.conn = conn if conn else sql.Sql(self.config.database.name)
+            self.hg_cache = HgMozillaOrg(hg_cache) if hg_cache else Null
+
             if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
-                created = True
-
-            self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
-            #if created:
-            #    self.build_test_db()
         except Exception as e:
             Log.error("can not setup service", cause=e)
 
@@ -135,7 +125,7 @@ class TIDService:
             self.next_tuid += 1
 
     # Gets the TUIDs for the files modified by a revision.
-    def get_tids_from_revision(self, revision):
+    def get_tuids_from_revision(self, revision):
         result = []
         URL_TO_FILES = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-info/' + revision
         try:
@@ -149,7 +139,7 @@ class TIDService:
 
         for count, file in enumerate(files):
             Log.note("{{file}} {{percent|percent(decimal=0)}}", file=file, percent=count / total)
-            tmp_res = self.get_tids(file, revision)
+            tmp_res = self.get_tuids(file, revision)
             if tmp_res:
                 result.append((file, tmp_res))
             else:
@@ -159,13 +149,13 @@ class TIDService:
 
 
     # Gets the TUIDs for a set of files, at a given revision.
-    def get_tids_from_files(self, files, revision):
+    def get_tuids_from_files(self, files, revision):
         result = []
         total = len(files)
 
         for count, file in enumerate(files):
             Log.note("{{file}} {{percent|percent(decimal=0)}}", file=file, percent=count / total)
-            tmp_res = self.get_tids(file, revision)
+            tmp_res = self.get_tuids(file, revision)
             if tmp_res:
                 result.append((file, tmp_res))
             else:
@@ -241,7 +231,7 @@ class TIDService:
     # in annotate. Then, we use the information from annotate coupled with the
     # diff information that was inserted into the DB to return TUIDs. This way
     # we don't have to deal with child, parents, dates, etc..
-    def get_tids(self, file, revision):
+    def get_tuids(self, file, revision):
         revision = revision[:12]
         file = file.lstrip('/')
         quickfill = self.config['run_params']['quickfill']
