@@ -23,7 +23,7 @@ from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
 
-DEBUG = True
+DEBUG = False
 RETRY = {"times": 3, "sleep": 5}
 
 GET_LINES_QUERY = (
