@@ -4,4 +4,4 @@
 /resources/test.db
 /resources/test.db-journal
 /resources/stress.db
-/*.pyc
+*.pyc
