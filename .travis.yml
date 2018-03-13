@@ -26,3 +26,4 @@ install:
 
 script:
 - "python -m pytest --capture=no tests"
+- "python -m pytest --capture=no tests"
