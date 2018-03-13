@@ -1,5 +1,7 @@
 requests
 pytest
+mo-future
+mo-kwargs>=1.7
 mo-logs
 mo_times
 jx_python
