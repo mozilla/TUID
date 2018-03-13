@@ -14,6 +14,7 @@ import subprocess
 import whatthepatch
 
 from mo_dots import Null, coalesce
+from mo_files import File
 from mo_future import text_type
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_kwargs import override
@@ -318,7 +319,7 @@ class TUIDService:
     # TODO: Rewrite for new system.
     def build_test_db(self, files_to_add=1000):
         # Get all file names under dom for testing.
-        if not os.path.exists(self.local_hg_source):
+        if File(self.config.local_hg_source).exists:
             Log.error("Can't find local hg source for file information.")
 
         try:
@@ -332,10 +333,10 @@ class TUIDService:
 
         # Update to the correct revision
         cwd = os.getcwd()
-        os.chdir(self.local_hg_source)
+        os.chdir(self.config.local_hg_source)
         try:
-            subprocess.check_output([self.hg_for_building, 'pull', 'central'])
-            subprocess.check_output([self.hg_for_building, 'update', '-r', rev])
+            subprocess.check_output([self.config.hg_for_building, 'pull', 'central'])
+            subprocess.check_output([self.config.hg_for_building, 'update', '-r', rev])
         except Exception as e:
             Log.error("Hg has broken...", cause=e)
         finally:
@@ -377,9 +378,9 @@ class TUIDService:
             # and this method takes 3 hours for about 0.2 sec per file.
 
             # If the file does not exist, insert a dummy copy
-            local_file = os.path.join(self.local_hg_source, file_name)
-            if not os.path.exists(local_file):
-                self.insert_tuid_dummy(rev, file_name)
+            local_file = File(self.config.local_hg_source) / file_name
+            if local_file.exists:
+                self.insert_tuid_dummy(rev, file_name.abspath)
                 continue
 
             # Count the lines

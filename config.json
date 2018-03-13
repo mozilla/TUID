@@ -3,6 +3,8 @@
         "database": {
             "name": "TUID.db"
         },
+        "local_hg_source": "C:/mozilla-source/mozilla-central/",
+        "hg_for_building": "C:/mozilla-build/python/Scripts/hg.exe",
         "hg": {
             "branch": "mozilla-central"
         },
