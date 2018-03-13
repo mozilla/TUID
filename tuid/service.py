@@ -12,12 +12,12 @@ import os
 import subprocess
 
 import whatthepatch
-from mo_dots import Null
+
+from mo_dots import Null, coalesce
 from mo_future import text_type
+from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_kwargs import override
 from mo_logs import Log
-
-from mo_hg.hg_mozilla_org import HgMozillaOrg
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
@@ -50,6 +50,8 @@ class TUIDService:
 
             if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
+
+            self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
         except Exception as e:
             Log.error("can not setup service", cause=e)
 

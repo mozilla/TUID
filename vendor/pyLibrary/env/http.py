@@ -27,12 +27,12 @@ from tempfile import TemporaryFile
 
 from requests import sessions, Response
 
-import mo_json
 from jx_python import jx
 from mo_dots import Data, coalesce, wrap, set_default, unwrap, Null
 from mo_future import text_type, PY2
-from mo_json import value2json
-from mo_logs import Log, strings
+from mo_json import value2json, json2value
+from mo_logs import Log
+from mo_logs.strings import utf82unicode, unicode2utf8
 from mo_logs.exceptions import Except
 from mo_math import Math
 from mo_threads import Lock
@@ -72,10 +72,10 @@ def request(method, url, zip=None, retry=None, **kwargs):
     if not default_headers and not _warning_sent:
         _warning_sent = True
         Log.warning(
-            u"The pyLibrary.env.http module was meant to add extra "
-            u"default headers to all requests, specifically the 'Referer' "
-            u"header with a URL to the project. Use the `pyLibrary.debug.constants.set()` "
-            u"function to set `pyLibrary.env.http.default_headers`"
+            "The pyLibrary.env.http module was meant to add extra "
+            "default headers to all requests, specifically the 'Referer' "
+            "header with a URL to the project. Use the `pyLibrary.debug.constants.set()` "
+            "function to set `pyLibrary.env.http.default_headers`"
         )
 
     if isinstance(url, list):
@@ -190,7 +190,7 @@ def get_json(url, **kwargs):
     response = get(url, **kwargs)
     try:
         c = response.all_content
-        return mo_json.json2value(strings.utf82unicode(c))
+        return json2value(utf82unicode(c))
     except Exception as e:
         if Math.round(response.status_code, decimal=-2) in [400, 500]:
             Log.error(u"Bad GET response: {{code}}", code=response.status_code)
@@ -233,7 +233,7 @@ def post_json(url, **kwargs):
     response = post(url, **kwargs)
     c = response.content
     try:
-        details = mo_json.json2value(convert.utf82unicode(c))
+        details = json2value(utf82unicode(c))
     except Exception as e:
         Log.error(u"Unexpected return value {{content}}", content=c, cause=e)
 
