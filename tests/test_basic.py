@@ -69,8 +69,7 @@ def test_removed_lines(service):
 
 def test_remove_file(service):
     entries = service.get_tuids("/third_party/speedometer/InteractiveRunner.html", "e3f24e165618")
-    assert 1 == len(entries)
-    assert entries[0][0] == -1 and entries[0][1] == 0
+    assert 0 == len(entries)
 
 
 def test_generic_1(service):

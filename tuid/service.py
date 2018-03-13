@@ -259,9 +259,9 @@ class TUIDService:
                 # If we can't get the annotated file, return dummy record.
                 Log.warning("Error while obtaining annotated file for file {{file}} in revision {{revision}}", file=file, revision=revision, cause=e)
                 Log.note("Inserting dummy entry...")
-                dummy_entry = self.insert_tuid_dummy(revision, file)
+                self.insert_tuid_dummy(revision, file)
                 self.insert_annotate_dummy(revision, file)
-                return dummy_entry
+                return []
 
             # Gather all missing csets and the
             # corresponding lines.
