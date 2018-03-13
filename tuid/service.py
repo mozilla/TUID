@@ -245,13 +245,10 @@ class TUIDService:
 
         already_ann = self._get_annotation(revision, file)
         # If it's not defined, or there is a dummy record
-        if not already_ann or len([[x for x in t.split(',')] for t in already_ann[0].splitlines()][0]) < 2:
+        if not already_ann:
             if DEBUG:
                 Log.note("HG: {{url}}", url=url)
             try:
-                if already_ann and len([[x for x in t.split(',')] for t in already_ann[0].splitlines()][0]) < 2:
-                    Log.error("Annotated object not exist.")
-
                 annotated_object = http.get_json(url, retry=RETRY)
                 if isinstance(annotated_object, (text_type, str)):
                     Log.error("Annotated object does not exist.")
@@ -288,6 +285,8 @@ class TUIDService:
             self.conn.execute("INSERT INTO annotations (revision, file, annotation) VALUES (?,?,?)",
                               (quote_value(revision), quote_value(file), quote_value(ann_text)))
             self.conn.commit()
+        elif len([[x for x in t.split(',')] for t in already_ann[0].splitlines()][0]) < 2:
+             return []
         else:
             lines = str(already_ann[0]).splitlines()
             line_origins = []
