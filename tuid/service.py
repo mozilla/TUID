@@ -150,22 +150,24 @@ class TUIDService:
                 result.append([(-1,0)])
         return result
 
-
-    # Gets the TUIDs for a set of files, at a given revision.
     def get_tuids_from_files(self, files, revision):
-        result = []
+        """
+        Gets the TUIDs for a set of files, at a given revision.
+
+        list(tuids) is an array of tuids, one tuid for each line, in order, and `null` if no tuid assigned
+
+        :param files: list of files
+        :param revision:
+        :return: generator of (file, list(tuids)) tuples
+        """
+
+        # TODO: Do this in a single SQL call to database
         total = len(files)
-
         for count, file in enumerate(files):
-            Log.note("{{file}} {{percent|percent(decimal=0)}}", file=file, percent=count / total)
+            if DEBUG:
+                Log.note("{{file}} {{percent|percent(decimal=0)}}", file=file, percent=count / total)
             tmp_res = self.get_tuids(file, revision)
-            if tmp_res:
-                result.append((file, tmp_res))
-            else:
-                Log.warning("Error occured for file {{file}} in revision {{revision}}", file=file, revision=revision)
-                result.append([(-1, 0)])
-        return result
-
+            yield (file, tmp_res)
 
     # Inserts new lines from all changesets (this is all that is required).
     def _update_file_changesets(self, annotated_lines):

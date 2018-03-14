@@ -13,7 +13,7 @@ from mo_files import File
 from mo_json import json2value
 from mo_logs import Log, constants, startup
 
-
+config = None
 
 def pytest_addoption(parser):
     parser.addoption(

@@ -14,8 +14,6 @@ from mo_logs import Log
 from tuid import sql
 from tuid.service import TUIDService
 
-config = None
-
 
 @pytest.fixture
 def service(config, new_db):

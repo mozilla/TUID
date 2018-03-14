@@ -38,6 +38,14 @@
             }
         }
     },
+    "flask": {
+        "host": "0.0.0.0",
+        "port": 5000,
+        "debug": false,
+        "threaded": true,
+        "processes": 1,
+//        "ssl_context": "adhoc"
+    },
     "constants": {
         "pyLibrary.env.http.default_headers": {"Referer": "https://github.com/mozilla/TUID"}
     },
