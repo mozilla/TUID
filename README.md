@@ -19,7 +19,16 @@ More details can be gleaned from the [motivational document](https://github.com/
 
 After cloning the repo into `~/TUID`:
 
+**Linux**
+
     cd ~/TUID
     pip install -r ./tests/requirements.txt
     export PYTHONPATH=.:vendor
     python -m pytest ./tests
+
+**Windows**
+
+    cd %userprofile%\TUID
+    pip install -r .\tests\requirements.txt
+    set PYTHONPATH=.;vendor
+    python -m pytest .\tests
