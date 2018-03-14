@@ -21,14 +21,14 @@ app_process = None
 @pytest.fixture(scope="session")
 def app():
     global app_process
-    # if not app_process:
-    #     app_process = Process(
-    #         "TUID app",
-    #         ["python", "tuid/app.py"],
-    #         env={str("PYTHONPATH"): str(".;vendor")},
-    #         debug=True
-    #     )
-    # Till(seconds=1).wait()
+    if not app_process:
+        app_process = Process(
+            "TUID app",
+            ["python", "tuid/app.py"],
+            env={str("PYTHONPATH"): str(".;vendor")},
+            debug=True
+        )
+    Till(seconds=1).wait()
     return app_process
 
 
