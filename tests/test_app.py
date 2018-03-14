@@ -36,7 +36,7 @@ def app():
     Till(seconds=1).wait()
     yield
     app_process.please_stop.go()
-    app_process.join(raise_on_error=True)
+    app_process.join(raise_on_error=False)
 
 
 def test_default(config, app):
