@@ -8,39 +8,46 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
+import os
 import pytest
 from mo_files import File
 from mo_json import json2value
 from mo_logs.strings import utf82unicode
+from mo_threads import Process, Till
 
 from mo_future import text_type
 from pyLibrary.env import http
 
 app_process = None
 
+
 @pytest.fixture(scope="session")
 def app():
     global app_process
+
+    pythonpath = str("." + os.pathsep + "vendor")
     if not app_process:
         app_process = Process(
             "TUID app",
             ["python", "tuid/app.py"],
-            env={str("PYTHONPATH"): str(".;vendor")},
+            env={str("PYTHONPATH"): pythonpath},
             debug=True
         )
     Till(seconds=1).wait()
-    return app_process
+    yield
+    app_process.please_stop.go()
+    app_process.join(raise_on_error=True)
 
 
 def test_default(config, app):
-    url = "http://localhost:"+text_type(config.flask.port)
+    url = "http://localhost:" + text_type(config.flask.port)
     response = http.get(url)
-    expected =File("tuid/public/index.html").read_bytes()
+    expected = File("tuid/public/index.html").read_bytes()
     assert response.content == expected
 
 
 def test_query_error(config, app):
-    url = "http://localhost:"+text_type(config.flask.port)+"/query"
+    url = "http://localhost:" + text_type(config.flask.port) + "/query"
     response = http.get(url, json={"from": "files"})
     error = json2value(utf82unicode(response.content))
     assert response.status_code == 400
