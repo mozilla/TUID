@@ -100,17 +100,18 @@ def _stream_table(files):
     yield b']}'
 
 
+
+flask_app.add_url_rule(str('/query'), None, query_to_service_call, defaults={'path': ''}, methods=[str('GET'), str('POST')])
+flask_app.add_url_rule(str('/query/'), None, query_to_service_call, defaults={'path': ''}, methods=[str('GET'), str('POST')])
+
+
 @flask_app.route(str('/'), defaults={'path': ''}, methods=[str('OPTIONS'), str('HEAD')])
 @flask_app.route(str('/<path:path>'), methods=[str('OPTIONS'), str('HEAD')])
 def _head(path):
     return Response(b'', status=200)
 
-
-# flask_app.add_url_rule(str('/query'), None, query_to_service_call, defaults={'path': ''}, methods=[str('GET'), str('POST')])
-# flask_app.add_url_rule(str('/query/'), None, query_to_service_call, defaults={'path': ''}, methods=[str('GET'), str('POST')])
-
-
 @flask_app.route(str('/'), defaults={'path': ''}, methods=[str('GET'), str('POST')])
+@flask_app.route(str('/<path:path>'), methods=[str('GET'), str('POST')])
 def _default(path):
     return Response(
         OVERVIEW,
