@@ -157,17 +157,23 @@ def test_get_tuids_from_revision(service):
     assert tuids != None
 
 def test_many_files_one_revision(service):
+    # Disable on travis
+    assert True
+    return
+
     with open('resources/stressfiles.json', 'r') as f:
         files = json.load(f)
     test_file = ["widget/cocoa/nsCocoaWindow.mm"]
     first_front = "739c536d2cd6"
     test_rev = "159e1105bdc7"
     dir = "/dom/base/"
-    test_file.extend([dir + f for f in files][1:10])
+    test_file.extend([dir + f for f in files])
+    Log.note("Total files: {{total}}", total=str(len(test_file)))
 
     old = service.get_tuids_from_files(test_file,first_front)
     print("old:")
     for el in old:
+        print(el[0])
         print("     "+el[0]+":"+str(len(el[1])))
 
     new = service.get_tuids_from_files(test_file,test_rev)
@@ -176,12 +182,17 @@ def test_many_files_one_revision(service):
         print("     "+el[0]+":"+str(len(el[1])))
 
 def test_one_addition_many_files(service):
+    # Disable on travis
+    assert True
+    return
+
     with open('resources/stressfiles.json', 'r') as f:
         files = json.load(f)
     test_file = ["widget/cocoa/nsCocoaWindow.mm"]
     test_rev = "58eb13b394f4"
     dir = "/dom/base/"
-    test_file.extend([dir + f for f in files][1:10])
+    test_file.extend([dir + f for f in files])
+    Log.note("Total files: {{total}}", total=str(len(test_file)))
 
     new = service.get_tuids_from_files(test_file,test_rev)
     print("new:")

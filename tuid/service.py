@@ -49,7 +49,7 @@ class TUIDService:
     def __init__(self, database, hg, hg_cache, conn=None, kwargs=None):
         try:
             self.config = kwargs
-            DEBUG = self.config['debugTUID']
+            self.DEBUG = self.config['debugTUID']
 
             self.conn = conn if conn else sql.Sql(self.config.database.name)
             self.hg_cache = HgMozillaOrg(hg_cache) if hg_cache else Null
@@ -195,7 +195,7 @@ class TUIDService:
                 result.append((file, tmp_res))
             else:
                 Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=revision)
-                result.append([(-1,0)])
+                result.append((file, [(-1,0)]))
         return result
 
 
@@ -222,20 +222,19 @@ class TUIDService:
         # TODO: Do this in a single SQL call to database
         total = len(files)
         for count, file in enumerate(files):
-            if DEBUG:
-                Log.note("{{file}} {{percent|percent(decimal=0)}}", file=file, percent=count / total)
+            if self.DEBUG:
+                Log.note(" {{percent|percent(decimal=0)}}|{{file}}", file=file, percent=count / total)
 
             latest_rev = self._get_latest_revision(file)
             past_revisions = self._get_past_file_revisions(file)
-            #print(revision)
-            #print(latest_rev)
 
             already_collected = False
             if past_revisions and revision in past_revisions:
                 already_collected = True
 
             if (latest_rev and latest_rev[0] != revision) and not already_collected:
-                Log.note("Will update frontier for file {{file}}.", file=file)
+                if self.DEBUG:
+                    Log.note("Will update frontier for file {{file}}.", file=file)
                 frontier_update_list.append((file, latest_rev[0]))
             else:
                 tmp_res = self.get_tuids(file, revision)
@@ -243,15 +242,13 @@ class TUIDService:
                     result.append((file, tmp_res))
                 else:
                     Log.note("Error occured for file " + file + " in revision " + revision)
-                    result.append([(-1, 0)])
+                    result.append((file, [(-1, 0)]))
 
                 # If this file has not been seen before,
                 # add it to the latest modifications, else
                 # it's already in there update it with past
                 # revisions.
                 if not latest_rev:
-                    #print('herekll')
-                    #print(latest_rev)
                     self.conn.execute("""INSERT INTO latestFileMod (file, revision, pastRevisions) VALUES (?,?,?)""",
                                       (file, revision, ''))
                     self.conn.commit()
@@ -289,13 +286,14 @@ class TUIDService:
 
         # Holds all known frontiers
         latest_csets = {cset: True for cset in list(set([rev for (file,rev) in frontier_list]))}
-        #print(latest_csets)
         found_last_frontier = False
         if len(latest_csets) <= 1 and frontier_list[0][1] == revision:
             found_last_frontier = True
 
-        final_rev = revision  # Revision we are searching for
+        final_rev = revision  # Revision we are searching from
         csets_proced = 0
+        if self.DEBUG:
+            Log.note("Searching for the following frontiers: {{csets}}", csets=str([cset for cset in latest_csets]))
         while not found_last_frontier:
             # Get a changelog
             clog_url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-log/' + final_rev
@@ -326,8 +324,6 @@ class TUIDService:
                         else:
                             files_to_process[f_added] = [cset_len12]
 
-                #print(cset_len12)
-                #print(latest_csets)
                 if cset_len12 in latest_csets:
                     # Found a frontier, remove it from search list.
                     latest_csets[cset_len12] = False
@@ -353,8 +349,6 @@ class TUIDService:
         # files_to_process list.
         result = []
         total = len(frontier_list)
-        print('files_to_process')
-        print(files_to_process)
         for count, file_n_rev in enumerate(frontier_list):
             file = file_n_rev[0]
             rev = file_n_rev[1]
@@ -412,8 +406,8 @@ class TUIDService:
         for anline in annotated_lines:
             count += 1
             cset = anline['node'][:12]
-            if DEBUG:
-                Log.note("{{rev}}|{{file}} {{percent|percent(decimal=0)}}", file=anline['abspath'], rev=cset, percent=count / total)
+            #if self.DEBUG:
+            #    Log.note("{{rev}}|{{file}} {{percent|percent(decimal=0)}}", file=anline['abspath'], rev=cset, percent=count / total)
             if not self._get_one_tuid(cset, anline['abspath'], int(anline['targetline'])):
                 quickfill_list.append((cset, anline['abspath'], int(anline['targetline'])))
         self._quick_update_file_changeset(list(set(quickfill_list)))
@@ -449,7 +443,7 @@ class TUIDService:
         already_ann = self._get_annotation(revision, file)
         # If it's not defined, or there is a dummy record
         if not already_ann:
-            if DEBUG:
+            if self.DEBUG:
                 Log.note("HG: {{url}}", url=url)
             try:
                 annotated_object = http.get_json(url, retry=RETRY)
