@@ -13,10 +13,6 @@ from __future__ import unicode_literals
 
 from collections import Mapping
 
-import mo_json
-from jx_base import IS_NULL
-from mo_future import text_type
-
 from mo_logs import Log
 from mo_logs.exceptions import suppress_exception
 from mo_logs.strings import indent, expand_template
@@ -26,7 +22,7 @@ from mo_dots.lists import FlatList
 from pyLibrary import convert
 from mo_collections.matrix import Matrix
 from mo_kwargs import override
-from pyLibrary.sql import SQL, SQL_IS_NULL, SQL_AND, SQL_IS_NOT_NULL, SQL_ORDERBY, SQL_LIMIT, SQL_COMMA, sql_iso, sql_list, SQL_TRUE, sql_alias
+from pyLibrary.sql import SQL
 from pyLibrary.sql.mysql import int_list_packer
 
 
@@ -81,6 +77,7 @@ class MySQL(object):
             "where": self._where2sql(query.where)
         })
 
+
     def _subquery(self, query, isolate=True, stacked=False):
         if isinstance(query, text_type):
             return self.db.quote_column(query), None
@@ -117,10 +114,10 @@ class MySQL(object):
             if e.domain.type != "default":
                 Log.error("domain of type {{type}} not supported, yet", type=e.domain.type)
             groups.append(e.value)
-            selects.append(sql_alias(e.value, self.db.quote_column(e.name)))
+            selects.append(e.value + " AS " + self.db.quote_column(e.name))
 
         for s in select:
-            selects.append(sql_alias(aggregates[s.aggregate].replace("{{code}}", s.value), self.db.quote_column(s.name)))
+            selects.append(aggregates[s.aggregate].replace("{{code}}", s.value) + " AS " + self.db.quote_column(s.name))
 
         sql = expand_template("""
             SELECT
@@ -184,7 +181,7 @@ class MySQL(object):
 
             selects = FlatList()
             for s in query.select:
-                selects.append(sql_alias(aggregates[s.aggregate].replace("{{code}}", s.value),self.db.quote_column(s.name)))
+                selects.append(aggregates[s.aggregate].replace("{{code}}", s.value) + " AS " + self.db.quote_column(s.name))
 
             sql = expand_template("""
                 SELECT
@@ -205,7 +202,7 @@ class MySQL(object):
             if s0.aggregate not in aggregates:
                 Log.error("Expecting all columns to have an aggregate: {{select}}", select=s0)
 
-            select = sql_alias(aggregates[s0.aggregate].replace("{{code}}", s0.value) , self.db.quote_column(s0.name))
+            select = aggregates[s0.aggregate].replace("{{code}}", s0.value) + " AS " + self.db.quote_column(s0.name)
 
             sql = expand_template("""
                 SELECT
@@ -235,12 +232,12 @@ class MySQL(object):
             for s in listwrap(query.select):
                 if isinstance(s.value, Mapping):
                     for k, v in s.value.items:
-                        selects.append(sql_alias(v, self.db.quote_column(s.name + "." + k)))
+                        selects.append(v + " AS " + self.db.quote_column(s.name + "." + k))
                 if isinstance(s.value, list):
                     for i, ss in enumerate(s.value):
-                        selects.append(sql_alias(s.value, self.db.quote_column(s.name + "," + str(i))))
+                        selects.append(s.value + " AS " + self.db.quote_column(s.name + "," + str(i)))
                 else:
-                    selects.append(sql_alias(s.value, self.db.quote_column(s.name)))
+                    selects.append(s.value + " AS " + self.db.quote_column(s.name))
 
             sql = expand_template("""
                 SELECT
@@ -285,7 +282,7 @@ class MySQL(object):
                 select = "*"
             else:
                 name = query.select.name
-                select = sql_alias(query.select.value, self.db.quote_column(name))
+                select = query.select.value + " AS " + self.db.quote_column(name)
 
             sql = expand_template("""
                 SELECT
@@ -319,10 +316,11 @@ class MySQL(object):
         """
         if not sort:
             return ""
-        return SQL_ORDERBY + sql_list([self.db.quote_column(o.field) + (" DESC" if o.sort == -1 else "") for o in sort])
+        return SQL("ORDER BY " + ",\n".join([self.db.quote_column(o.field) + (" DESC" if o.sort == -1 else "") for o in sort]))
 
     def _limit2sql(self, limit):
-        return SQL("" if not limit else SQL_LIMIT + str(limit))
+        return SQL("" if not limit else "LIMIT " + str(limit))
+
 
     def _where2sql(self, where):
         if where == None:
@@ -338,10 +336,10 @@ def _isolate(separator, list):
             return list[0]
     except Exception as e:
         Log.error("Programming problem: separator={{separator}}, list={{list}",
-                  list=list,
-                  separator=separator,
-                  cause=e
-                  )
+            list=list,
+            separator=separator,
+            cause=e
+        )
 
 
 def esfilter2sqlwhere(db, esfilter):
@@ -356,15 +354,15 @@ def _esfilter2sqlwhere(db, esfilter):
     esfilter = wrap(esfilter)
 
     if esfilter is True:
-        return SQL_TRUE
+        return "1=1"
     elif esfilter["and"]:
-        return _isolate(SQL_AND, [esfilter2sqlwhere(db, a) for a in esfilter["and"]])
+        return _isolate("AND", [esfilter2sqlwhere(db, a) for a in esfilter["and"]])
     elif esfilter["or"]:
         return _isolate("OR", [esfilter2sqlwhere(db, a) for a in esfilter["or"]])
     elif esfilter["not"]:
-        return "NOT " + sql_iso(esfilter2sqlwhere(db, esfilter["not"]))
+        return "NOT (" + esfilter2sqlwhere(db, esfilter["not"]) + ")"
     elif esfilter.term:
-        return _isolate(SQL_AND, [db.quote_column(col) + SQL("=") + db.quote_value(val) for col, val in esfilter.term.items()])
+        return _isolate("AND", [db.quote_column(col) + SQL("=") + db.quote_value(val) for col, val in esfilter.term.items()])
     elif esfilter.terms:
         for col, v in esfilter.terms.items():
             if len(v) == 0:
@@ -388,9 +386,9 @@ def _esfilter2sqlwhere(db, esfilter):
                         return esfilter2sqlwhere(db, {"missing": col})
                     else:
                         return "false"
-            return db.quote_column(col) + " in " + sql_iso(sql_list([db.quote_value(val) for val in v]))
+            return db.quote_column(col) + SQL(" in (" + ",\n".join([db.quote_value(val) for val in v]) + ")")
     elif esfilter.script:
-        return sql_iso(esfilter.script)
+        return "(" + esfilter.script + ")"
     elif esfilter.range:
         name2sign = {
             "gt": SQL(">"),
@@ -404,30 +402,30 @@ def _esfilter2sqlwhere(db, esfilter):
             max = coalesce(r["lte"], r["<="])
             if min != None and max != None:
                 # SPECIAL CASE (BETWEEN)
-                sql = db.quote_column(col) + SQL(" BETWEEN ") + db.quote_value(min) + SQL_AND + db.quote_value(max)
+                sql = db.quote_column(col) + SQL(" BETWEEN ") + db.quote_value(min) + SQL(" AND ") + db.quote_value(max)
             else:
-                sql = SQL_AND.join(
+                sql = SQL(" AND ").join(
                     db.quote_column(col) + name2sign[sign] + db.quote_value(value)
                     for sign, value in r.items()
                 )
             return sql
 
-        output = _isolate(SQL_AND, [single(col, ranges) for col, ranges in esfilter.range.items()])
+        output = _isolate("AND", [single(col, ranges) for col, ranges in esfilter.range.items()])
         return output
     elif esfilter.missing:
         if isinstance(esfilter.missing, text_type):
-            return sql_iso(db.quote_column(esfilter.missing) + SQL_IS_NULL)
+            return "(" + db.quote_column(esfilter.missing) + " IS Null)"
         else:
-            return sql_iso(db.quote_column(esfilter.missing.field) + SQL_IS_NULL)
+            return "(" + db.quote_column(esfilter.missing.field) + " IS Null)"
     elif esfilter.exists:
         if isinstance(esfilter.exists, text_type):
-            return sql_iso(db.quote_column(esfilter.exists) + SQL_IS_NOT_NULL)
+            return "(" + db.quote_column(esfilter.exists) + " IS NOT Null)"
         else:
-            return sql_iso(db.quote_column(esfilter.exists.field) + SQL_IS_NOT_NULL)
+            return "(" + db.quote_column(esfilter.exists.field) + " IS NOT Null)"
     elif esfilter.match_all:
-        return SQL_TRUE
+        return "1=1"
     elif esfilter.instr:
-        return _isolate(SQL_AND, ["instr" + sql_iso(db.quote_column(col) + ", " + db.quote_value(val)) + ">0" for col, val in esfilter.instr.items()])
+        return _isolate("AND", ["instr(" + db.quote_column(col) + ", " + db.quote_value(val) + ")>0" for col, val in esfilter.instr.items()])
     else:
         Log.error("Can not convert esfilter to SQL: {{esfilter}}", esfilter=esfilter)
 
@@ -440,6 +438,7 @@ def expand_json(rows):
                 with suppress_exception:
                     value = mo_json.json2value(json)
                     r[k] = value
+
 
 
 # MAP NAME TO SQL FUNCTION
@@ -465,6 +464,6 @@ aggregates = {
     "variance": "POWER(STDDEV({{code}}), 2)"
 }
 
-from jx_base.container import type2container
 
+from jx_base.container import type2container
 type2container["mysql"] = MySQL

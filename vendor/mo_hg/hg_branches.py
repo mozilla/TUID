@@ -9,18 +9,17 @@
 from __future__ import unicode_literals
 
 from bs4 import BeautifulSoup
+
 from mo_collections import UniqueIndex
 from mo_dots import Data, set_default
+from mo_hg.hg_mozilla_org import DEFAULT_LOCALE
 from mo_kwargs import override
 from mo_logs import Log
 from mo_logs import startup, constants
-from mo_logs.exceptions import suppress_exception
 from mo_math import MAX
 from mo_times.dates import Date
 from mo_times.durations import SECOND, DAY
 from pyLibrary.env import elasticsearch, http
-
-from mo_hg.hg_mozilla_org import DEFAULT_LOCALE
 
 EXTRA_WAIT_TIME = 20 * SECOND  # WAIT TIME TO SEND TO AWS, IF WE wait_forever
 OLD_BRANCH = DAY
@@ -122,12 +121,16 @@ def _get_single_branch_from_hg(settings, description, dir):
             continue  # IGNORE HEADER
         columns = b("td")
 
-        with suppress_exception:
+        try:
             path = columns[0].a.get('href')
             if path == "/":
                 continue
 
             name, desc, last_used = [c.text.strip() for c in columns][0:3]
+
+            if last_used.startswith('at'):
+                last_used = last_used[2:]
+
             detail = Data(
                 name=name.lower(),
                 locale=DEFAULT_LOCALE,
@@ -175,6 +178,8 @@ def _get_single_branch_from_hg(settings, description, dir):
 
             Log.note("Branch {{name}} {{locale}}", name=detail.name, locale=detail.locale)
             output.append(detail)
+        except Exception as e:
+            Log.warning("branch digestion problem", cause=e)
 
     return output
 

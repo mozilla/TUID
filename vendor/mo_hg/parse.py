@@ -25,7 +25,7 @@ HUNK_SEP = re.compile(r"^@@ ", re.MULTILINE)
 
 MOVE = {
     ' ': lambda c: (c[0]+1, c[1]+1),
-    '\\': lambda c: c,  # FOR "\ no newline at end of file"
+    '\\': lambda c: c,  # FOR "\ no newline at end of file
     '+': lambda c: (c[0]+1, c[1]),
     '-': lambda c: (c[0], c[1]+1)
 }

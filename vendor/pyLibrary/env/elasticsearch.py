@@ -126,9 +126,9 @@ class Index(Features):
 
             self.encode = TypedInserter(self, id_column).typed_encode
         else:
-            if tjson == None and not read_only:
+            if tjson is None and not read_only:
                 kwargs.tjson = False
-                Log.warning("{{index}} is not typed tjson={{tjson}}", index=self.settings.index, tjson=self.settings.tjson)
+                Log.warning("{{index}} is not typed", index=self.settings.index)
             self.encode = get_encoder(id_column)
 
     @property
