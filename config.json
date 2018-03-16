@@ -1,5 +1,6 @@
 {
     "tuid": {
+        "debugTUID": true,
         "database": {
             "name": "TUID.db"
         },

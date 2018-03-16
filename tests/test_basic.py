@@ -9,6 +9,7 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import pytest
+import json
 from mo_logs import Log
 
 from tuid import sql
@@ -29,6 +30,8 @@ def test_new_then_old(service):
     # delete database then run this test
     old = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838")
     new = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62")
+    print(old)
+    print(new)
     assert len(old) == len(new)
     for i in range(0, len(old)):
         assert old[i] == new[i]
@@ -152,3 +155,35 @@ def test_multi_parent_child_changes(service):
 def test_get_tuids_from_revision(service):
     tuids = service.get_tuids_from_revision("a6fdd6eae583")
     assert tuids != None
+
+def test_many_files_one_revision(service):
+    with open('resources/stressfiles.json', 'r') as f:
+        files = json.load(f)
+    test_file = ["widget/cocoa/nsCocoaWindow.mm"]
+    first_front = "739c536d2cd6"
+    test_rev = "159e1105bdc7"
+    dir = "/dom/base/"
+    test_file.extend([dir + f for f in files][1:10])
+
+    old = service.get_tuids_from_files(test_file,first_front)
+    print("old:")
+    for el in old:
+        print("     "+el[0]+":"+str(len(el[1])))
+
+    new = service.get_tuids_from_files(test_file,test_rev)
+    print("new:")
+    for el in new:
+        print("     "+el[0]+":"+str(len(el[1])))
+
+def test_one_addition_many_files(service):
+    with open('resources/stressfiles.json', 'r') as f:
+        files = json.load(f)
+    test_file = ["widget/cocoa/nsCocoaWindow.mm"]
+    test_rev = "58eb13b394f4"
+    dir = "/dom/base/"
+    test_file.extend([dir + f for f in files][1:10])
+
+    new = service.get_tuids_from_files(test_file,test_rev)
+    print("new:")
+    for el in new:
+        print("     "+el[0]+":"+str(len(el[1])))
