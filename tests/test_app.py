@@ -33,7 +33,7 @@ def app():
             env={str("PYTHONPATH"): pythonpath},
             debug=True
         )
-    Till(seconds=1).wait()
+        Till(seconds=5).wait()  # Time to warm up
     yield
     app_process.please_stop.go()
     app_process.join(raise_on_error=False)
