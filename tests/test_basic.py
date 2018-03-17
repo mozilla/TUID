@@ -8,9 +8,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
+
 import pytest
 import json
 from mo_logs import Log
+from mo_times import Timer
+
+from pyLibrary.env import http
 
 from tuid import sql
 from tuid.service import TUIDService
@@ -198,3 +202,135 @@ def test_one_addition_many_files(service):
     print("new:")
     for el in new:
         print("     "+el[0]+":"+str(len(el[1])))
+
+
+def test_one_http_call_required(service):
+    files =[
+        "/browser/base/content/test/general/browser_bug423833.js",
+        "/browser/base/content/test/general/browser_bug575561.js",
+        "/browser/base/content/test/general/browser_bug678392.js",
+        "/browser/base/content/test/general/browser_bug767836_perwindowpb.js",
+        "/browser/base/content/test/general/browser_e10s_about_page_triggeringprincipal.js",
+        "/browser/base/content/test/general/browser_keywordSearch_postData.js",
+        "/browser/base/content/test/general/browser_tabfocus.js",
+        "/browser/base/content/test/pageinfo/browser_pageinfo_image_info.js",
+        "/browser/base/content/test/popupNotifications/browser_popupNotification_keyboard.js",
+        "/browser/base/content/test/sidebar/browser_bug409481.js",
+        "/browser/base/content/test/siteIdentity/browser_bug906190.js",
+        "/browser/base/content/test/tabcrashed/browser_autoSubmitRequest.js",
+        "/browser/base/content/test/tabcrashed/browser_clearEmail.js",
+        "/browser/base/content/test/tabcrashed/browser_showForm.js",
+        "/browser/base/content/test/tabcrashed/browser_shown.js",
+        "/browser/base/content/test/urlbar/browser_urlbarKeepStateAcrossTabSwitches.js",
+        "/browser/base/content/test/webextensions/browser_extension_sideloading.js",
+        "/browser/components/contextualidentity/test/browser/browser_usercontext.js",
+        "/browser/components/customizableui/test/browser_947914_button_addons.js",
+        "/browser/components/enterprisepolicies/tests/browser/browser_policies_notice_in_aboutpreferences.js",
+        "/browser/components/enterprisepolicies/tests/browser/browser_policy_disable_masterpassword.js",
+        "/browser/components/extensions/test/browser/browser_ext_browserAction_popup_resize.js",
+        "/browser/components/extensions/test/browser/browser_ext_find.js",
+        "/browser/components/extensions/test/browser/browser_ext_omnibox.js",
+        "/browser/components/extensions/test/browser/browser_ext_pageAction_popup_resize.js",
+        "/browser/components/extensions/test/browser/browser_ext_popup_background.js",
+        "/browser/components/extensions/test/browser/browser_ext_popup_corners.js",
+        "/browser/components/extensions/test/browser/browser_ext_webNavigation_onCreatedNavigationTarget.js",
+        "/browser/components/extensions/test/browser/browser_ext_webNavigation_onCreatedNavigationTarget_contextmenu.js",
+        "/browser/components/preferences/in-content/tests/browser_advanced_update.js",
+        "/browser/components/preferences/in-content/tests/browser_applications_selection.js",
+        "/browser/components/preferences/in-content/tests/browser_basic_rebuild_fonts_test.js",
+        "/browser/components/preferences/in-content/tests/browser_bug1018066_resetScrollPosition.js",
+        "/browser/components/preferences/in-content/tests/browser_bug1020245_openPreferences_to_paneContent.js",
+        "/browser/components/preferences/in-content/tests/browser_bug1184989_prevent_scrolling_when_preferences_flipped.js",
+        "/browser/components/preferences/in-content/tests/browser_bug410900.js",
+        "/browser/components/preferences/in-content/tests/browser_change_app_handler.js",
+        "/browser/components/preferences/in-content/tests/browser_checkspelling.js",
+        "/browser/components/preferences/in-content/tests/browser_cookies_exceptions.js",
+        "/browser/components/preferences/in-content/tests/browser_engines.js",
+        "/browser/components/preferences/in-content/tests/browser_extension_controlled.js",
+        "/browser/components/preferences/in-content/tests/browser_fluent.js",
+        "/browser/components/preferences/in-content/tests/browser_homepages_filter_aboutpreferences.js",
+        "/browser/components/preferences/in-content/tests/browser_languages_subdialog.js",
+        "/browser/components/preferences/in-content/tests/browser_layersacceleration.js",
+        "/browser/components/preferences/in-content/tests/browser_masterpassword.js",
+        "/browser/components/preferences/in-content/tests/browser_notifications_do_not_disturb.js",
+        "/browser/components/preferences/in-content/tests/browser_password_management.js",
+        "/browser/components/preferences/in-content/tests/browser_performance.js",
+        "/browser/components/preferences/in-content/tests/browser_performance_e10srollout.js",
+        "/browser/components/preferences/in-content/tests/browser_performance_non_e10s.js",
+        "/browser/components/preferences/in-content/tests/browser_permissions_urlFieldHidden.js",
+        "/browser/components/preferences/in-content/tests/browser_privacypane.js",
+        "/browser/components/preferences/in-content/tests/browser_sanitizeOnShutdown_prefLocked.js",
+        "/browser/components/preferences/in-content/tests/browser_search_within_preferences_1.js",
+        "/browser/components/preferences/in-content/tests/browser_search_within_preferences_2.js",
+        "/browser/components/preferences/in-content/tests/browser_search_within_preferences_command.js",
+        "/browser/components/preferences/in-content/tests/browser_security-1.js",
+        "/browser/components/preferences/in-content/tests/browser_security-2.js",
+        "/browser/components/preferences/in-content/tests/browser_site_login_exceptions.js",
+        "/browser/components/preferences/in-content/tests/browser_spotlight.js",
+        "/browser/components/preferences/in-content/tests/browser_subdialogs.js",
+        "/browser/components/preferences/in-content/tests/siteData/browser_siteData.js",
+        "/browser/components/preferences/in-content/tests/siteData/browser_siteData2.js",
+        "/browser/components/preferences/in-content/tests/siteData/browser_siteData3.js",
+        "/browser/components/search/test/browser_aboutSearchReset.js",
+        "/browser/components/search/test/browser_abouthome_behavior.js",
+        "/browser/components/sessionstore/test/browser_480893.js",
+        "/browser/components/sessionstore/test/browser_590563.js",
+        "/browser/components/sessionstore/test/browser_705597.js",
+        "/browser/components/sessionstore/test/browser_707862.js",
+        "/browser/components/sessionstore/test/browser_aboutSessionRestore.js",
+        "/browser/components/sessionstore/test/browser_crashedTabs.js",
+        "/browser/components/sessionstore/test/browser_swapDocShells.js",
+        "/browser/components/shell/test/browser_1119088.js",
+        "/browser/extensions/onboarding/test/browser/browser_onboarding_skip_tour.js",
+        "/browser/extensions/onboarding/test/browser/browser_onboarding_tourset.js",
+        "/browser/modules/test/browser/formValidation/browser_form_validation.js",
+        "/devtools/.eslintrc.js",
+        "/devtools/client/debugger/new/test/mochitest/head.js",
+        "/devtools/client/netmonitor/test/browser_net_resend_cors.js",
+        "/devtools/client/responsive.html/test/browser/browser_page_state.js",
+        "/devtools/client/shared/test/browser_toolbar_webconsole_errors_count.js",
+        "/devtools/client/sourceeditor/test/browser_css_autocompletion.js",
+        "/devtools/client/sourceeditor/test/browser_css_getInfo.js",
+        "/devtools/client/sourceeditor/test/browser_css_statemachine.js",
+        "/devtools/server/tests/browser/browser_markers-docloading-01.js",
+        "/devtools/server/tests/browser/browser_markers-docloading-02.js",
+        "/devtools/server/tests/browser/browser_markers-docloading-03.js",
+        "/devtools/server/tests/browser/browser_storage_dynamic_windows.js",
+        "/devtools/server/tests/browser/browser_storage_updates.js",
+        "/toolkit/components/narrate/test/browser_narrate.js",
+        "/toolkit/components/narrate/test/browser_narrate_language.js",
+        "/toolkit/components/narrate/test/browser_voiceselect.js",
+        "/toolkit/components/narrate/test/browser_word_highlight.js",
+        "/toolkit/components/normandy/test/browser/browser_about_preferences.js",
+        "/toolkit/components/normandy/test/browser/browser_about_studies.js",
+        "/toolkit/components/payments/test/browser/browser_host_name.js",
+        "/toolkit/components/payments/test/browser/browser_profile_storage.js",
+        "/toolkit/components/payments/test/browser/browser_request_serialization.js",
+        "/toolkit/components/payments/test/browser/browser_request_summary.js",
+        "/toolkit/components/payments/test/browser/browser_total.js",
+        "/toolkit/components/reader/test/browser_readerMode_with_anchor.js",
+        "/toolkit/content/tests/browser/browser_datetime_datepicker.js",
+        "/toolkit/content/tests/browser/browser_saveImageURL.js",
+        "/toolkit/content/tests/browser/browser_save_resend_postdata.js",
+        "/toolkit/mozapps/extensions/test/browser/browser_bug562797.js",
+        "/toolkit/mozapps/extensions/test/browser/browser_discovery.js",
+        "/toolkit/mozapps/extensions/test/browser/browser_discovery_install.js",
+        "/tools/lint/docs/linters/eslint-plugin-mozilla.rst",
+        "/tools/lint/eslint/eslint-plugin-mozilla/lib/configs/browser-test.js",
+        "/tools/lint/eslint/eslint-plugin-mozilla/lib/index.js",
+        "/tools/lint/eslint/eslint-plugin-mozilla/lib/rules/no-cpows-in-tests.js",
+        "/tools/lint/eslint/eslint-plugin-mozilla/tests/no-cpows-in-tests.js"
+    ]
+
+    # SETUP
+    service.get_tuids_from_files(files, "d63ed14ed622")
+
+    # THIS NEXT CALL SHOULD BE FAST
+    start = http.request_count
+    timer = Timer("get next revision")
+    with timer:
+        service.get_tuids_from_files(files, "14dc6342ec50")
+    num_http_calls = http.request_count - start
+
+    assert num_http_calls == 1
+    assert timer.duration.seconds < 30
