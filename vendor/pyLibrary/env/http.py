@@ -26,6 +26,7 @@ from numbers import Number
 from tempfile import TemporaryFile
 
 from requests import sessions, Response
+
 from jx_python import jx
 from mo_dots import Data, coalesce, wrap, set_default, unwrap, Null
 from mo_future import text_type, PY2
@@ -75,9 +76,9 @@ def request(method, url, zip=None, retry=None, **kwargs):
     if not default_headers and not _warning_sent:
         _warning_sent = True
         Log.warning(
-            "The pyLibrary.env.http module was meant to add extra " +
-            "default headers to all requests, specifically the 'Referer' " +
-            "header with a URL to the project. Use the `pyLibrary.debug.cons tants.set()` " +
+            "The pyLibrary.env.http module was meant to add extra "
+            "default headers to all requests, specifically the 'Referer' "
+            "header with a URL to the project. Use the `pyLibrary.debug.constants.set()` "
             "function to set `pyLibrary.env.http.default_headers`"
         )
 
