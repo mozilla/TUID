@@ -318,19 +318,25 @@ def test_one_http_call_required(service):
         "/tools/lint/docs/linters/eslint-plugin-mozilla.rst",
         "/tools/lint/eslint/eslint-plugin-mozilla/lib/configs/browser-test.js",
         "/tools/lint/eslint/eslint-plugin-mozilla/lib/index.js",
-        "/tools/lint/eslint/eslint-plugin-mozilla/lib/rules/no-cpows-in-tests.js",
-        "/tools/lint/eslint/eslint-plugin-mozilla/tests/no-cpows-in-tests.js"
+        "/tools/lint/eslint/eslint-plugin-mozilla/lib/rules/no-cpows-in-tests.js",  # DOES NOT EXIST IN NEWER REVISION
+        "/tools/lint/eslint/eslint-plugin-mozilla/tests/no-cpows-in-tests.js"  # DOES NOT EXIST IN NEWER REVISION
     ]
 
     # SETUP
     service.get_tuids_from_files(files, "d63ed14ed622")
 
-    # THIS NEXT CALL SHOULD BE FAST
+    # BE SUREWE HAVE NOTHING IN THE LOCAL DB
+    service.conn.execute("DELETE FROM annotations WHERE revision='14dc6342ec50'")
+    service.conn.execute("DELETE FROM temporal WHERE revision='14dc6342ec50'")
+    service.conn.commit()
+
+    # THIS NEXT CALL SHOULD BE FAST, DESPITE THE LACK OF LOCAL CACHE
     start = http.request_count
     timer = Timer("get next revision")
     with timer:
         service.get_tuids_from_files(files, "14dc6342ec50")
     num_http_calls = http.request_count - start
 
-    assert num_http_calls == 1
+    assert num_http_calls <= 1
     assert timer.duration.seconds < 30
+    # TODO: ALSO VERIFY THE TUIDS ARE MATCH AS EXPECTED (AND NOW-MISSING FILES HAVE ZERO TUIDS)
