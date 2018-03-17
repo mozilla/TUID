@@ -48,7 +48,8 @@
 //        "ssl_context": "adhoc"
     },
     "constants": {
-        "pyLibrary.env.http.default_headers": {"Referer": "https://github.com/mozilla/TUID"}
+        "pyLibrary.env.http.default_headers": {"Referer": "https://github.com/mozilla/TUID"},
+        "mo_hg.hg_mozilla_org.DAEMON_HG_INTERVAL": 0
     },
     "debug": {
         "trace": true
