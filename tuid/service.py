@@ -8,19 +8,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
-import os
-import subprocess
-
-import whatthepatch
+from collections import namedtuple
 
 from mo_dots import Null, coalesce
-from mo_files import File
+from mo_kwargs import override
+from mo_logs import Log
+
 from mo_future import text_type
 from mo_hg.hg_mozilla_org import HgMozillaOrg
-from mo_kwargs import override
-from mo_logs import Log, Except
 from pyLibrary.env import http
-from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
 
@@ -124,7 +120,7 @@ class TUIDService:
                 (-1, quote_value(rev[:12]), quote_value(file_name), 0)
             )
             self.conn.commit()
-        return [(-1,0)]
+        return [MISSING]
 
 
     # Inserts annotation dummy: (rev, '')
@@ -195,7 +191,7 @@ class TUIDService:
                 result.append((file, tmp_res))
             else:
                 Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=revision)
-                result.append((file, [(-1,0)]))
+                result.append((file, [MISSING]))
         return result
 
 
@@ -242,7 +238,7 @@ class TUIDService:
                     result.append((file, tmp_res))
                 else:
                     Log.note("Error occured for file " + file + " in revision " + revision)
-                    result.append((file, [(-1, 0)]))
+                    result.append((file, [MISSING]))
 
                 # If this file has not been seen before,
                 # add it to the latest modifications, else
@@ -381,7 +377,7 @@ class TUIDService:
                         self.conn.commit()
             else:
                 Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=proc_rev)
-                result.append((file, [(-1,0)]))
+                result.append((file, [MISSING]))
 
             if csets_proced < max_csets_proc and not still_looking:
                 self.conn.execute("""UPDATE latestFileMod SET revision=? WHERE file=?""", (revision, file))
@@ -490,7 +486,7 @@ class TUIDService:
         tuids = tmp_tuids
         for line_num in range(1, len(line_origins) + 1):
             if line_num in existing_tuids:
-                tuids.append((existing_tuids[line_num], line_num))
+                tuids.append(TuidMap(existing_tuids[line_num], line_num))
                 continue
             try:
                 tuid_tmp = self.conn.get_one(GET_TUID_QUERY,
@@ -499,9 +495,9 @@ class TUIDService:
                 # Return dummy line if we can't find the TUID for this entry
                 # (likely because of an error from insertion).
                 if tuid_tmp:
-                    tuids.append((tuid_tmp[0], line_num))
+                    tuids.append(TuidMap(tuid_tmp[0], line_num))
                 else:
-                    tuids.append((-1, 0))
+                    tuids.append(MISSING)
             except Exception as e:
                 Log.note("Unexpected error searching {{cause}}", cause=e)
 
@@ -511,3 +507,7 @@ class TUIDService:
             self.conn.commit()
 
         return tuids
+
+
+TuidMap = namedtuple(str("TuidMap"), [str("tuid"), str("line")])
+MISSING = TuidMap(-1, 0)
