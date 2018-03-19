@@ -186,12 +186,13 @@ class Sqlite(DB):
                         try:
                             curr = self.db.execute(command)
                             self.db.commit()
-                            result.meta.format = "table"
-                            result.header = [d[0] for d in curr.description] if curr.description else None
-                            result.data = curr.fetchall()
-                            if DEBUG and result.data:
-                                text = convert.table2csv(list(result.data))
-                                Log.note("Result:\n{{data}}", data=text)
+                            if result is not None:
+                                result.meta.format = "table"
+                                result.header = [d[0] for d in curr.description] if curr.description else None
+                                result.data = curr.fetchall()
+                                if DEBUG and result.data:
+                                    text = convert.table2csv(list(result.data))
+                                    Log.note("Result:\n{{data}}", data=text)
                         except Exception as e:
                             e = Except.wrap(e)
                             e.cause = Except(
@@ -199,7 +200,10 @@ class Sqlite(DB):
                                 template="Bad call to Sqlite",
                                 trace=trace
                             )
-                            result.exception = Except(ERROR, "Problem with\n{{command|indent}}", command=command, cause=e)
+                            if result is None:
+                                Log.error("Problem with\n{{command|indent}}", command=command, cause=e)
+                            else:
+                                result.exception = Except(ERROR, "Problem with\n{{command|indent}}", command=command, cause=e)
                         finally:
                             if isinstance(signal, Signal):
                                 signal.go()
@@ -220,7 +224,7 @@ class Sqlite(DB):
 
         except Exception as e:
             if not please_stop:
-                Log.fatal("Problem with sql thread", e)
+                Log.warning("Problem with sql thread", cause=e)
         finally:
             if DEBUG:
                 Log.note("Database is closed")
