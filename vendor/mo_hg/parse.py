@@ -11,6 +11,7 @@ from __future__ import unicode_literals
 
 import re
 
+from jx_base import DataClass
 from mo_dots import wrap
 from mo_logs import Log, strings
 
@@ -140,12 +141,8 @@ def diff_to_moves(unified_diff):
                     break
                 d = line[0]
                 if d != ' ':
-                    changes.append((int(c[0]), d))
-
-                try:
-                    c = MOVE[d](c)
-                except Exception as e:
-                    Log.warning("bad line {{line|quote}}", line=line, cause=e)
+                    changes.append(Action(line=int(c[0]), action=d))
+                c = MOVE[d](c)
 
         output.append({
             "new": {"name": new_file_path},
@@ -153,3 +150,10 @@ def diff_to_moves(unified_diff):
             "changes": changes
         })
     return wrap(output)
+
+
+Action = DataClass(
+    "Action",
+    ["line", "action"],
+    constraint=True  # TODO: remove when constrain=None is the same as True
+)
