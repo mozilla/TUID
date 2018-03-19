@@ -47,7 +47,7 @@ def test_default(config, app):
 
 
 def test_query_error(config, app):
-    url = "http://localhost:" + text_type(config.flask.port) + "/query"
+    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
     response = http.get(url, json={"from": "files"})
     error = json2value(utf82unicode(response.content))
     assert response.status_code == 400

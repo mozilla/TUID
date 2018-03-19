@@ -14,7 +14,7 @@ import os
 
 import flask
 from flask import Flask, Response
-from mo_dots import listwrap, coalesce
+from mo_dots import listwrap, coalesce, unwraplist
 from mo_files import File
 from mo_json import value2json, json2value
 from mo_logs import Log
@@ -70,8 +70,9 @@ def tuid_endpoint(path):
         paths = None
         for a in query.where['and']:
             rev = coalesce(rev, a.eq.revision)
-            paths = listwrap(coalesce(paths, a['in'].path, a.eq.path))
+            paths = unwraplist(coalesce(paths, a['in'].path, a.eq.path))
 
+        paths = listwrap(paths)
         # RETURN TUIDS
         response = service.get_tuids_from_files(paths, rev)
         return Response(
@@ -143,8 +144,8 @@ if __name__ in ("__main__",):
     OVERVIEW = File("tuid/public/index.html").read_bytes()
     flask_app = TUIDApp(__name__)
 
-    flask_app.add_url_rule(str('/query'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
-    flask_app.add_url_rule(str('/query/'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
+    flask_app.add_url_rule(str('/tuid'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
+    flask_app.add_url_rule(str('/tuid/'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
 
     flask_app.add_url_rule(str('/'), None, _head, defaults={'path': ''}, methods=[str('OPTIONS'), str('HEAD')])
     flask_app.add_url_rule(str('/<path:path>'), None, _head, methods=[str('OPTIONS'), str('HEAD')])
