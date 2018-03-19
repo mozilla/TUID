@@ -14,15 +14,14 @@ import os
 
 import flask
 from flask import Flask, Response
-from jx_python import jx
 from mo_dots import listwrap, coalesce
 from mo_files import File
-from mo_future import sort_using_key
 from mo_json import value2json, json2value
 from mo_logs import Log
 from mo_logs import constants, startup
 from mo_logs.strings import utf82unicode, unicode2utf8
 
+from mo_future import sort_using_key
 from pyLibrary.env.flask_wrappers import gzip_wrapper, cors_wrapper
 from tuid.service import TUIDService, TuidMap
 
@@ -108,6 +107,11 @@ def _stream_list(files):
 
 
 def _map_to_array(pairs):
+    """
+    MAP THE (tuid, line) PAIRS TO A SINGLE ARRAY OF TUIDS
+    :param pairs:
+    :return:
+    """
     if pairs:
         pairs = map(TuidMap, pairs)
         sorted = sort_using_key(pairs, lambda p: p.line)

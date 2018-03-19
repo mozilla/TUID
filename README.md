@@ -32,3 +32,27 @@ After cloning the repo into `~/TUID`:
     pip install -r .\tests\requirements.txt
     set PYTHONPATH=.;vendor
     python -m pytest .\tests
+
+## Running the web service
+
+You can run the web service locally with 
+
+    cd ~/TUID
+    export PYTHONPATH=.:vendor
+    python tuid\app.py
+
+The [`config.json`](./config.json) file has a `flask` property which is sent 
+to the Flask service constructor. Notice the service is set to listen on 
+port 5000. 
+
+    "flask": {
+        "host": "0.0.0.0",
+        "port": 5000,
+        "debug": false,
+        "threaded": true,
+        "processes": 1,
+    }
+
+The web service was designed to be part of a larger service. You can assign a 
+route that points to the `tuid_endpoint()` method, and avoid the Flask
+server construction.
