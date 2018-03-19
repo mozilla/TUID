@@ -340,3 +340,15 @@ def test_one_http_call_required(service):
     assert num_http_calls <= 1
     assert timer.duration.seconds < 30
     # TODO: ALSO VERIFY THE TUIDS ARE MATCH AS EXPECTED (AND NOW-MISSING FILES HAVE ZERO TUIDS)
+
+
+def test_long_file(service):
+    timer = Timer("test", silent=True)
+
+    with timer:
+        service.get_tuids(
+            file="gfx/angle/checkout/src/libANGLE/formatutils.cpp",
+            revision="29dcc9cb77c3"
+        )
+
+    assert timer.duration.seconds < 30
