@@ -17,7 +17,7 @@ import re
 import sys
 from collections import Mapping
 
-from mo_future import text_type, zip_longest
+from mo_future import allocate_lock as _allocate_lock, text_type, zip_longest
 from mo_dots import Data, coalesce
 from mo_files import File
 from mo_logs import Log
@@ -32,9 +32,9 @@ from mo_times.timer import Timer
 from pyLibrary import convert
 from pyLibrary.sql import DB, SQL, SQL_TRUE, SQL_FALSE, SQL_NULL, SQL_SELECT, sql_iso
 
-DEBUG = True
+DEBUG = False
 TRACE = True
-DEBUG_EXECUTE = True
+DEBUG_EXECUTE = False
 DEBUG_INSERT = False
 
 sqlite3 = None
@@ -79,7 +79,7 @@ class Sqlite(DB):
         if upgrade and not _upgraded:
             _upgrade()
 
-        self.filename = filename
+        self.filename = File(filename).abspath
         self.db = db
         self.queue = Queue("sql commands")   # HOLD (command, result, signal) PAIRS
         self.worker = Thread.run("sqlite db thread", self._worker)
@@ -133,10 +133,11 @@ class Sqlite(DB):
         if not self.worker:
             self.worker = Thread.run("sqlite db thread", self._worker)
 
-        signal = Signal()
+        signal = _allocate_lock()
+        signal.acquire()
         result = Data()
         self.queue.add((command, result, signal, None))
-        signal.wait()
+        signal.acquire()
         if result.exception:
             Log.error("Problem with Sqlite call", cause=result.exception)
         return result
@@ -144,40 +145,43 @@ class Sqlite(DB):
     def _worker(self, please_stop):
         global _load_extension_warning_sent
 
-        if DEBUG:
-            Log.note("Sqlite version {{version}}", version=sqlite3.sqlite_version)
-        if Sqlite.canonical:
-            self.db = Sqlite.canonical
-        else:
-            self.db = sqlite3.connect(coalesce(self.filename, ':memory:'), check_same_thread = False)
-
-            library_loc = File.new_instance(sys.modules[__name__].__file__, "../..")
-            full_path = File.new_instance(library_loc, "vendor/sqlite/libsqlitefunctions.so").abspath
-            try:
-                trace = extract_stack(0)[0]
-                if self.upgrade:
-                    if os.name == 'nt':
-                        file = File.new_instance(trace["file"], "../../vendor/sqlite/libsqlitefunctions.so")
-                    else:
-                        file = File.new_instance(trace["file"], "../../vendor/sqlite/libsqlitefunctions")
-
-                    full_path = file.abspath
-                    self.db.enable_load_extension(True)
-                    self.db.execute(SQL_SELECT + "load_extension" + sql_iso(self.quote_value(full_path)))
-            except Exception as e:
-                if not _load_extension_warning_sent:
-                    _load_extension_warning_sent = True
-                    Log.warning("Could not load {{file}}}, doing without. (no SQRT for you!)", file=full_path, cause=e)
-
         try:
+            if DEBUG:
+                Log.note("Sqlite version {{version}}", version=sqlite3.sqlite_version)
+            if Sqlite.canonical:
+                self.db = Sqlite.canonical
+            else:
+                self.db = sqlite3.connect(coalesce(self.filename, ':memory:'), check_same_thread = False)
+
+                library_loc = File.new_instance(sys.modules[__name__].__file__, "../..")
+                full_path = File.new_instance(library_loc, "vendor/sqlite/libsqlitefunctions.so").abspath
+                try:
+                    trace = extract_stack(0)[0]
+                    if self.upgrade:
+                        if os.name == 'nt':
+                            file = File.new_instance(trace["file"], "../../vendor/sqlite/libsqlitefunctions.so")
+                        else:
+                            file = File.new_instance(trace["file"], "../../vendor/sqlite/libsqlitefunctions")
+
+                        full_path = file.abspath
+                        self.db.enable_load_extension(True)
+                        self.db.execute(SQL_SELECT + "load_extension" + sql_iso(self.quote_value(full_path)))
+                except Exception as e:
+                    if not _load_extension_warning_sent:
+                        _load_extension_warning_sent = True
+                        Log.warning("Could not load {{file}}}, doing without. (no SQRT for you!)", file=full_path, cause=e)
+
             while not please_stop:
                 command, result, signal, trace = self.queue.pop(till=please_stop)
 
+                show_timing = False
                 if DEBUG_INSERT and command.strip().lower().startswith("insert"):
                     Log.note("Running command\n{{command|indent}}", command=command)
+                    show_timing = True
                 if DEBUG and not command.strip().lower().startswith("insert"):
                     Log.note("Running command\n{{command|indent}}", command=command)
-                with Timer("Run command", debug=DEBUG):
+                    show_timing = True
+                with Timer("SQL Timing", silent=not show_timing):
                     if signal is not None:
                         try:
                             curr = self.db.execute(command)
@@ -197,7 +201,10 @@ class Sqlite(DB):
                             )
                             result.exception = Except(ERROR, "Problem with\n{{command|indent}}", command=command, cause=e)
                         finally:
-                            signal.go()
+                            if isinstance(signal, Signal):
+                                signal.go()
+                            else:
+                                signal.release()
                     else:
                         try:
                             self.db.execute(command)
@@ -213,7 +220,7 @@ class Sqlite(DB):
 
         except Exception as e:
             if not please_stop:
-                Log.error("Problem with sql thread", e)
+                Log.fatal("Problem with sql thread", e)
         finally:
             if DEBUG:
                 Log.note("Database is closed")

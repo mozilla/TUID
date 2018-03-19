@@ -5,3 +5,4 @@
 /resources/test.db-journal
 /resources/stress.db
 *.pyc
+/resources/tuid_app.db

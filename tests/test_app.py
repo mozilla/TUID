@@ -10,6 +10,7 @@ from __future__ import unicode_literals
 
 import os
 import pytest
+from mo_dots import wrap
 from mo_files import File
 from mo_json import json2value
 from mo_logs.strings import utf82unicode
@@ -52,3 +53,23 @@ def test_query_error(config, app):
     error = json2value(utf82unicode(response.content))
     assert response.status_code == 400
     assert "expecting a simple where clause with following structure" in error.template
+
+
+def test_single_file(config, app):
+    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
+    response = http.post_json(url, json={
+        "from": "files",
+        "where": {"and": [
+            {"eq": {"revision": "29dcc9cb77c372c97681a47496488ec6c623915d"}},
+            {"in": {"path": ["gfx/thebes/gfxFontVariations.h"]}}
+        ]}
+    })
+
+    list_response = wrap([
+        {h: v for h, v in zip(response.header, r)}
+        for r in response.data
+    ])
+    tuids = list_response[0].tuids
+
+    assert len(tuids) == 41  # 41 lines expected
+    assert len(set(tuids)) == 41  # tuids much be unique

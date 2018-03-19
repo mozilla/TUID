@@ -7,29 +7,27 @@
 
 import sqlite3
 
+from pyLibrary.sql.sqlite import Sqlite, quote_value
+
+
 class Sql:
     def __init__(self,dbname):
-        self.db = sqlite3.connect(dbname)
+        self.db = Sqlite(dbname)
 
     def execute(self,sql,params=None):
         if params:
-            self.db.execute(sql,params)
-        else:
-            self.db.execute(sql)
+            for p in params:
+                sql = sql.replace('?', quote_value(p), 1)
+        self.db.execute(sql)
 
     def commit(self):
-        self.db.commit()
+        pass  # Sqlite is in auto-commit mode
 
     def get(self,sql,params=None):
         if params:
-            return self.db.execute(sql,params).fetchall()
-        else:
-            return self.db.execute(sql).fetchall()
-
+            for p in params:
+                sql = sql.replace('?', quote_value(p), 1)
+        return self.db.query(sql).data
 
     def get_one(self,sql,params=None):
-        if params:
-            return self.db.execute(sql,params).fetchone()
-        else:
-            return self.db.execute(sql).fetchone()
-
+        return self.get(sql, params)[0]

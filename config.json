@@ -1,8 +1,7 @@
 {
     "tuid": {
-        "debugTUID": true,
         "database": {
-            "name": "TUID.db"
+            "name": "resources/tuid_app.db"
         },
         "local_hg_source": "C:/mozilla-source/mozilla-central/",
         "hg_for_building": "C:/mozilla-build/python/Scripts/hg.exe",
@@ -48,7 +47,11 @@
 //        "ssl_context": "adhoc"
     },
     "constants": {
+        "tuid.service.DEBUG": true,
         "pyLibrary.env.http.default_headers": {"Referer": "https://github.com/mozilla/TUID"},
+        "pyLibrary.sql.sqlite.DEBUG": false,
+        "pyLibrary.sql.sqlite.DEBUG_INSERT": false,
+        "pyLibrary.sql.sqlite.DEBUG_EXECUTE": true,
         "mo_hg.hg_mozilla_org.DAEMON_HG_INTERVAL": 0
     },
     "debug": {

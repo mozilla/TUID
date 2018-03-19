@@ -45,7 +45,6 @@ class TUIDService:
     def __init__(self, database, hg, hg_cache, conn=None, kwargs=None):
         try:
             self.config = kwargs
-            self.DEBUG = self.config['debugTUID']
 
             self.conn = conn if conn else sql.Sql(self.config.database.name)
             self.hg_cache = HgMozillaOrg(hg_cache) if hg_cache else Null
@@ -218,7 +217,7 @@ class TUIDService:
         # TODO: Do this in a single SQL call to database
         total = len(files)
         for count, file in enumerate(files):
-            if self.DEBUG:
+            if DEBUG:
                 Log.note(" {{percent|percent(decimal=0)}}|{{file}}", file=file, percent=count / total)
 
             latest_rev = self._get_latest_revision(file)
@@ -229,7 +228,7 @@ class TUIDService:
                 already_collected = True
 
             if (latest_rev and latest_rev[0] != revision) and not already_collected:
-                if self.DEBUG:
+                if DEBUG:
                     Log.note("Will update frontier for file {{file}}.", file=file)
                 frontier_update_list.append((file, latest_rev[0]))
             else:
@@ -288,7 +287,7 @@ class TUIDService:
 
         final_rev = revision  # Revision we are searching from
         csets_proced = 0
-        if self.DEBUG:
+        if DEBUG:
             Log.note("Searching for the following frontiers: {{csets}}", csets=str([cset for cset in latest_csets]))
         while not found_last_frontier:
             # Get a changelog
@@ -402,7 +401,7 @@ class TUIDService:
         for anline in annotated_lines:
             count += 1
             cset = anline['node'][:12]
-            #if self.DEBUG:
+            #if DEBUG:
             #    Log.note("{{rev}}|{{file}} {{percent|percent(decimal=0)}}", file=anline['abspath'], rev=cset, percent=count / total)
             if not self._get_one_tuid(cset, anline['abspath'], int(anline['targetline'])):
                 quickfill_list.append((cset, anline['abspath'], int(anline['targetline'])))
@@ -439,7 +438,7 @@ class TUIDService:
         already_ann = self._get_annotation(revision, file)
         # If it's not defined, or there is a dummy record
         if not already_ann:
-            if self.DEBUG:
+            if DEBUG:
                 Log.note("HG: {{url}}", url=url)
             try:
                 annotated_object = http.get_json(url, retry=RETRY)

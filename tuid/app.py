@@ -68,13 +68,13 @@ def tuid_endpoint(path):
 
         rev = None
         paths = None
-        for a in query.where['and']:
+        for a in ands:
             rev = coalesce(rev, a.eq.revision)
             paths = unwraplist(coalesce(paths, a['in'].path, a.eq.path))
 
         paths = listwrap(paths)
         # RETURN TUIDS
-        response = service.get_tuids_from_files(paths, rev)
+        response = service.get_tuids_from_files(revision=rev, files=paths)
         return Response(
             _stream_table(response),
             status=200,
@@ -114,11 +114,11 @@ def _map_to_array(pairs):
     :return:
     """
     if pairs:
-        pairs = map(TuidMap, pairs)
-        sorted = sort_using_key(pairs, lambda p: p.line)
-        tuids = [None] * sorted[-1].line
-        for p in sorted:
-            tuids[p.line] = p.tuid
+        pairs = [TuidMap(*p) for p in pairs]
+        max_line = max(p.line for p in pairs)
+        tuids = [None] * max_line
+        for p in pairs:
+            tuids[p.line-1] = p.tuid
         return tuids
     else:
         return None
