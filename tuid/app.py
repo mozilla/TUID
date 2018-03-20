@@ -20,6 +20,7 @@ from mo_json import value2json, json2value
 from mo_logs import Log
 from mo_logs import constants, startup
 from mo_logs.strings import utf82unicode, unicode2utf8
+from mo_times import Timer
 
 from mo_future import sort_using_key
 from pyLibrary.env.flask_wrappers import gzip_wrapper, cors_wrapper
@@ -74,7 +75,9 @@ def tuid_endpoint(path):
 
         paths = listwrap(paths)
         # RETURN TUIDS
-        response = service.get_tuids_from_files(revision=rev, files=paths)
+        with Timer("tuid internal response time"):
+            response = service.get_tuids_from_files(revision=rev, files=paths)
+
         return Response(
             _stream_table(response),
             status=200,

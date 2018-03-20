@@ -48,13 +48,21 @@ def _upgrade():
     global sqlite3
 
     try:
+        Log.error("no upgrade")
         import sys
-        Log.error("Fix to work with 64bit windows too")
-        original_dll = File.new_instance(sys.exec_prefix, "dlls/sqlite3.dll")
-        source_dll = File("vendor/pyLibrary/vendor/sqlite/sqlite3.dll")
-        if not all(a==b for a, b in zip_longest(source_dll.read_bytes(), original_dll.read_bytes())):
-            backup = original_dll.backup()
-            File.copy(source_dll, original_dll)
+        import platform
+        if "windows" in platform.system().lower():
+            original_dll = File.new_instance(sys.exec_prefix, "dlls/sqlite3.dll")
+            if platform.architecture()[0]=='32bit':
+                source_dll = File("vendor/pyLibrary/vendor/sqlite/sqlite3_32.dll")
+            else:
+                source_dll = File("vendor/pyLibrary/vendor/sqlite/sqlite3_64.dll")
+
+            if not all(a == b for a, b in zip_longest(source_dll.read_bytes(), original_dll.read_bytes())):
+                original_dll.backup()
+                File.copy(source_dll, original_dll)
+        else:
+            pass
     except Exception as e:
         Log.warning("could not upgrade python's sqlite", cause=e)
 
