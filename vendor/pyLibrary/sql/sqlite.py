@@ -93,6 +93,7 @@ class Sqlite(DB):
         self.worker = Thread.run("sqlite db thread", self._worker)
         self.get_trace = TRACE
         self.upgrade = upgrade
+        self.closed = False
 
     def _enhancements(self):
         def regex(pattern, value):
@@ -119,6 +120,8 @@ class Sqlite(DB):
         :param command: COMMAND FOR SQLITE
         :return: Signal FOR IF YOU WANT TO BE NOTIFIED WHEN DONE
         """
+        if self.closed:
+            Log.error("database is closed")
         if DEBUG_EXECUTE:  # EXECUTE IMMEDIATELY FOR BETTER STACK TRACE
             self.query(command)
             return DONE
@@ -134,9 +137,11 @@ class Sqlite(DB):
 
     def commit(self):
         """
-        SYNCHRONOUS CALL, ENSURING ALL PREVIOUS execute() CALLS ARE COMPLETED
+        WILL BLOCK CALLING THREAD UNTIL ALL PREVIOUS execute() CALLS ARE COMPLETED
         :return:
         """
+        if self.closed:
+            Log.error("database is closed")
         signal = _allocate_lock()
         signal.acquire()
         self.queue.add((COMMIT, None, signal, None))
@@ -149,6 +154,8 @@ class Sqlite(DB):
         :param command: COMMAND FOR SQLITE
         :return: list OF RESULTS
         """
+        if self.closed:
+            Log.error("database is closed")
         if not self.worker:
             self.worker = Thread.run("sqlite db thread", self._worker)
 
@@ -160,6 +167,26 @@ class Sqlite(DB):
         if result.exception:
             Log.error("Problem with Sqlite call", cause=result.exception)
         return result
+
+    def close(self):
+        """
+        OPTIONAL COMMIT-AND-CLOSE
+        IF THIS IS NOT DONE, THEN THE THREAD THAT SPAWNED THIS INSTANCE
+        :return:
+        """
+        self.closed = True
+        signal = _allocate_lock()
+        signal.acquire()
+        self.queue.add((COMMIT, None, signal, None))
+        signal.acquire()
+        self.worker.please_stop.go()
+        return
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     def _worker(self, please_stop):
         global _load_extension_warning_sent
@@ -249,6 +276,7 @@ class Sqlite(DB):
             if not please_stop:
                 Log.warning("Problem with sql thread", cause=e)
         finally:
+            self.closed = True
             if DEBUG:
                 Log.note("Database is closed")
             self.db.close()
