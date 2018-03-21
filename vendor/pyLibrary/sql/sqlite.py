@@ -179,8 +179,11 @@ class Sqlite(DB):
                         _load_extension_warning_sent = True
                         Log.warning("Could not load {{file}}}, doing without. (no SQRT for you!)", file=full_path, cause=e)
 
-            while not please_stop:
-                command, result, signal, trace = self.queue.pop(till=please_stop)
+            while True:
+                quad = self.queue.pop(till=please_stop)
+                if quad is None:
+                    break
+                command, result, signal, trace = quad
 
                 show_timing = False
                 if DEBUG_INSERT and command.strip().lower().startswith("insert"):
