@@ -190,7 +190,7 @@ class Sqlite(DB):
                         _load_extension_warning_sent = True
                         Log.warning("Could not load {{file}}}, doing without. (no SQRT for you!)", file=full_path, cause=e)
 
-            while please_stop:
+            while not please_stop:
                 quad = self.queue.pop(till=please_stop)
                 if quad is None:
                     break

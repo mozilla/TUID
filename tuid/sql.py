@@ -19,7 +19,7 @@ class Sql:
         return self.db.execute(sql)
 
     def commit(self):
-        pass  # Sqlite is in auto-commit mode
+        self.db.commit()
 
     def get(self,sql,params=None):
         if params:
