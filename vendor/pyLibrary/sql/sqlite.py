@@ -132,6 +132,17 @@ class Sqlite(DB):
         self.queue.add((command, None, is_done, trace))
         return is_done
 
+    def commit(self):
+        """
+        SYNCHRONOUS CALL, ENSURING ALL PREVIOUS execute() CALLS ARE COMPLETED
+        :return:
+        """
+        signal = _allocate_lock()
+        signal.acquire()
+        self.queue.add((COMMIT, None, signal, None))
+        signal.acquire()
+        return
+
     def query(self, command):
         """
         WILL BLOCK CALLING THREAD UNTIL THE command IS COMPLETED
@@ -179,7 +190,7 @@ class Sqlite(DB):
                         _load_extension_warning_sent = True
                         Log.warning("Could not load {{file}}}, doing without. (no SQRT for you!)", file=full_path, cause=e)
 
-            while True:
+            while please_stop:
                 quad = self.queue.pop(till=please_stop)
                 if quad is None:
                     break
@@ -193,10 +204,12 @@ class Sqlite(DB):
                     Log.note("Running command\n{{command|limit(100)|indent}}", command=command)
                     show_timing = True
                 with Timer("SQL Timing", silent=not show_timing):
-                    if signal is not None:
+                    if command is COMMIT:
+                        self.db.commit()
+                        signal.release()
+                    elif signal is not None:
                         try:
                             curr = self.db.execute(command)
-                            self.db.commit()
                             if result is not None:
                                 result.meta.format = "table"
                                 result.header = [d[0] for d in curr.description] if curr.description else None
@@ -223,7 +236,6 @@ class Sqlite(DB):
                     else:
                         try:
                             self.db.execute(command)
-                            self.db.commit()
                         except Exception as e:
                             e = Except.wrap(e)
                             e.cause = Except(
@@ -239,7 +251,6 @@ class Sqlite(DB):
         finally:
             if DEBUG:
                 Log.note("Database is closed")
-            self.db.commit()
             self.db.close()
 
     def quote_column(self, column_name, table=None):
@@ -296,3 +307,6 @@ def join_column(a, b):
     a = quote_column(a)
     b = quote_column(b)
     return SQL(a.template.rstrip() + "." + b.template.lstrip())
+
+
+COMMIT = "commit"

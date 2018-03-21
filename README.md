@@ -33,6 +33,13 @@ After cloning the repo into `~/TUID`:
     set PYTHONPATH=.;vendor
     python -m pytest .\tests
 
+**Just one test**
+
+Some tests take long, and you want to run just one of them. Here is an example:
+
+    python-m pytest tests\test_basic.py::test_one_http_call_required
+
+
 ## Running the web service
 
 You can run the web service locally with 
