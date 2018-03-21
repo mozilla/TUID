@@ -16,9 +16,12 @@ from mo_logs import Log
 
 from mo_future import text_type
 from mo_hg.hg_mozilla_org import HgMozillaOrg
+from mo_hg.parse import diff_to_moves
 from pyLibrary.env import http
-from pyLibrary.sql.sqlite import quote_value
+from pyLibrary.sql import sql_list
+from pyLibrary.sql.sqlite import quote_value, sql_iso
 from tuid import sql
+from whatthepatch import parse_patch
 
 DEBUG = False
 RETRY = {"times": 3, "sleep": 5}
@@ -94,21 +97,22 @@ class TUIDService:
         );''')
 
         self.conn.execute("CREATE UNIQUE INDEX temporal_rev_file ON temporal(revision, file, line)")
-        Log.note("Table created successfully")
+        self.conn.commit()
+        Log.note("Tables created successfully")
 
 
     # True if dummy, false if not.
     def _dummy_tuid_exists(self, file_name, rev):
         # None means there is no entry.
         return None != self.conn.get_one("select 1 from temporal where file=? and revision=? and line=?",
-                                         (quote_value(file_name), quote_value(rev), 0))
+                                         (file_name, rev, 0))
 
 
     # True if dummy, false if not.
     def _dummy_annotate_exists(self, file_name, rev):
         # None means there is no entry.
         return None != self.conn.get_one("select 1 from annotations where file=? and revision=? and annotation=?",
-                                         (quote_value(file_name), quote_value(rev), quote_value('')))
+                                         (file_name, rev, ''))
 
 
     # Inserts a dummy tuid: (-1,rev,file_name,0)
@@ -116,7 +120,7 @@ class TUIDService:
         if not self._dummy_tuid_exists(file_name, rev):
             self.conn.execute(
                 "INSERT INTO temporal (tuid, revision, file, line) VALUES (?, ?, ?, ?)",
-                (-1, quote_value(rev[:12]), quote_value(file_name), 0)
+                (-1, rev[:12], file_name, 0)
             )
             self.conn.commit()
         return [MISSING]
@@ -127,15 +131,14 @@ class TUIDService:
         if not self._dummy_annotate_exists(file_name, rev):
             self.conn.execute(
                 "INSERT INTO annotations (revision, file, annotation) VALUES (?, ?, ?)",
-                (quote_value(rev[:12]), quote_value(file_name), quote_value(''))
-            )
+                (rev[:12], file_name, ''))
             self.conn.commit()
-        return [(rev[:12],file_name,'')]
+        return [(rev[:12], file_name, '')]
 
 
     # Returns annotation for this file at the given revision.
     def _get_annotation(self, rev, file):
-        return self.conn.get_one(GET_ANNOTATION_QUERY, (quote_value(rev), quote_value(file)))
+        return self.conn.get_one(GET_ANNOTATION_QUERY, (rev, file))
 
 
     def _get_one_tuid(self, cset, path, line):
@@ -149,16 +152,17 @@ class TUIDService:
 
     def _get_past_file_revisions(self, file):
         tmp_result = self.conn.get_one(GET_PAST_MODIFICATIONS, (file,))
-        if tmp_result:
-            return [entry.replace("'", "") for entry in tmp_result[0].split(',')]
+        if tmp_result and tmp_result[0] != '':
+            return list(set([entry.replace("'", "") for entry in tmp_result[0].split(',')]))
         return None
 
 
     def stringify_pastrevs(self, pastrevs):
         return ",".join(pastrevs)
 
+
     def stringify_tuids(self, tuid_list):
-        return "\n".join([','.join([str(ent) for ent in x]) for x in tuid_list])
+        return "\n".join([','.join([str(x.tuid), str(x.line)]) for x in tuid_list])
 
 
     def destringify_tuids(self, tuids_string):
@@ -166,8 +170,24 @@ class TUIDService:
         line_origins = []
         for line in lines:
             entry = line.split(',')
-            line_origins.append((int(entry[0].replace("'", "")), int(entry[1].replace("'", ""))))
+            line_origins.append(TuidMap(int(entry[0].replace("'", "")), int(entry[1].replace("'", ""))))
+        if len(line_origins) == 0:
+            line_origins.append(MISSING)
         return line_origins
+
+    # Returns the diff for a given revision.
+    def get_diff(self, cset):
+        url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/raw-rev/' + cset
+        if DEBUG:
+            Log.note("HG: {{url}}", url=url)
+
+        # Ensure we get the diff before continuing
+        try:
+            diff_object = http.get(url, retry=RETRY)
+        except Exception as e:
+            Log.error("Unexpected error while trying to get diff for: " + url  + " because of {{cause}}", cause=e)
+            return None
+        return diff_to_moves(str(diff_object.content.decode('utf8')))
 
 
     # Gets the TUIDs for the files modified by a revision.
@@ -214,8 +234,8 @@ class TUIDService:
         files = [file.lstrip('/') for file in files]
         frontier_update_list = []
 
-        # TODO: Do this in a single SQL call to database
         total = len(files)
+        latestFileMod_inserts = {}
         for count, file in enumerate(files):
             if DEBUG:
                 Log.note(" {{percent|percent(decimal=0)}}|{{file}}", file=file, percent=count / total)
@@ -226,6 +246,14 @@ class TUIDService:
             already_collected = False
             if past_revisions and revision in past_revisions:
                 already_collected = True
+
+            already_ann = self._get_annotation(revision, file)
+            if already_ann:
+                result.append((file,self.destringify_tuids(already_ann)))
+                continue
+            elif already_ann[0] == '':
+                result.append((file,[MISSING]))
+                continue
 
             if (latest_rev and latest_rev[0] != revision) and not already_collected:
                 if DEBUG:
@@ -244,22 +272,75 @@ class TUIDService:
                 # it's already in there update it with past
                 # revisions.
                 if not latest_rev:
-                    self.conn.execute("""INSERT INTO latestFileMod (file, revision, pastRevisions) VALUES (?,?,?)""",
-                                      (file, revision, ''))
-                    self.conn.commit()
+                    latestFileMod_inserts[file] = (file, revision, '')
+
                 else:
                     if not past_revisions:
                         past_revisions = []
                     past_revisions.append(latest_rev[0])
-                    self.conn.execute("""UPDATE latestFileMod SET pastRevisions=? WHERE file=?""",
-                                      (self.stringify_pastrevs(past_revisions), file))
-                    self.conn.commit()
+                    latestFileMod_inserts[file] = (file, latest_rev[0], self.stringify_pastrevs(past_revisions))
+
+        if len(latestFileMod_inserts) > 0:
+            self.conn.execute("INSERT OR REPLACE INTO latestFileMod (file, revision, pastRevisions) VALUES " + \
+                              sql_list(sql_iso(sql_list(map(quote_value, latestFileMod_inserts[i]))) for i in latestFileMod_inserts))
+            self.conn.commit()
 
         # If we have files that need to have their frontier updated
         if len(frontier_update_list) > 0:
             tmp = self._update_file_frontiers(frontier_update_list,revision)
             result.extend(tmp)
         return result
+
+
+    # Using an annotation ([(tuid,line)] - array
+    # of (tuid,line) tuples), we change the line numbers to
+    # reflect a given diff and return them. diff must
+    # be a diff object returned from get_diff(cset, file).
+    # Only for going forward in time, not back.
+    def _apply_diff(self, annotation, diff, cset, file):
+        # Add all added lines into the DB.
+        list_to_insert = []
+        new_ann = [x for x in annotation]
+        new_ann.sort(key=lambda x: x.line)
+
+        def add_one(tl_tuple, lines):
+            start = tl_tuple.line
+            tmp = [lines[i] for i in range(start-1)]
+            tmp2 = [tl_tuple]
+            tmp2.extend([TuidMap(lines[i].tuid, int(lines[i].line)+1) for i in range(start-1, len(lines))])
+            tmp.extend(tmp2)
+            return tmp
+
+        def remove_one(start, lines):
+            tmp = [lines[i] for i in range(start - 2)]
+            tmp.extend([
+                TuidMap(lines[i].tuid, int(lines[i].line)-1) for i in range(start, len(lines))
+            ])
+            return tmp
+
+        for f_proc in diff:
+            if f_proc['new'].name.lstrip('/') != file:
+                continue
+
+            f_diff = f_proc['changes']
+            for change in f_diff:
+                if change.action == '+':
+                    new_tuid = self.tuid()
+                    new_ann = add_one(TuidMap(new_tuid, change.line+1), new_ann)
+                    list_to_insert.append((new_tuid, cset, file, change.line+1))
+                elif change.action == '-':
+                    new_ann = remove_one(change.line+1, new_ann)
+            break # Found the file, exit searching
+
+        if len(list_to_insert) > 0:
+            self.conn.execute(
+                "INSERT INTO temporal (tuid, revision, file, line)" +
+                " VALUES " +
+                sql_list(sql_iso(sql_list(map(quote_value, tp))) for tp in list_to_insert)
+            )
+            self.conn.commit()
+
+        return new_ann
 
 
     # Update the frontier for all given files,
@@ -287,6 +368,9 @@ class TUIDService:
 
         final_rev = revision  # Revision we are searching from
         csets_proced = 0
+        diffs_cache = {}
+        changed_names = {}
+        removed_files = {}
         if DEBUG:
             Log.note("Searching for the following frontiers: {{csets}}", csets=str([cset for cset in latest_csets]))
         while not found_last_frontier:
@@ -304,20 +388,34 @@ class TUIDService:
                 cset_len12 = clog_cset['node'][:12]
 
                 if still_looking:
+                    if cset_len12 in latest_csets:
+                        # Found a frontier, remove it from search list.
+                        latest_csets[cset_len12] = False
+                        still_looking = any([latest_csets[cs] for cs in latest_csets])
+
+                        if not still_looking:
+                            break
+
                     # If there are still frontiers left to explore,
                     # add the files this node modifies to the processing list.
-                    info_url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-info?node=' + cset_len12
-                    try:
-                        info_obj = http.get_json(info_url, retry=RETRY)
-                    except Exception as e:
-                        Log.error("Unexpected error getting changed files: {{url}}", url=info_url, error=e)
+                    parsed_diff = self.get_diff(cset_len12)
 
-                    # Add the files
-                    for f_added in info_obj[cset_len12]['files']:
-                        if f_added in files_to_process:
-                            files_to_process[f_added].append(cset_len12)
+                    for f_added in parsed_diff:
+                        # Get new entries for removed files.
+                        removed = False
+                        new_name = f_added['new'].name.lstrip('/')
+                        old_name = f_added['old'].name.lstrip('/')
+                        if new_name == 'dev/null':
+                            removed_files[old_name] = True
+                            continue
+                        elif new_name != old_name:
+                            changed_names[old_name] = new_name
+
+                        if new_name in files_to_process:
+                            files_to_process[new_name].append(cset_len12)
                         else:
-                            files_to_process[f_added] = [cset_len12]
+                            files_to_process[new_name] = [cset_len12]
+                    diffs_cache[cset_len12] = parsed_diff
 
                 if cset_len12 in latest_csets:
                     # Found a frontier, remove it from search list.
@@ -343,6 +441,8 @@ class TUIDService:
         # Process each file that needs it based on the
         # files_to_process list.
         result = []
+        ann_inserts = []
+        latestFileMod_inserts = {}
         total = len(frontier_list)
         for count, file_n_rev in enumerate(frontier_list):
             file = file_n_rev[0]
@@ -351,69 +451,98 @@ class TUIDService:
             # If the file was modified, get it's newest
             # annotation and update the file.
             proc_rev = rev
+            proc = False
             if file in files_to_process:
+                proc = True
                 proc_rev = revision
-                Log.note("Frontier update: {{rev}}|{{file}} {{percent|percent(decimal=0)}}", file=file, rev=proc_rev, percent=count / total)
+                Log.note("Frontier update: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ", count=count,
+                                                total=total, file=file, rev=proc_rev, percent=count / total)
 
-            tmp_res = self.get_tuids(file, proc_rev)
+            # Process this file using the diffs found
+            if proc and file not in changed_names and \
+                    file not in removed_files:
+                # Reverse the list, we always find the latest diff first
+                csets_to_proc = files_to_process[file][::-1]
+                old_ann = self.destringify_tuids(self._get_annotation(rev, file))
+
+                # Apply all the diffs
+                tmp_res = old_ann
+                for i in csets_to_proc:
+                    tmp_res = self._apply_diff(tmp_res, diffs_cache[i], i, file)
+
+                ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
+            elif file not in removed_files:
+                tmp_res = self.get_tuids(file, proc_rev)
+            else:
+                # File was removed
+                tmp_res = None
+
             if tmp_res:
                 result.append((file, tmp_res))
                 if proc_rev != revision:
                     # If the file hasn't changed up to this revision,
                     # reinsert all the lines with the same annotate.
-                    insert_list = []
-                    for (tuid, line) in tmp_res:
-                        if not self._get_one_tuid(revision, file, line):
-                            insert_list.append({'node': revision, 'abspath': file, 'targetline': line})
-
-                    if len(insert_list) > 0:
-                        self._update_file_changesets(insert_list)
                     if not self._get_annotation(revision, file):
                         annotate = self.destringify_tuids(self._get_annotation(rev, file))
-                        self.conn.execute("INSERT INTO annotations (revision, file, annotation) VALUES (?,?,?)",
-                                          (quote_value(revision), quote_value(file),
-                                           quote_value(self.stringify_tuids(annotate))))
-                        self.conn.commit()
+                        ann_inserts.append((revision, file, self.stringify_tuids(annotate)))
             else:
                 Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=proc_rev)
+                ann_inserts.append((revision, file, ''))
                 result.append((file, [MISSING]))
 
+            latest_rev = rev
             if csets_proced < max_csets_proc and not still_looking:
-                self.conn.execute("""UPDATE latestFileMod SET revision=? WHERE file=?""", (revision, file))
+                latest_rev = revision
 
             past_revisions = self._get_past_file_revisions(file)
             if past_revisions:
                 past_revisions.append(rev)
             else:
                 past_revisions = [rev]
-            self.conn.execute("""UPDATE latestFileMod SET pastRevisions=? WHERE file=?""",
-                              (self.stringify_pastrevs(past_revisions), file))
-        self.conn.commit()
+            latestFileMod_inserts[file] = (file, latest_rev, self.stringify_pastrevs(past_revisions))
 
+        if len(latestFileMod_inserts) > 0:
+            try:
+                #for i in latestFileMod_inserts:
+                #    print('inserting:' + str(latestFileMod_inserts[i]))
+                #    try:
+                #        self.conn.execute("UPDATE latestFileMod SET revision=?, pastRevisions=? WHERE file=?",
+                #                          map(str, (latestFileMod_inserts[i][1], latestFileMod_inserts[i][2], latestFileMod_inserts[i][0])))
+                #        self.conn.commit()
+                #    except Exception as e:
+                #        Log.error("unexpected", cause=e)
+                self.conn.execute("INSERT OR REPLACE INTO latestFileMod (file, revision, pastRevisions) VALUES " + \
+                          sql_list(sql_iso(sql_list(map(quote_value, latestFileMod_inserts[i]))) for i in latestFileMod_inserts))
+                self.conn.commit()
+            except Exception as e:
+                Log.error("Unknown error...", cause=e)
+
+        if len(ann_inserts) > 0:
+            try:
+                self.conn.execute("INSERT INTO annotations (revision, file, annotation) VALUES " + \
+                          sql_list(sql_iso(sql_list(map(quote_value, i))) for i in ann_inserts))
+                self.conn.commit()
+            except Exception as e:
+                Log.error("Unknown error...", cause=e)
         return result
+
 
     # Inserts new lines from all changesets (this is all that is required).
     def _update_file_changesets(self, annotated_lines):
-        count = 0
-        total = len(annotated_lines)
         quickfill_list = []
 
         for anline in annotated_lines:
-            count += 1
             cset = anline['node'][:12]
-            #if DEBUG:
-            #    Log.note("{{rev}}|{{file}} {{percent|percent(decimal=0)}}", file=anline['abspath'], rev=cset, percent=count / total)
             if not self._get_one_tuid(cset, anline['abspath'], int(anline['targetline'])):
                 quickfill_list.append((cset, anline['abspath'], int(anline['targetline'])))
         self._quick_update_file_changeset(list(set(quickfill_list)))
 
 
     def _quick_update_file_changeset(self, qf_list):
-        for i in qf_list:
-            self.conn.execute(
-                "INSERT INTO temporal (tuid, revision, file, line)" +
-                " VALUES (?, ?, ?, ?)", (self.tuid(), i[0], i[1], i[2])
-            )
+        self.conn.execute(
+            "INSERT INTO temporal (tuid, revision, file, line)" +
+            " VALUES " + sql_list(sql_iso(sql_list(map(quote_value, (self.tuid(), i[0], i[1], i[2])))) for i in qf_list)
+        )
         self.conn.commit()
 
 
@@ -436,6 +565,7 @@ class TUIDService:
         existing_tuids = {}
         tmp_tuids = []
         already_ann = self._get_annotation(revision, file)
+
         # If it's not defined, or there is a dummy record
         if not already_ann:
             if DEBUG:
@@ -476,7 +606,7 @@ class TUIDService:
             # object that are not in the DB.
             if len(annotated_lines) > 0:
                 self._update_file_changesets(annotated_lines)
-        elif len([[x for x in t.split(',')] for t in already_ann[0].splitlines()][0]) < 2:
+        elif already_ann[0] == '':
             return []
         else:
             return self.destringify_tuids(already_ann)
@@ -502,7 +632,8 @@ class TUIDService:
 
         if not already_ann:
             self.conn.execute("INSERT INTO annotations (revision, file, annotation) VALUES (?,?,?)",
-                              (quote_value(revision), quote_value(file), quote_value(self.stringify_tuids(tuids))))
+                              (revision, file,
+                               self.stringify_tuids(tuids)))
             self.conn.commit()
 
         return tuids

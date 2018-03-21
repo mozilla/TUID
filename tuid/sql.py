@@ -16,10 +16,10 @@ class Sql:
         if params:
             for p in params:
                 sql = sql.replace('?', quote_value(p), 1)
-        self.db.execute(sql)
+        return self.db.execute(sql)
 
     def commit(self):
-        pass  # Sqlite is in auto-commit mode
+        self.db.commit()
 
     def get(self,sql,params=None):
         if params:

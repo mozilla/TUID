@@ -11,6 +11,7 @@ from __future__ import unicode_literals
 
 import pytest
 import json
+import os
 from mo_logs import Log
 from mo_times import Timer
 
@@ -160,20 +161,18 @@ def test_get_tuids_from_revision(service):
     tuids = service.get_tuids_from_revision("a6fdd6eae583")
     assert tuids != None
 
+@pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
 def test_many_files_one_revision(service):
-    # Disable on travis
-    assert True
-    return
-
     with open('resources/stressfiles.json', 'r') as f:
         files = json.load(f)
     test_file = ["widget/cocoa/nsCocoaWindow.mm"]
     first_front = "739c536d2cd6"
     test_rev = "159e1105bdc7"
     dir = "/dom/base/"
-    test_file.extend([dir + f for f in files])
+    tmp = [dir + f for f in files]
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
+    test_file.extend(tmp[1:10])
     old = service.get_tuids_from_files(test_file,first_front)
     print("old:")
     for el in old:
@@ -185,25 +184,25 @@ def test_many_files_one_revision(service):
     for el in new:
         print("     "+el[0]+":"+str(len(el[1])))
 
-def test_one_addition_many_files(service):
-    # Disable on travis
-    assert True
-    return
 
+@pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
+def test_one_addition_many_files(service):
     with open('resources/stressfiles.json', 'r') as f:
         files = json.load(f)
     test_file = ["widget/cocoa/nsCocoaWindow.mm"]
     test_rev = "58eb13b394f4"
     dir = "/dom/base/"
-    test_file.extend([dir + f for f in files])
+    tmp = [dir + f for f in files]
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
+    test_file.extend(tmp[1:10])
     new = service.get_tuids_from_files(test_file,test_rev)
     print("new:")
     for el in new:
         print("     "+el[0]+":"+str(len(el[1])))
 
 
+@pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
 def test_one_http_call_required(service):
     files =[
         "/browser/base/content/test/general/browser_bug423833.js",
@@ -322,25 +321,57 @@ def test_one_http_call_required(service):
         "/tools/lint/eslint/eslint-plugin-mozilla/tests/no-cpows-in-tests.js"  # DOES NOT EXIST IN NEWER REVISION
     ]
 
-    # SETUP
-    service.get_tuids_from_files(files, "d63ed14ed622")
+    non_existent = {
+        "tools/lint/eslint/eslint-plugin-mozilla/lib/rules/no-cpows-in-tests.js": 1,
+        "tools/lint/eslint/eslint-plugin-mozilla/tests/no-cpows-in-tests.js": 1
+    }
 
-    # BE SUREWE HAVE NOTHING IN THE LOCAL DB
-    service.conn.execute("DELETE FROM annotations WHERE revision='14dc6342ec50'")
-    service.conn.execute("DELETE FROM temporal WHERE revision='14dc6342ec50'")
-    service.conn.commit()
+    changed_files = {
+        'browser/components/search/test/browser_aboutSearchReset.js':
+            {'changes': {'removed': [67, 86, 119], 'added': []}},
+        'toolkit/components/narrate/test/browser_voiceselect.js':
+            {'changes': {'removed': [6, 7], 'added': []}},
+        'toolkit/components/narrate/test/browser_word_highlight.js':
+            {'changes': {'removed': [6, 7], 'added': []}},
+    }
+
+    # SETUP
+    proc_files = files[-10:] + [k for k in changed_files]
+    Log.note("Number of files to process: {{flen}}", flen=len(files))
+    first_f_n_tuids = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "d63ed14ed622")
 
     # THIS NEXT CALL SHOULD BE FAST, DESPITE THE LACK OF LOCAL CACHE
     start = http.request_count
     timer = Timer("get next revision")
     with timer:
-        service.get_tuids_from_files(files, "14dc6342ec50")
+        f_n_tuids = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "14dc6342ec50")
     num_http_calls = http.request_count - start
 
-    assert num_http_calls <= 1
+    assert num_http_calls <= 2
     assert timer.duration.seconds < 30
-    # TODO: ALSO VERIFY THE TUIDS ARE MATCH AS EXPECTED (AND NOW-MISSING FILES HAVE ZERO TUIDS)
 
+    # TODO: ALSO VERIFY THE TUIDS ARE MATCH AS EXPECTED
+    assert len(proc_files)+1 == len(f_n_tuids)
+
+    for (fname, tuids) in f_n_tuids:
+        if fname in non_existent:
+            assert len(tuids) == 1
+            assert tuids[0].line == 0
+            assert tuids[0].tuid == -1
+
+    for (fname, tuids) in first_f_n_tuids:
+        if fname in changed_files:
+            rmed = changed_files[fname]['changes']['removed']
+            tmp_ts = {}
+            for tmap in tuids:
+                if tmap.line in rmed:
+                    tmp_ts[str(tmap.line)] = tmap.tuid
+
+            for (fname2, tuids) in f_n_tuids:
+                if fname == fname2:
+                    for tmap in tuids:
+                        if str(tmap.line) in tmp_ts:
+                            assert tmap.tuid != tmp_ts[str(tmap.line)]
 
 def test_long_file(service):
     timer = Timer("test", silent=True)
