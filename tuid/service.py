@@ -170,6 +170,8 @@ class TUIDService:
         for line in lines:
             entry = line.split(',')
             line_origins.append(TuidMap(int(entry[0].replace("'", "")), int(entry[1].replace("'", ""))))
+        if len(line_origins) == 0:
+            line_origins.append(MISSING)
         return line_origins
 
     # Returns the diff for a given revision.
@@ -244,6 +246,14 @@ class TUIDService:
             if past_revisions and revision in past_revisions:
                 already_collected = True
 
+            already_ann = self._get_annotation(revision, file)
+            if already_ann:
+                result.append((file,self.destringify_tuids(already_ann)))
+                continue
+            elif already_ann[0] == '':
+                result.append((file,[MISSING]))
+                continue
+
             if (latest_rev and latest_rev[0] != revision) and not already_collected:
                 if DEBUG:
                     Log.note("Will update frontier for file {{file}}.", file=file)
@@ -290,31 +300,35 @@ class TUIDService:
         # Add all added lines into the DB.
         list_to_insert = []
         new_ann = [x for x in annotation]
-        new_ann.sort(key=lambda x: x[1])
+        new_ann.sort(key=lambda x: x.line)
 
         def add_one(tl_tuple, lines):
-            start = tl_tuple[0]
-            return [lines[i] for i in range(start-1)].extend([tl_tuple].extend([
-                                (lines[i][0], int(lines[i][1])+1) for i in range(start-1, len(lines))
-                             ]))
+            start = tl_tuple.line
+            tmp = [lines[i] for i in range(start-1)]
+            tmp2 = [tl_tuple]
+            tmp2.extend([TuidMap(lines[i].tuid, int(lines[i].line)+1) for i in range(start-1, len(lines))])
+            tmp.extend(tmp2)
+            return tmp
 
         def remove_one(start, lines):
-            return [lines[i] for i in range(start-2)].extend([
-                                 (lines[i][0], int(lines[i][1])-1) for i in range(start, len(lines))
-                             ])
+            tmp = [lines[i] for i in range(start - 2)]
+            tmp.extend([
+                TuidMap(lines[i].tuid, int(lines[i].line)-1) for i in range(start, len(lines))
+            ])
+            return tmp
 
         for f_proc in diff:
-            if f_proc['new'].name != file:
+            if f_proc['new'].name.lstrip('/') != file:
                 continue
 
             f_diff = f_proc['changes']
             for change in f_diff:
                 if change.action == '+':
                     new_tuid = self.tuid()
-                    new_ann = add_one((new_tuid, change.line), new_ann)
-                    list_to_insert.append((new_tuid, cset, file, change.line))
+                    new_ann = add_one(TuidMap(new_tuid, change.line+1), new_ann)
+                    list_to_insert.append((new_tuid, cset, file, change.line+1))
                 elif change.action == '-':
-                    new_ann = remove_one(change.line, new_ann)
+                    new_ann = remove_one(change.line+1, new_ann)
             break # Found the file, exit searching
 
         if len(list_to_insert) > 0:
@@ -396,10 +410,8 @@ class TUIDService:
                         elif new_name != old_name:
                             changed_names[old_name] = new_name
 
-                        if new_name in files_to_process and not removed:
+                        if new_name in files_to_process:
                             files_to_process[new_name].append(cset_len12)
-                        elif removed:
-                            files_to_process[old_name].append(cset_len12)
                         else:
                             files_to_process[new_name] = [cset_len12]
                     diffs_cache[cset_len12] = parsed_diff
@@ -469,18 +481,12 @@ class TUIDService:
                 if proc_rev != revision:
                     # If the file hasn't changed up to this revision,
                     # reinsert all the lines with the same annotate.
-                    insert_list = []
-                    for (tuid, line) in tmp_res:
-                        if not self._get_one_tuid(revision, file, line):
-                            insert_list.append({'node': revision, 'abspath': file, 'targetline': line})
-
-                    if len(insert_list) > 0:
-                        self._update_file_changesets(insert_list)
                     if not self._get_annotation(revision, file):
                         annotate = self.destringify_tuids(self._get_annotation(rev, file))
                         ann_inserts.append((revision, file, self.stringify_tuids(annotate)))
             else:
                 Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=proc_rev)
+                ann_inserts.append((revision, file, ''))
                 result.append((file, [MISSING]))
 
             latest_rev = rev
@@ -495,13 +501,28 @@ class TUIDService:
             latestFileMod_inserts[file] = (file, latest_rev, self.stringify_pastrevs(past_revisions))
 
         if len(latestFileMod_inserts) > 0:
-            self.conn.execute("INSERT OR REPLACE INTO latestFileMod (file, revision, pastRevisions) VALUES " + \
-                              sql_list(sql_iso(sql_list(map(quote_value, latestFileMod_inserts[i]))) for i in latestFileMod_inserts))
-        if len(ann_inserts) > 0:
-            self.conn.execute("INSERT INTO annotations (revision, file, annotation) VALUES " + \
-                              sql_list(sql_iso(sql_list(map(quote_value, i))) for i in ann_inserts))
-        self.conn.commit()
+            try:
+                #for i in latestFileMod_inserts:
+                #    print('inserting:' + str(latestFileMod_inserts[i]))
+                #    try:
+                #        self.conn.execute("UPDATE latestFileMod SET revision=?, pastRevisions=? WHERE file=?",
+                #                          map(str, (latestFileMod_inserts[i][1], latestFileMod_inserts[i][2], latestFileMod_inserts[i][0])))
+                #        self.conn.commit()
+                #    except Exception as e:
+                #        Log.error("unexpected", cause=e)
+                self.conn.execute("INSERT OR REPLACE INTO latestFileMod (file, revision, pastRevisions) VALUES " + \
+                          sql_list(sql_iso(sql_list(map(quote_value, latestFileMod_inserts[i]))) for i in latestFileMod_inserts))
+                self.conn.commit()
+            except Exception as e:
+                Log.error("Unknown error...", cause=e)
 
+        if len(ann_inserts) > 0:
+            try:
+                self.conn.execute("INSERT INTO annotations (revision, file, annotation) VALUES " + \
+                          sql_list(sql_iso(sql_list(map(quote_value, i))) for i in ann_inserts))
+                self.conn.commit()
+            except Exception as e:
+                Log.error("Unknown error...", cause=e)
         return result
 
 

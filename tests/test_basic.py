@@ -321,21 +321,57 @@ def test_one_http_call_required(service):
         "/tools/lint/eslint/eslint-plugin-mozilla/tests/no-cpows-in-tests.js"  # DOES NOT EXIST IN NEWER REVISION
     ]
 
+    non_existent = {
+        "tools/lint/eslint/eslint-plugin-mozilla/lib/rules/no-cpows-in-tests.js": 1,
+        "tools/lint/eslint/eslint-plugin-mozilla/tests/no-cpows-in-tests.js": 1
+    }
+
+    changed_files = {
+        'browser/components/search/test/browser_aboutSearchReset.js':
+            {'changes': {'removed': [67, 86, 119], 'added': []}},
+        'toolkit/components/narrate/test/browser_voiceselect.js':
+            {'changes': {'removed': [6, 7], 'added': []}},
+        'toolkit/components/narrate/test/browser_word_highlight.js':
+            {'changes': {'removed': [6, 7], 'added': []}},
+    }
+
     # SETUP
+    proc_files = files[-10:] + [k for k in changed_files]
     Log.note("Number of files to process: {{flen}}", flen=len(files))
-    service.get_tuids_from_files(['/dom/base/Link.cpp']+files, "d63ed14ed622")
+    first_f_n_tuids = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "d63ed14ed622")
 
     # THIS NEXT CALL SHOULD BE FAST, DESPITE THE LACK OF LOCAL CACHE
     start = http.request_count
     timer = Timer("get next revision")
     with timer:
-        service.get_tuids_from_files(['/dom/base/Link.cpp']+files, "14dc6342ec50")
+        f_n_tuids = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "14dc6342ec50")
     num_http_calls = http.request_count - start
 
     assert num_http_calls <= 2
     assert timer.duration.seconds < 30
-    # TODO: ALSO VERIFY THE TUIDS ARE MATCH AS EXPECTED (AND NOW-MISSING FILES HAVE ZERO TUIDS)
 
+    # TODO: ALSO VERIFY THE TUIDS ARE MATCH AS EXPECTED
+    assert len(proc_files)+1 == len(f_n_tuids)
+
+    for (fname, tuids) in f_n_tuids:
+        if fname in non_existent:
+            assert len(tuids) == 1
+            assert tuids[0].line == 0
+            assert tuids[0].tuid == -1
+
+    for (fname, tuids) in first_f_n_tuids:
+        if fname in changed_files:
+            rmed = changed_files[fname]['changes']['removed']
+            tmp_ts = {}
+            for tmap in tuids:
+                if tmap.line in rmed:
+                    tmp_ts[str(tmap.line)] = tmap.tuid
+
+            for (fname2, tuids) in f_n_tuids:
+                if fname == fname2:
+                    for tmap in tuids:
+                        if str(tmap.line) in tmp_ts:
+                            assert tmap.tuid != tmp_ts[str(tmap.line)]
 
 def test_long_file(service):
     timer = Timer("test", silent=True)
