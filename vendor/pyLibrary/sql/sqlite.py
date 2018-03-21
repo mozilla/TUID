@@ -184,10 +184,10 @@ class Sqlite(DB):
 
                 show_timing = False
                 if DEBUG_INSERT and command.strip().lower().startswith("insert"):
-                    Log.note("Running command\n{{command|indent}}", command=command)
+                    Log.note("Running command\n{{command|limit(100)|indent}}", command=command)
                     show_timing = True
                 if DEBUG and not command.strip().lower().startswith("insert"):
-                    Log.note("Running command\n{{command|indent}}", command=command)
+                    Log.note("Running command\n{{command|limit(100)|indent}}", command=command)
                     show_timing = True
                 with Timer("SQL Timing", silent=not show_timing):
                     if signal is not None:

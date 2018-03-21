@@ -96,8 +96,9 @@ class TUIDService:
             PRIMARY KEY(file)
         );''')
 
-        self.conn.execute("CREATE UNIQUE INDEX temporal_rev_file ON temporal(revision, file, line)")
-        Log.note("Table created successfully")
+        is_done = self.conn.execute("CREATE UNIQUE INDEX temporal_rev_file ON temporal(revision, file, line)")
+        is_done.wait()
+        Log.note("Tables created successfully")
 
 
     # True if dummy, false if not.
