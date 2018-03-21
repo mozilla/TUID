@@ -293,7 +293,7 @@ class TUIDService:
 
 
     # Using an annotation ([(tuid,line)] - array
-    # of (tuid,line) tuples), we change the line numbers to
+    # of TuidMap objects), we change the line numbers to
     # reflect a given diff and return them. diff must
     # be a diff object returned from get_diff(cset, file).
     # Only for going forward in time, not back.
@@ -305,18 +305,10 @@ class TUIDService:
 
         def add_one(tl_tuple, lines):
             start = tl_tuple.line
-            tmp = [lines[i] for i in range(start-1)]
-            tmp2 = [tl_tuple]
-            tmp2.extend([TuidMap(lines[i].tuid, int(lines[i].line)+1) for i in range(start-1, len(lines))])
-            tmp.extend(tmp2)
-            return tmp
+            return lines[:start - 1] + [tl_tuple] + [TuidMap(tmap.tuid, int(tmap.line) + 1) for tmap in lines[start - 1:]]
 
         def remove_one(start, lines):
-            tmp = [lines[i] for i in range(start - 2)]
-            tmp.extend([
-                TuidMap(lines[i].tuid, int(lines[i].line)-1) for i in range(start, len(lines))
-            ])
-            return tmp
+            return lines[:start - 2] + [TuidMap(tmap.tuid, int(tmap.line) - 1) for tmap in lines[start:]]
 
         for f_proc in diff:
             if f_proc['new'].name.lstrip('/') != file:
@@ -402,7 +394,6 @@ class TUIDService:
 
                     for f_added in parsed_diff:
                         # Get new entries for removed files.
-                        removed = False
                         new_name = f_added['new'].name.lstrip('/')
                         old_name = f_added['old'].name.lstrip('/')
                         if new_name == 'dev/null':
@@ -503,24 +494,20 @@ class TUIDService:
 
         if len(latestFileMod_inserts) > 0:
             try:
-                #for i in latestFileMod_inserts:
-                #    print('inserting:' + str(latestFileMod_inserts[i]))
-                #    try:
-                #        self.conn.execute("UPDATE latestFileMod SET revision=?, pastRevisions=? WHERE file=?",
-                #                          map(str, (latestFileMod_inserts[i][1], latestFileMod_inserts[i][2], latestFileMod_inserts[i][0])))
-                #        self.conn.commit()
-                #    except Exception as e:
-                #        Log.error("unexpected", cause=e)
-                self.conn.execute("INSERT OR REPLACE INTO latestFileMod (file, revision, pastRevisions) VALUES " + \
-                          sql_list(sql_iso(sql_list(map(quote_value, latestFileMod_inserts[i]))) for i in latestFileMod_inserts))
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO latestFileMod (file, revision, pastRevisions) VALUES " +
+                    sql_list(sql_iso(sql_list(map(quote_value, latestFileMod_inserts[i]))) for i in latestFileMod_inserts)
+                )
                 self.conn.commit()
             except Exception as e:
                 Log.error("Unknown error...", cause=e)
 
         if len(ann_inserts) > 0:
             try:
-                self.conn.execute("INSERT INTO annotations (revision, file, annotation) VALUES " + \
-                          sql_list(sql_iso(sql_list(map(quote_value, i))) for i in ann_inserts))
+                self.conn.execute(
+                    "INSERT INTO annotations (revision, file, annotation) VALUES " +
+                    sql_list(sql_iso(sql_list(map(quote_value, i))) for i in ann_inserts)
+                )
                 self.conn.commit()
             except Exception as e:
                 Log.error("Unknown error...", cause=e)
@@ -541,7 +528,8 @@ class TUIDService:
     def _quick_update_file_changeset(self, qf_list):
         self.conn.execute(
             "INSERT INTO temporal (tuid, revision, file, line)" +
-            " VALUES " + sql_list(sql_iso(sql_list(map(quote_value, (self.tuid(), i[0], i[1], i[2])))) for i in qf_list)
+            " VALUES " +
+            sql_list(sql_iso(sql_list(map(quote_value, (self.tuid(), i[0], i[1], i[2])))) for i in qf_list)
         )
         self.conn.commit()
 
@@ -607,7 +595,7 @@ class TUIDService:
             if len(annotated_lines) > 0:
                 self._update_file_changesets(annotated_lines)
         elif already_ann[0] == '':
-            return []
+            return [MISSING]
         else:
             return self.destringify_tuids(already_ann)
 
@@ -631,9 +619,14 @@ class TUIDService:
                 Log.note("Unexpected error searching {{cause}}", cause=e)
 
         if not already_ann:
-            self.conn.execute("INSERT INTO annotations (revision, file, annotation) VALUES (?,?,?)",
-                              (revision, file,
-                               self.stringify_tuids(tuids)))
+            self.conn.execute(
+                "INSERT INTO annotations (revision, file, annotation) VALUES (?,?,?)",
+                (
+                    revision,
+                    file,
+                    self.stringify_tuids(tuids)
+                )
+            )
             self.conn.commit()
 
         return tuids
