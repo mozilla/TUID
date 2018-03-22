@@ -21,17 +21,9 @@ from pyLibrary.env import http
 from pyLibrary.sql import sql_list
 from pyLibrary.sql.sqlite import quote_value, sql_iso
 from tuid import sql
-from whatthepatch import parse_patch
 
 DEBUG = False
 RETRY = {"times": 3, "sleep": 5}
-
-GET_LINES_QUERY = (
-    "SELECT tuid, line" +
-    " FROM temporal" +
-    " WHERE file=? and revision=?" +
-    " ORDER BY line"
-)
 
 GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE file=? and revision=? and line=?"
 
@@ -123,7 +115,7 @@ class TUIDService:
                 (-1, rev[:12], file_name, 0)
             )
             self.conn.commit()
-        return [MISSING]
+        return MISSING
 
 
     # Inserts annotation dummy: (rev, '')
@@ -171,8 +163,6 @@ class TUIDService:
         for line in lines:
             entry = line.split(',')
             line_origins.append(TuidMap(int(entry[0].replace("'", "")), int(entry[1].replace("'", ""))))
-        if len(line_origins) == 0:
-            line_origins.append(MISSING)
         return line_origins
 
     # Returns the diff for a given revision.
@@ -210,7 +200,7 @@ class TUIDService:
                 result.append((file, tmp_res))
             else:
                 Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=revision)
-                result.append((file, [MISSING]))
+                result.append((file, []))
         return result
 
 
@@ -243,19 +233,19 @@ class TUIDService:
             latest_rev = self._get_latest_revision(file)
             past_revisions = self._get_past_file_revisions(file)
 
-            already_collected = False
-            if past_revisions and revision in past_revisions:
-                already_collected = True
+            #already_collected = False
+            #if past_revisions and revision in past_revisions:
+            #    already_collected = True
 
             already_ann = self._get_annotation(revision, file)
             if already_ann:
                 result.append((file,self.destringify_tuids(already_ann)))
                 continue
             elif already_ann[0] == '':
-                result.append((file,[MISSING]))
+                result.append((file,[]))
                 continue
 
-            if (latest_rev and latest_rev[0] != revision) and not already_collected:
+            if (latest_rev and latest_rev[0] != revision):# and not already_collected:
                 if DEBUG:
                     Log.note("Will update frontier for file {{file}}.", file=file)
                 frontier_update_list.append((file, latest_rev[0]))
@@ -265,15 +255,14 @@ class TUIDService:
                     result.append((file, tmp_res))
                 else:
                     Log.note("Error occured for file " + file + " in revision " + revision)
-                    result.append((file, [MISSING]))
+                    result.append((file, []))
 
                 # If this file has not been seen before,
                 # add it to the latest modifications, else
-                # it's already in there update it with past
+                # it's already in there so update its past
                 # revisions.
                 if not latest_rev:
                     latestFileMod_inserts[file] = (file, revision, '')
-
                 else:
                     if not past_revisions:
                         past_revisions = []
@@ -317,7 +306,9 @@ class TUIDService:
             f_diff = f_proc['changes']
             for change in f_diff:
                 if change.action == '+':
-                    new_tuid = self.tuid()
+                    new_tuid = self._get_one_tuid(cset, file, change.line+1)
+                    if not new_tuid:
+                        new_tuid = self.tuid()
                     new_ann = add_one(TuidMap(new_tuid, change.line+1), new_ann)
                     list_to_insert.append((new_tuid, cset, file, change.line+1))
                 elif change.action == '-':
@@ -356,6 +347,8 @@ class TUIDService:
         latest_csets = {cset: True for cset in list(set([rev for (file,rev) in frontier_list]))}
         found_last_frontier = False
         if len(latest_csets) <= 1 and frontier_list[0][1] == revision:
+            # If the latest revision is the requested revision,
+            # continue to the tuid querys.
             found_last_frontier = True
 
         final_rev = revision  # Revision we are searching from
@@ -396,6 +389,7 @@ class TUIDService:
                         # Get new entries for removed files.
                         new_name = f_added['new'].name.lstrip('/')
                         old_name = f_added['old'].name.lstrip('/')
+
                         if new_name == 'dev/null':
                             removed_files[old_name] = True
                             continue
@@ -449,10 +443,11 @@ class TUIDService:
                 Log.note("Frontier update: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ", count=count,
                                                 total=total, file=file, rev=proc_rev, percent=count / total)
 
-            # Process this file using the diffs found
             if proc and file not in changed_names and \
                     file not in removed_files:
-                # Reverse the list, we always find the latest diff first
+                # Process this file using the diffs found
+
+                # Reverse the list, we always find the newest diff first
                 csets_to_proc = files_to_process[file][::-1]
                 old_ann = self.destringify_tuids(self._get_annotation(rev, file))
 
@@ -463,6 +458,8 @@ class TUIDService:
 
                 ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
             elif file not in removed_files:
+                # File is new, or the name was changed (we need to create
+                # a new initial entry for this file).
                 tmp_res = self.get_tuids(file, proc_rev)
             else:
                 # File was removed
@@ -472,19 +469,25 @@ class TUIDService:
                 result.append((file, tmp_res))
                 if proc_rev != revision:
                     # If the file hasn't changed up to this revision,
-                    # reinsert all the lines with the same annotate.
+                    # reinsert it with the same previous annotate.
                     if not self._get_annotation(revision, file):
                         annotate = self.destringify_tuids(self._get_annotation(rev, file))
                         ann_inserts.append((revision, file, self.stringify_tuids(annotate)))
             else:
                 Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=proc_rev)
                 ann_inserts.append((revision, file, ''))
-                result.append((file, [MISSING]))
+                result.append((file, []))
 
             latest_rev = rev
             if csets_proced < max_csets_proc and not still_looking:
+                # If we have found all frontiers, update to the
+                # latest revision. Otherwise, the requested
+                # revision is too far away (can't be sure
+                # if it's past).
                 latest_rev = revision
 
+            # Get any past revisions, and include the previous
+            # latest in it.
             past_revisions = self._get_past_file_revisions(file)
             if past_revisions:
                 past_revisions.append(rev)
@@ -595,7 +598,7 @@ class TUIDService:
             if len(annotated_lines) > 0:
                 self._update_file_changesets(annotated_lines)
         elif already_ann[0] == '':
-            return [MISSING]
+            return []
         else:
             return self.destringify_tuids(already_ann)
 
