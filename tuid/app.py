@@ -74,7 +74,7 @@ def tuid_endpoint(path):
 
         paths = listwrap(paths)
         # RETURN TUIDS
-        with Timer("tuid internal response time"):
+        with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
             response = service.get_tuids_from_files(revision=rev, files=paths)
 
         if query.format == 'list':
@@ -108,9 +108,11 @@ def _stream_table(files):
 
 
 def _stream_list(files):
-    yield b'{"format":"list", "data":['
+    sep = b'{"format":"list", "data":['
     for f, pairs in files:
+        yield sep
         yield value2json({"path": f, "tuids": _map_to_array(pairs)}).encode('utf8')
+        sep = b","
     yield b']}'
 
 
