@@ -172,7 +172,7 @@ def test_many_files_one_revision(service):
     tmp = [dir + f for f in files]
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    test_file.extend(tmp[1:10])
+    test_file.extend(tmp)
     old = service.get_tuids_from_files(test_file,first_front)
     print("old:")
     for el in old:
@@ -326,6 +326,8 @@ def test_one_http_call_required(service):
         "tools/lint/eslint/eslint-plugin-mozilla/tests/no-cpows-in-tests.js": 1
     }
 
+    # TODO: Check files with added/changed lines.
+    # TODO: Check files which should not have changed.
     changed_files = {
         'browser/components/search/test/browser_aboutSearchReset.js':
             {'changes': {'removed': [67, 86, 119], 'added': []}},
@@ -336,7 +338,7 @@ def test_one_http_call_required(service):
     }
 
     # SETUP
-    proc_files = files[-10:] + [k for k in changed_files]
+    proc_files = files #[-10:] + [k for k in changed_files] # Useful in testing
     Log.note("Number of files to process: {{flen}}", flen=len(files))
     first_f_n_tuids = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "d63ed14ed622")
 
@@ -350,14 +352,11 @@ def test_one_http_call_required(service):
     assert num_http_calls <= 2
     assert timer.duration.seconds < 30
 
-    # TODO: ALSO VERIFY THE TUIDS ARE MATCH AS EXPECTED
     assert len(proc_files)+1 == len(f_n_tuids)
 
     for (fname, tuids) in f_n_tuids:
         if fname in non_existent:
-            assert len(tuids) == 1
-            assert tuids[0].line == 0
-            assert tuids[0].tuid == -1
+            assert len(tuids) == 0
 
     for (fname, tuids) in first_f_n_tuids:
         if fname in changed_files:

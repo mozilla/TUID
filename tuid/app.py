@@ -22,7 +22,6 @@ from mo_logs import constants, startup
 from mo_logs.strings import utf82unicode, unicode2utf8
 from mo_times import Timer
 
-from mo_future import sort_using_key
 from pyLibrary.env.flask_wrappers import gzip_wrapper, cors_wrapper
 from tuid.service import TUIDService, TuidMap
 
@@ -78,8 +77,13 @@ def tuid_endpoint(path):
         with Timer("tuid internal response time"):
             response = service.get_tuids_from_files(revision=rev, files=paths)
 
+        if query.format == 'list':
+            formatter = _stream_list
+        else:
+            formatter = _stream_table
+
         return Response(
-            _stream_table(response),
+            formatter(response),
             status=200,
             headers={
                 "Content-Type": "application/json"
