@@ -82,7 +82,8 @@ Here is an example curl:
 
     curl -XGET http://localhost:5000/tuid -d "{\"from\":\"files\", \"where\":{\"and\":[{\"eq\":{\"revision\":\"9cb650de48f9\"}}, {\"eq\":{\"path\":\"modules/libpref/init/all.js\"}}]}}"
 
-After some time (70sec as of March 23, 2018) we get a response (formatted and clipped for clarity):
+After some time (70sec as of March 23, 2018) we get a response (formatted 
+and clipped for clarity):
 
     {
         "format":"table",
@@ -101,8 +102,8 @@ After some time (70sec as of March 23, 2018) we get a response (formatted and cl
 ## Using the client
 
 This repo includes a client (in `tuid.client.py`) that will send the 
-necessary query to the service and cache the results in a Sqlite database 
-locally. This `TuidClient` was made for the ActiveData-ETL pipeline, so it 
+necessary query to the service and cache the results in a local Sqlite 
+database. This `TuidClient` was made for the ActiveData-ETL pipeline, so it 
 has methods specifically suited for that project; but one method, called 
 `get_tuid()`, you may find useful.
 
