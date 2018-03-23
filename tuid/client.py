@@ -94,8 +94,8 @@ class TuidClient(object):
 
     def get_tuid(self, revision, file):
         """
-        :param revision:
-        :param file:
+        :param revision: THE REVISION NUNMBER
+        :param file: THE FULL PATH TO A SINGLE FILE
         :return: A LIST OF TUIDS
         """
         if not self.enabled:
