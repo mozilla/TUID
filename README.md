@@ -66,9 +66,10 @@ server construction.
 
 ## Using the web service
 
-The `app.py` sets up a Flask application with an endpoint at `/tuid`. This  
-endpoint models a database, which can accept queries, and contains one 
-table called `files`. The number of queries supported is extremely limited:
+The `app.py` sets up a Flask application with an endpoint at `/tuid`. This 
+endpoint models a database: It has one table called `files` and it can 
+accept queries on that table. The number of queries supported is extremely 
+limited:
 
     {
         "from":"files"
