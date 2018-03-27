@@ -347,8 +347,10 @@ def test_one_http_call_required(service):
         "/tools/lint/docs/linters/eslint-plugin-mozilla.rst",
         "/tools/lint/eslint/eslint-plugin-mozilla/lib/configs/browser-test.js",
         "/tools/lint/eslint/eslint-plugin-mozilla/lib/index.js",
-        "/tools/lint/eslint/eslint-plugin-mozilla/lib/rules/no-cpows-in-tests.js",  # DOES NOT EXIST IN NEWER REVISION
-        "/tools/lint/eslint/eslint-plugin-mozilla/tests/no-cpows-in-tests.js"  # DOES NOT EXIST IN NEWER REVISION
+        "/tools/lint/eslint/eslint-plugin-mozilla/lib/rules/no-cpows-in-tests.js",  # This file is removed in the newer revision
+        "/tools/lint/eslint/eslint-plugin-mozilla/tests/no-cpows-in-tests.js",  # This file is removed in the newer revision
+        "/testing/geckodriver/CONTRIBUTING.md", # Unchannged file
+        "/dom/media/MediaManager.cpp" # Unchanged file
     ]
 
     non_existent = {
@@ -365,6 +367,11 @@ def test_one_http_call_required(service):
             {'changes': {'removed': [6, 7], 'added': []}},
         'toolkit/components/narrate/test/browser_word_highlight.js':
             {'changes': {'removed': [6, 7], 'added': []}},
+    }
+
+    files_not_changed = {
+        "testing/geckodriver/CONTRIBUTING.md": 1,
+        "dom/media/MediaManager.cpp": 1
     }
 
     # SETUP
@@ -384,10 +391,12 @@ def test_one_http_call_required(service):
 
     assert len(proc_files)+1 == len(f_n_tuids)
 
+    # Check removed files
     for (fname, tuids) in f_n_tuids:
         if fname in non_existent:
             assert len(tuids) == 0
 
+    # Check removed lines
     for (fname, tuids) in first_f_n_tuids:
         if fname in changed_files:
             rmed = changed_files[fname]['changes']['removed']
@@ -401,6 +410,18 @@ def test_one_http_call_required(service):
                     for tmap in tuids:
                         if str(tmap.line) in tmp_ts:
                             assert tmap.tuid != tmp_ts[str(tmap.line)]
+
+    # Check unchanged files
+    for (fname1, tuids1) in first_f_n_tuids:
+        if fname1 not in files_not_changed:
+            continue
+
+        for (fname2, tuids2) in f_n_tuids:
+            if fname2 != fname1:
+                continue
+
+            for count, tmap1 in enumerate(tuids1):
+                assert tmap1.tuid == tuids2[count].tuid
 
 def test_long_file(service):
     timer = Timer("test", silent=True)
