@@ -102,7 +102,7 @@ and clipped for clarity):
 
 ## Using the client
 
-This repo includes a client (in `tuid.client.py`) that will send the 
+This repo includes a client (in `~/TUID/tuid/client.py`) that will send the 
 necessary query to the service and cache the results in a local Sqlite 
 database. This `TuidClient` was made for the ActiveData-ETL pipeline, so it 
 has methods specifically suited for that project; but one method, called 
