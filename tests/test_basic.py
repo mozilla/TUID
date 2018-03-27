@@ -165,14 +165,15 @@ def test_get_tuids_from_revision(service):
 def test_many_files_one_revision(service):
     with open('resources/stressfiles.json', 'r') as f:
         files = json.load(f)
-    test_file = ["widget/cocoa/nsCocoaWindow.mm"]
+    test_file_init = ["widget/cocoa/nsCocoaWindow.mm"]
     first_front = "739c536d2cd6"
     test_rev = "159e1105bdc7"
     dir = "/dom/base/"
     tmp = [dir + f for f in files]
+
+    test_file = test_file_init + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    test_file.extend(tmp)
     old = service.get_tuids_from_files(test_file,first_front)
     print("old:")
     for el in old:
@@ -187,20 +188,49 @@ def test_many_files_one_revision(service):
 
 @pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
 def test_one_addition_many_files(service):
+    # Get current annotation
+    curr_tuids = service.get_tuids("widget/cocoa/nsCocoaWindow.mm", '159e1105bdc7')
+
     with open('resources/stressfiles.json', 'r') as f:
         files = json.load(f)
-    test_file = ["widget/cocoa/nsCocoaWindow.mm"]
+    test_file_change = ["widget/cocoa/nsCocoaWindow.mm"]
     test_rev = "58eb13b394f4"
     dir = "/dom/base/"
+    added_lines = [i for i in range(2148, 2159)] # range is not inclusive for the end number
+    print(added_lines)
     tmp = [dir + f for f in files]
+
+    test_file = test_file_change + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    test_file.extend(tmp[1:10])
     new = service.get_tuids_from_files(test_file,test_rev)
     print("new:")
     for el in new:
         print("     "+el[0]+":"+str(len(el[1])))
+        if el[0] == test_file_change[0]:
+            # For each of the new tuids
+            for new_count, new_tmap in enumerate(el[1]):
+                # Check that unchanged lines have the
+                # same tuid and changed lines are different.
+                for old_count, old_tmap in enumerate(curr_tuids):
+                    if new_tmap.line == old_tmap.line:
+                        if new_tmap.line in added_lines:
+                            # Added lines should not have an equal
+                            # tuid to the old lines.
+                            assert old_tmap.tuid != new_tmap.tuid
+                        elif new_tmap.line < added_lines[0]:
+                            # All values before added lines should have
+                            # equal tuids.
+                            assert old_tmap.tuid == new_tmap.tuid
+                        elif new_tmap.line > added_lines[-1]:
+                            # Lines that come after the added lines
+                            # should not have an equal tuid.
+                            assert old_tmap.tuid != new_tmap.tuid
 
+                            # Though the new lines tuid should be equal to a tuid
+                            # that is len(added_lines) back.
+                            assert curr_tuids[old_count-len(added_lines)+1].tuid == el[1][new_count].tuid
+                        break
 
 @pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
 def test_one_http_call_required(service):
