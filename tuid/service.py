@@ -62,6 +62,11 @@ class TUIDService:
 
 
     def init_db(self):
+        '''
+        Creates all the tables, and indexes needed for the service.
+
+        :return: None
+        '''
         self.conn.execute('''
         CREATE TABLE temporal (
             tuid     INTEGER,
@@ -91,22 +96,22 @@ class TUIDService:
         Log.note("Tables created successfully")
 
 
-    # True if dummy, false if not.
     def _dummy_tuid_exists(self, file_name, rev):
+        # True if dummy, false if not.
         # None means there is no entry.
         return None != self.conn.get_one("select 1 from temporal where file=? and revision=? and line=?",
                                          (file_name, rev, 0))
 
 
-    # True if dummy, false if not.
     def _dummy_annotate_exists(self, file_name, rev):
+        # True if dummy, false if not.
         # None means there is no entry.
         return None != self.conn.get_one("select 1 from annotations where file=? and revision=? and annotation=?",
                                          (file_name, rev, ''))
 
 
-    # Inserts a dummy tuid: (-1,rev,file_name,0)
     def insert_tuid_dummy(self, rev, file_name, commit=True):
+        # Inserts a dummy tuid: (-1,rev,file_name,0)
         if not self._dummy_tuid_exists(file_name, rev):
             self.conn.execute(
                 "INSERT INTO temporal (tuid, revision, file, line) VALUES (?, ?, ?, ?)",
@@ -117,8 +122,8 @@ class TUIDService:
         return MISSING
 
 
-    # Inserts annotation dummy: (rev, '')
     def insert_annotate_dummy(self, rev, file_name, commit=True):
+        # Inserts annotation dummy: (rev, file, '')
         if not self._dummy_annotate_exists(file_name, rev):
             self.conn.execute(
                 "INSERT INTO annotations (revision, file, annotation) VALUES (?, ?, ?)",
@@ -128,25 +133,31 @@ class TUIDService:
         return [(rev[:12], file_name, '')]
 
 
-    # Returns annotation for this file at the given revision.
     def _get_annotation(self, rev, file):
+        # Returns an annotation if it exists
         return self.conn.get_one(GET_ANNOTATION_QUERY, (rev, file))
 
 
     def _get_one_tuid(self, cset, path, line):
+        # Returns a single TUID if it exists
         return self.conn.get_one("select 1 from temporal where revision=? and file=? and line=?",
                                  (cset, path, int(line)))
 
 
     def _get_latest_revision(self, file):
+        # Returns the latest revision that we
+        # have information on the requested file.
         return self.conn.get_one(GET_LATEST_MODIFICATION, (file,))
 
 
     def stringify_tuids(self, tuid_list):
+        # Turns the TuidMap list to a string for storage in
+        # the annotations table.
         return "\n".join([','.join([str(x.tuid), str(x.line)]) for x in tuid_list])
 
 
     def destringify_tuids(self, tuids_string):
+        # Builds up TuidMap list from annotation cache entry.
         lines = str(tuids_string[0]).splitlines()
         line_origins = []
         for line in lines:
@@ -154,8 +165,14 @@ class TUIDService:
             line_origins.append(TuidMap(int(entry[0].replace("'", "")), int(entry[1].replace("'", ""))))
         return line_origins
 
-    # Returns the diff for a given revision.
+
     def get_diff(self, cset):
+        """
+        Returns the diff for a given revision.
+
+        :param cset: revision to get diff from
+        :return: unified diff object from diff_to_moves
+        """
         url = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/raw-rev/' + cset
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
@@ -169,8 +186,13 @@ class TUIDService:
         return diff_to_moves(str(diff_object.content.decode('utf8')))
 
 
-    # Gets the TUIDs for the files modified by a revision.
     def get_tuids_from_revision(self, revision):
+        """
+        Gets the TUIDs for the files modified by a revision.
+
+        :param revision: revision to get files from
+        :return: list of (file, list(tuids)) tuples
+        """
         result = []
         URL_TO_FILES = 'https://hg.mozilla.org/' + self.config['hg']['branch'] + '/json-info/' + revision
         try:
@@ -205,8 +227,8 @@ class TUIDService:
         we perform an annotation-based update.
 
         :param files: list of files
-        :param revision:
-        :return: generator of (file, list(tuids)) tuples
+        :param revision: revision to get files at
+        :return: list of (file, list(tuids)) tuples
         """
         result = []
         revision = revision[:12]
@@ -218,11 +240,17 @@ class TUIDService:
 
         with self.conn.transaction():
             for count, file in enumerate(files):
+                # Go through all requested files and
+                # either update their frontier or add
+                # them to the DB through an initial annotation.
+
                 if DEBUG:
                     Log.note(" {{percent|percent(decimal=0)}}|{{file}}", file=file, percent=count / total)
 
                 latest_rev = self._get_latest_revision(file)
 
+                # Check if the file has already been collected at
+                # this revision and get the result if so
                 already_ann = self._get_annotation(revision, file)
                 if already_ann:
                     result.append((file,self.destringify_tuids(already_ann)))
@@ -231,11 +259,14 @@ class TUIDService:
                     result.append((file,[]))
                     continue
 
-                if (latest_rev and latest_rev[0] != revision):# and not already_collected:
+                if (latest_rev and latest_rev[0] != revision):
+                    # File has a frontier, let's update it
                     if DEBUG:
                         Log.note("Will update frontier for file {{file}}.", file=file)
                     frontier_update_list.append((file, latest_rev[0]))
                 else:
+                    # File has never been seen before, get it's initial
+                    # annotation to work from in the future.
                     tmp_res = self.get_tuids(file, revision, commit=False)
                     if tmp_res:
                         result.append((file, tmp_res))
@@ -271,12 +302,20 @@ class TUIDService:
         return result
 
 
-    # Using an annotation ([(tuid,line)] - array
-    # of TuidMap objects), we change the line numbers to
-    # reflect a given diff and return them. diff must
-    # be a diff object returned from get_diff(cset, file).
-    # Only for going forward in time, not back.
     def _apply_diff(self, annotation, diff, cset, file):
+        '''
+        Using an annotation ([(tuid,line)] - array
+        of TuidMap objects), we change the line numbers to
+        reflect a given diff and return them. diff must
+        be a diff object returned from get_diff(cset, file).
+        Only for going forward in time, not back.
+
+        :param annotation: list of TuidMap objects
+        :param diff: unified diff from get_diff
+        :param cset: revision to apply diff at
+        :param file: name of file diff is applied to
+        :return:
+        '''
         # Add all added lines into the DB.
         list_to_insert = []
         new_ann = [x for x in annotation]
@@ -317,16 +356,25 @@ class TUIDService:
         return new_ann
 
 
-    # Update the frontier for all given files,
-    # up to the given revision.
-    #
-    # Built for quick continuous _forward_ updating of large sets
-    # of files of TUIDs. Backward updating should be done through
-    # get_tuids(file, revision). If we cannot find a frontier, we will
-    # stop looking after max_csets_proc and update all files at the given
-    # revision.
+
     #
     def _update_file_frontiers(self, frontier_list, revision, max_csets_proc=10):
+        '''
+        Update the frontier for all given files, up to the given revision.
+
+        Built for quick continuous _forward_ updating of large sets
+        of files of TUIDs. Backward updating should be done through
+        get_tuids(file, revision). If we cannot find a frontier, we will
+        stop looking after max_csets_proc and update all files at the given
+        revision.
+
+        :param frontier_list: list of files to update
+        :param revision: revision to update files to
+        :param max_csets_proc: maximum number of changeset logs to look through
+                               to find past frontiers.
+        :return: list of (file, list(tuids)) tuples
+        '''
+
         # Get the changelogs and revisions until we find the
         # last one we've seen, and get the modified files in
         # each one.
@@ -505,8 +553,13 @@ class TUIDService:
         return result
 
 
-    # Inserts new lines from all changesets (this is all that is required).
     def _update_file_changesets(self, annotated_lines):
+        '''
+        Inserts new lines from all changesets in the given annotation.
+
+        :param annotated_lines: Response from annotation request from HGMO
+        :return: None
+        '''
         quickfill_list = []
 
         for anline in annotated_lines:
@@ -517,6 +570,12 @@ class TUIDService:
 
 
     def _quick_update_file_changeset(self, qf_list):
+        '''
+        Updates temporal table to include any new TUIDs.
+
+        :param qf_list: List to insert
+        :return: None
+        '''
         count = 0
         while count < len(qf_list):
             tmp_qf_list = qf_list[count:count+SQL_BATCH_SIZE]
@@ -528,14 +587,21 @@ class TUIDService:
             )
 
 
-    # Returns (TUID, line) tuples for a given file at a given revision.
-    #
-    # Uses json-annotate to find all lines in this revision, then it updates
-    # the database with any missing revisions for the file changes listed
-    # in annotate. Then, we use the information from annotate coupled with the
-    # diff information that was inserted into the DB to return TUIDs. This way
-    # we don't have to deal with child, parents, dates, etc..
     def get_tuids(self, file, revision, commit=True):
+        '''
+        Returns (TUID, line) tuples for a given file at a given revision.
+
+        Uses json-annotate to find all lines in this revision, then it updates
+        the database with any missing revisions for the file changes listed
+        in annotate. Then, we use the information from annotate coupled with the
+        diff information that was inserted into the DB to return TUIDs. This way
+        we don't have to deal with child, parents, dates, etc..
+
+        :param file: name of file to get
+        :param revision: revision at which to get the file
+        :param commit: True to commit new TUIDs else False
+        :return: List of TuidMap objects
+        '''
         revision = revision[:12]
         file = file.lstrip('/')
 
@@ -633,5 +699,7 @@ class TUIDService:
         return tuids
 
 
+# Used for increasing readability
+# Can be accessed with tmap_obj.line, tmap_obj.tuid
 TuidMap = namedtuple(str("TuidMap"), [str("tuid"), str("line")])
 MISSING = TuidMap(-1, 0)
