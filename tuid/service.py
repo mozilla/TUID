@@ -31,8 +31,6 @@ GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and 
 
 GET_LATEST_MODIFICATION = "SELECT revision FROM latestFileMod WHERE file=?"
 
-GET_PAST_MODIFICATIONS = "SELECT pastRevisions FROM latestFileMod WHERE file=?"
-
 
 class TUIDService:
 
@@ -84,7 +82,6 @@ class TUIDService:
         CREATE TABLE latestFileMod (
             file           TEXT,
             revision       CHAR(12) NOT NULL,
-            pastRevisions  TEXT,
             PRIMARY KEY(file)
         );''')
 
@@ -142,17 +139,6 @@ class TUIDService:
 
     def _get_latest_revision(self, file):
         return self.conn.get_one(GET_LATEST_MODIFICATION, (file,))
-
-
-    def _get_past_file_revisions(self, file):
-        tmp_result = self.conn.get_one(GET_PAST_MODIFICATIONS, (file,))
-        if tmp_result and tmp_result[0] != '':
-            return list(set([entry.replace("'", "") for entry in tmp_result[0].split(',')]))
-        return None
-
-
-    def stringify_pastrevs(self, pastrevs):
-        return ",".join(pastrevs)
 
 
     def stringify_tuids(self, tuid_list):
@@ -260,7 +246,7 @@ class TUIDService:
                     # add it to the latest modifications, else
                     # it's already in there so update its past
                     # revisions.
-                    latestFileMod_inserts[file] = (file, revision, '')
+                    latestFileMod_inserts[file] = (file, revision)
 
             # If we have files that need to have their frontier updated
             if len(frontier_update_list) > 0:
@@ -268,7 +254,7 @@ class TUIDService:
                 result.extend(tmp)
 
             if len(latestFileMod_inserts) > 0:
-                self.conn.execute("INSERT OR REPLACE INTO latestFileMod (file, revision, pastRevisions) VALUES " + \
+                self.conn.execute("INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " + \
                                   sql_list(sql_iso(sql_list(map(quote_value, latestFileMod_inserts[i]))) for i in latestFileMod_inserts))
 
         return result
@@ -478,11 +464,11 @@ class TUIDService:
 
             # Get any past revisions, and include the previous
             # latest in it.
-            latestFileMod_inserts[file] = (file, latest_rev, '')
+            latestFileMod_inserts[file] = (file, latest_rev)
 
         if len(latestFileMod_inserts) > 0:
             self.conn.execute(
-                "INSERT OR REPLACE INTO latestFileMod (file, revision, pastRevisions) VALUES " +
+                "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
                 sql_list(sql_iso(sql_list(map(quote_value, latestFileMod_inserts[i]))) for i in latestFileMod_inserts)
             )
 
