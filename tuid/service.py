@@ -235,7 +235,6 @@ class TUIDService:
                     Log.note(" {{percent|percent(decimal=0)}}|{{file}}", file=file, percent=count / total)
 
                 latest_rev = self._get_latest_revision(file)
-                past_revisions = self._get_past_file_revisions(file)
 
                 already_ann = self._get_annotation(revision, file)
                 if already_ann:
@@ -261,13 +260,7 @@ class TUIDService:
                     # add it to the latest modifications, else
                     # it's already in there so update its past
                     # revisions.
-                    if not latest_rev:
-                        latestFileMod_inserts[file] = (file, revision, '')
-                    else:
-                        if not past_revisions:
-                            past_revisions = []
-                        past_revisions.append(latest_rev[0])
-                        latestFileMod_inserts[file] = (file, latest_rev[0], self.stringify_pastrevs(past_revisions))
+                    latestFileMod_inserts[file] = (file, revision, '')
 
             # If we have files that need to have their frontier updated
             if len(frontier_update_list) > 0:
@@ -485,12 +478,7 @@ class TUIDService:
 
             # Get any past revisions, and include the previous
             # latest in it.
-            past_revisions = self._get_past_file_revisions(file)
-            if past_revisions:
-                past_revisions.append(rev)
-            else:
-                past_revisions = [rev]
-            latestFileMod_inserts[file] = (file, latest_rev, self.stringify_pastrevs(past_revisions))
+            latestFileMod_inserts[file] = (file, latest_rev, '')
 
         if len(latestFileMod_inserts) > 0:
             self.conn.execute(
