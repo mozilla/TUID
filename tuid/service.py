@@ -24,6 +24,7 @@ from tuid import sql
 
 DEBUG = False
 RETRY = {"times": 3, "sleep": 5}
+SQL_BATCH_SIZE = 500
 
 GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE file=? and revision=? and line=?"
 
@@ -254,8 +255,18 @@ class TUIDService:
                 result.extend(tmp)
 
             if len(latestFileMod_inserts) > 0:
-                self.conn.execute("INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " + \
-                                  sql_list(sql_iso(sql_list(map(quote_value, latestFileMod_inserts[i]))) for i in latestFileMod_inserts))
+                count = 0
+                listed_inserts = [latestFileMod_inserts[i] for i in latestFileMod_inserts]
+                while count < len(listed_inserts):
+                    inserts_list = listed_inserts[count:count + SQL_BATCH_SIZE]
+                    count += SQL_BATCH_SIZE
+                    self.conn.execute(
+                        "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+                        sql_list(
+                            sql_iso(sql_list(map(quote_value, i)))
+                            for i in inserts_list
+                        )
+                    )
 
         return result
 
@@ -293,11 +304,15 @@ class TUIDService:
             break # Found the file, exit searching
 
         if len(list_to_insert) > 0:
-            self.conn.execute(
-                "INSERT INTO temporal (tuid, revision, file, line)" +
-                " VALUES " +
-                sql_list(sql_iso(sql_list(map(quote_value, tp))) for tp in list_to_insert)
-            )
+            count = 0
+            while count < len(list_to_insert):
+                inserts_list = list_to_insert[count:count + SQL_BATCH_SIZE]
+                count += SQL_BATCH_SIZE
+                self.conn.execute(
+                    "INSERT INTO temporal (tuid, revision, file, line)" +
+                    " VALUES " +
+                    sql_list(sql_iso(sql_list(map(quote_value, tp))) for tp in inserts_list)
+                )
 
         return new_ann
 
@@ -467,16 +482,25 @@ class TUIDService:
             latestFileMod_inserts[file] = (file, latest_rev)
 
         if len(latestFileMod_inserts) > 0:
-            self.conn.execute(
-                "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                sql_list(sql_iso(sql_list(map(quote_value, latestFileMod_inserts[i]))) for i in latestFileMod_inserts)
-            )
+            count = 0
+            listed_inserts = [latestFileMod_inserts[i] for i in latestFileMod_inserts]
+            while count < len(listed_inserts):
+                tmp_inserts = listed_inserts[count:count + SQL_BATCH_SIZE]
+                count += SQL_BATCH_SIZE
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+                    sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
+                )
 
         if len(ann_inserts) > 0:
-            self.conn.execute(
-                "INSERT INTO annotations (revision, file, annotation) VALUES " +
-                sql_list(sql_iso(sql_list(map(quote_value, i))) for i in ann_inserts)
-            )
+            count = 0
+            while count < len(ann_inserts):
+                tmp_inserts = ann_inserts[count:count + SQL_BATCH_SIZE]
+                count += SQL_BATCH_SIZE
+                self.conn.execute(
+                    "INSERT INTO annotations (revision, file, annotation) VALUES " +
+                    sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
+                )
 
         return result
 
@@ -493,11 +517,15 @@ class TUIDService:
 
 
     def _quick_update_file_changeset(self, qf_list):
-        self.conn.execute(
-            "INSERT INTO temporal (tuid, revision, file, line)" +
-            " VALUES " +
-            sql_list(sql_iso(sql_list(map(quote_value, (self.tuid(), i[0], i[1], i[2])))) for i in qf_list)
-        )
+        count = 0
+        while count < len(qf_list):
+            tmp_qf_list = qf_list[count:count+SQL_BATCH_SIZE]
+            count += SQL_BATCH_SIZE
+            self.conn.execute(
+                "INSERT INTO temporal (tuid, revision, file, line)" +
+                " VALUES " +
+                sql_list(sql_iso(sql_list(map(quote_value, (self.tuid(), i[0], i[1], i[2])))) for i in tmp_qf_list)
+            )
 
 
     # Returns (TUID, line) tuples for a given file at a given revision.
