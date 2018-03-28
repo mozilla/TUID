@@ -108,23 +108,25 @@ class TUIDService:
 
 
     # Inserts a dummy tuid: (-1,rev,file_name,0)
-    def insert_tuid_dummy(self, rev, file_name):
+    def insert_tuid_dummy(self, rev, file_name, commit=True):
         if not self._dummy_tuid_exists(file_name, rev):
             self.conn.execute(
                 "INSERT INTO temporal (tuid, revision, file, line) VALUES (?, ?, ?, ?)",
                 (-1, rev[:12], file_name, 0)
             )
-            self.conn.commit()
+            if commit:
+                self.conn.commit()
         return MISSING
 
 
     # Inserts annotation dummy: (rev, '')
-    def insert_annotate_dummy(self, rev, file_name):
+    def insert_annotate_dummy(self, rev, file_name, commit=True):
         if not self._dummy_annotate_exists(file_name, rev):
             self.conn.execute(
                 "INSERT INTO annotations (revision, file, annotation) VALUES (?, ?, ?)",
                 (rev[:12], file_name, ''))
-            self.conn.commit()
+            if commit:
+                self.conn.commit()
         return [(rev[:12], file_name, '')]
 
 
@@ -226,58 +228,56 @@ class TUIDService:
 
         total = len(files)
         latestFileMod_inserts = {}
-        for count, file in enumerate(files):
-            if DEBUG:
-                Log.note(" {{percent|percent(decimal=0)}}|{{file}}", file=file, percent=count / total)
 
-            latest_rev = self._get_latest_revision(file)
-            past_revisions = self._get_past_file_revisions(file)
-
-            #already_collected = False
-            #if past_revisions and revision in past_revisions:
-            #    already_collected = True
-
-            already_ann = self._get_annotation(revision, file)
-            if already_ann:
-                result.append((file,self.destringify_tuids(already_ann)))
-                continue
-            elif already_ann[0] == '':
-                result.append((file,[]))
-                continue
-
-            if (latest_rev and latest_rev[0] != revision):# and not already_collected:
+        with self.conn.transaction():
+            for count, file in enumerate(files):
                 if DEBUG:
-                    Log.note("Will update frontier for file {{file}}.", file=file)
-                frontier_update_list.append((file, latest_rev[0]))
-            else:
-                tmp_res = self.get_tuids(file, revision)
-                if tmp_res:
-                    result.append((file, tmp_res))
+                    Log.note(" {{percent|percent(decimal=0)}}|{{file}}", file=file, percent=count / total)
+
+                latest_rev = self._get_latest_revision(file)
+                past_revisions = self._get_past_file_revisions(file)
+
+                already_ann = self._get_annotation(revision, file)
+                if already_ann:
+                    result.append((file,self.destringify_tuids(already_ann)))
+                    continue
+                elif already_ann[0] == '':
+                    result.append((file,[]))
+                    continue
+
+                if (latest_rev and latest_rev[0] != revision):# and not already_collected:
+                    if DEBUG:
+                        Log.note("Will update frontier for file {{file}}.", file=file)
+                    frontier_update_list.append((file, latest_rev[0]))
                 else:
-                    Log.note("Error occured for file " + file + " in revision " + revision)
-                    result.append((file, []))
+                    tmp_res = self.get_tuids(file, revision, commit=False)
+                    if tmp_res:
+                        result.append((file, tmp_res))
+                    else:
+                        Log.note("Error occured for file " + file + " in revision " + revision)
+                        result.append((file, []))
 
-                # If this file has not been seen before,
-                # add it to the latest modifications, else
-                # it's already in there so update its past
-                # revisions.
-                if not latest_rev:
-                    latestFileMod_inserts[file] = (file, revision, '')
-                else:
-                    if not past_revisions:
-                        past_revisions = []
-                    past_revisions.append(latest_rev[0])
-                    latestFileMod_inserts[file] = (file, latest_rev[0], self.stringify_pastrevs(past_revisions))
+                    # If this file has not been seen before,
+                    # add it to the latest modifications, else
+                    # it's already in there so update its past
+                    # revisions.
+                    if not latest_rev:
+                        latestFileMod_inserts[file] = (file, revision, '')
+                    else:
+                        if not past_revisions:
+                            past_revisions = []
+                        past_revisions.append(latest_rev[0])
+                        latestFileMod_inserts[file] = (file, latest_rev[0], self.stringify_pastrevs(past_revisions))
 
-        if len(latestFileMod_inserts) > 0:
-            self.conn.execute("INSERT OR REPLACE INTO latestFileMod (file, revision, pastRevisions) VALUES " + \
-                              sql_list(sql_iso(sql_list(map(quote_value, latestFileMod_inserts[i]))) for i in latestFileMod_inserts))
-            self.conn.commit()
+            # If we have files that need to have their frontier updated
+            if len(frontier_update_list) > 0:
+                tmp = self._update_file_frontiers(frontier_update_list,revision)
+                result.extend(tmp)
 
-        # If we have files that need to have their frontier updated
-        if len(frontier_update_list) > 0:
-            tmp = self._update_file_frontiers(frontier_update_list,revision)
-            result.extend(tmp)
+            if len(latestFileMod_inserts) > 0:
+                self.conn.execute("INSERT OR REPLACE INTO latestFileMod (file, revision, pastRevisions) VALUES " + \
+                                  sql_list(sql_iso(sql_list(map(quote_value, latestFileMod_inserts[i]))) for i in latestFileMod_inserts))
+
         return result
 
 
@@ -306,9 +306,7 @@ class TUIDService:
             f_diff = f_proc['changes']
             for change in f_diff:
                 if change.action == '+':
-                    new_tuid = self._get_one_tuid(cset, file, change.line+1)
-                    if not new_tuid:
-                        new_tuid = self.tuid()
+                    new_tuid = self.tuid()
                     new_ann = add_one(TuidMap(new_tuid, change.line+1), new_ann)
                     list_to_insert.append((new_tuid, cset, file, change.line+1))
                 elif change.action == '-':
@@ -321,7 +319,6 @@ class TUIDService:
                 " VALUES " +
                 sql_list(sql_iso(sql_list(map(quote_value, tp))) for tp in list_to_insert)
             )
-            self.conn.commit()
 
         return new_ann
 
@@ -460,7 +457,7 @@ class TUIDService:
             elif file not in removed_files:
                 # File is new, or the name was changed (we need to create
                 # a new initial entry for this file).
-                tmp_res = self.get_tuids(file, proc_rev)
+                tmp_res = self.get_tuids(file, proc_rev, commit=False)
             else:
                 # File was removed
                 tmp_res = None
@@ -496,24 +493,17 @@ class TUIDService:
             latestFileMod_inserts[file] = (file, latest_rev, self.stringify_pastrevs(past_revisions))
 
         if len(latestFileMod_inserts) > 0:
-            try:
-                self.conn.execute(
-                    "INSERT OR REPLACE INTO latestFileMod (file, revision, pastRevisions) VALUES " +
-                    sql_list(sql_iso(sql_list(map(quote_value, latestFileMod_inserts[i]))) for i in latestFileMod_inserts)
-                )
-                self.conn.commit()
-            except Exception as e:
-                Log.error("Unknown error...", cause=e)
+            self.conn.execute(
+                "INSERT OR REPLACE INTO latestFileMod (file, revision, pastRevisions) VALUES " +
+                sql_list(sql_iso(sql_list(map(quote_value, latestFileMod_inserts[i]))) for i in latestFileMod_inserts)
+            )
 
         if len(ann_inserts) > 0:
-            try:
-                self.conn.execute(
-                    "INSERT INTO annotations (revision, file, annotation) VALUES " +
-                    sql_list(sql_iso(sql_list(map(quote_value, i))) for i in ann_inserts)
-                )
-                self.conn.commit()
-            except Exception as e:
-                Log.error("Unknown error...", cause=e)
+            self.conn.execute(
+                "INSERT INTO annotations (revision, file, annotation) VALUES " +
+                sql_list(sql_iso(sql_list(map(quote_value, i))) for i in ann_inserts)
+            )
+
         return result
 
 
@@ -534,7 +524,6 @@ class TUIDService:
             " VALUES " +
             sql_list(sql_iso(sql_list(map(quote_value, (self.tuid(), i[0], i[1], i[2])))) for i in qf_list)
         )
-        self.conn.commit()
 
 
     # Returns (TUID, line) tuples for a given file at a given revision.
@@ -544,7 +533,7 @@ class TUIDService:
     # in annotate. Then, we use the information from annotate coupled with the
     # diff information that was inserted into the DB to return TUIDs. This way
     # we don't have to deal with child, parents, dates, etc..
-    def get_tuids(self, file, revision):
+    def get_tuids(self, file, revision, commit=True):
         revision = revision[:12]
         file = file.lstrip('/')
 
@@ -569,8 +558,8 @@ class TUIDService:
                 # If we can't get the annotated file, return dummy record.
                 Log.warning("Error while obtaining annotated file for file {{file}} in revision {{revision}}", file=file, revision=revision, cause=e)
                 Log.note("Inserting dummy entry...")
-                self.insert_tuid_dummy(revision, file)
-                self.insert_annotate_dummy(revision, file)
+                self.insert_tuid_dummy(revision, file, commit=commit)
+                self.insert_annotate_dummy(revision, file, commit=commit)
                 return []
 
             # Gather all missing csets and the
@@ -596,7 +585,12 @@ class TUIDService:
             # Update DB with any revisions found in annotated
             # object that are not in the DB.
             if len(annotated_lines) > 0:
-                self._update_file_changesets(annotated_lines)
+                # If we are using get_tuids within another transaction
+                if not commit:
+                    self._update_file_changesets(annotated_lines)
+                else:
+                    with self.conn.transaction():
+                        self._update_file_changesets(annotated_lines)
         elif already_ann[0] == '':
             return []
         else:
@@ -630,7 +624,9 @@ class TUIDService:
                     self.stringify_tuids(tuids)
                 )
             )
-            self.conn.commit()
+
+            if commit:
+                self.conn.commit()
 
         return tuids
 
