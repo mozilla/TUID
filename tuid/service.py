@@ -226,6 +226,9 @@ class TUIDService:
         at the diffs. If the latestFileMod table is empty, for any file,
         we perform an annotation-based update.
 
+        This function assumes the newest file names are given, if they
+        are not, then no TUIDs are returned for that file.
+
         :param files: list of files
         :param revision: revision to get files at
         :return: list of (file, list(tuids)) tuples
@@ -384,6 +387,7 @@ class TUIDService:
 
         # Holds all known frontiers
         latest_csets = {cset: True for cset in list(set([rev for (file,rev) in frontier_list]))}
+        file_to_frontier = {tp[0]: tp[1] for tp in frontier_list}
         found_last_frontier = False
         if len(latest_csets) <= 1 and frontier_list[0][1] == revision:
             # If the latest revision is the requested revision,
@@ -393,7 +397,6 @@ class TUIDService:
         final_rev = revision  # Revision we are searching from
         csets_proced = 0
         diffs_cache = {}
-        changed_names = {}
         removed_files = {}
         if DEBUG:
             Log.note("Searching for the following frontiers: {{csets}}", csets=str([cset for cset in latest_csets]))
@@ -429,11 +432,34 @@ class TUIDService:
                         new_name = f_added['new'].name.lstrip('/')
                         old_name = f_added['old'].name.lstrip('/')
 
-                        if new_name == 'dev/null':
-                            removed_files[old_name] = True
+                        # If we don't need this file, skip it
+                        if new_name not in file_to_frontier:
+                            # If the file was removed, set a
+                            # flag and return no tuids later.
+                            if new_name == 'dev/null':
+                                removed_files[old_name] = True
                             continue
-                        elif new_name != old_name:
-                            changed_names[old_name] = new_name
+
+                        # At this point, file is in the database, and is
+                        # asked to be processed, and we are still
+                        # searching for the last frontier.
+
+                        # If we are past the frontier for this file,
+                        # or if we are at the frontier skip it.
+                        if file_to_frontier[new_name] == '':
+                            continue
+                        if file_to_frontier[new_name] == cset_len12:
+                            file_to_frontier[new_name] = ''
+                            continue
+
+                        # Skip diffs that change file names, this is the first
+                        # annotate entry to the new file_name and it doesn't do
+                        # anything to the old other than bring it to new.
+                        # We should never make it to this point unless there was an error elsewhere
+                        # because any frontier for the new_name file should be at this revision or
+                        # further ahead - never earlier.
+                        if old_name != new_name:
+                            Log.error("Should not have made it here, can't find a frontier for {{file}}", file=new_name)
 
                         if new_name in files_to_process:
                             files_to_process[new_name].append(cset_len12)
@@ -482,8 +508,7 @@ class TUIDService:
                 Log.note("Frontier update: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ", count=count,
                                                 total=total, file=file, rev=proc_rev, percent=count / total)
 
-            if proc and file not in changed_names and \
-                    file not in removed_files:
+            if proc and file not in removed_files:
                 # Process this file using the diffs found
 
                 # Reverse the list, we always find the newest diff first
@@ -497,8 +522,8 @@ class TUIDService:
 
                 ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
             elif file not in removed_files:
-                # File is new, or the name was changed (we need to create
-                # a new initial entry for this file).
+                # File is new, or the name was changed - we need to create
+                # a new initial entry for this file.
                 tmp_res = self.get_tuids(file, proc_rev, commit=False)
             else:
                 # File was removed
