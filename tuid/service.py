@@ -11,15 +11,15 @@ from __future__ import unicode_literals
 from collections import namedtuple
 
 from mo_dots import Null, coalesce
+from mo_future import text_type
 from mo_kwargs import override
 from mo_logs import Log
 
-from mo_future import text_type
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_hg.parse import diff_to_moves
 from pyLibrary.env import http
-from pyLibrary.sql import sql_list
-from pyLibrary.sql.sqlite import quote_value, sql_iso
+from pyLibrary.sql import sql_list, sql_iso
+from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
 
 DEBUG = False

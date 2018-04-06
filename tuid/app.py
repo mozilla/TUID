@@ -77,7 +77,7 @@ def tuid_endpoint(path):
         with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
             response = service.get_tuids_from_files(revision=rev, files=paths)
 
-        if query.format == 'list':
+        if query.meta.format == 'list':
             formatter = _stream_list
         else:
             formatter = _stream_table
