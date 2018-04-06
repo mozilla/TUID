@@ -28,7 +28,7 @@ DEBUG = True
 class TuidClient(object):
 
     @override
-    def __init__(self, endpoint, push_queue=None, timeout=30, db_filename="tuid.sqlite", kwargs=None):
+    def __init__(self, endpoint, push_queue=None, timeout=30, db_filename="tuid_client.sqlite", kwargs=None):
         self.enabled = True
         self.endpoint = endpoint
         self.timeout = timeout
@@ -105,10 +105,12 @@ class TuidClient(object):
         revision = revision[:12]
         # TRY THE DATABASE
         response = self.db.query("SELECT tuids FROM tuid WHERe revision=" + quote_value(revision) + " AND file=" + quote_value(file))
-        if response:
+        if response.data:
             return json2value(response.data[0][0])
 
-        return self._get_tuid_from_endpoint(revision, [file])[file]
+        service_response = wrap(self._get_tuid_from_endpoint(revision, [file]))
+        for f, t in service_response.items():
+            return t
 
     def _get_tuid_from_endpoint(self, revision, files):
         """
