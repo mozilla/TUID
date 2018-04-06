@@ -28,11 +28,11 @@ DEBUG = True
 class TuidClient(object):
 
     @override
-    def __init__(self, endpoint, request_queue=None, timeout=30, db_filename="tuid.sqlite", kwargs=None):
+    def __init__(self, endpoint, push_queue=None, timeout=30, db_filename="tuid.sqlite", kwargs=None):
         self.enabled = True
-        self.tuid_endpoint = endpoint
+        self.endpoint = endpoint
         self.timeout = timeout
-        self.request_queue = aws.Queue(request_queue) if request_queue else None
+        self.push_queue = aws.Queue(push_queue) if push_queue else None
         self.config = kwargs
 
         if DEBUG:
@@ -136,15 +136,15 @@ class TuidClient(object):
                         "request_time": Date.now()
                     }
                 })
-                if self.request_queue is not None:
+                if self.push_queue is not None:
                     Log.note("record tuid request to SQS: {{timestamp}}", timestamp=request.meta.request_time)
-                    self.request_queue.add(request)
+                    self.push_queue.add(request)
 
                 if not self.enabled:
                     return None
 
                 response = http.post_json(
-                    self.tuid_endpoint,
+                    self.endpoint,
                     json=request,
                     timeout=self.timeout
                 )
@@ -160,7 +160,7 @@ class TuidClient(object):
                 return {r.path: r.tuids for r in response.data}
 
             except Exception as e:
-                if not self.enabled:
-                    Log.warning("TUID service has problems, disabling.", cause=e)
+                if self.enabled:
+                    Log.warning("TUID service has problems.", cause=e)
                 self.enabled = False
                 return None

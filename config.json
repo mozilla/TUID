@@ -43,8 +43,17 @@
         "port": 5000,
         "debug": false,
         "threaded": true,
-        "processes": 1,
+        "processes": 1
 //        "ssl_context": "adhoc"
+    },
+    "client":{
+        "endpoint": "http://localhost:5000/tuid",
+        "timeout": 30
+    },
+    "pull_queue":{
+        "name": "active-data-tuid-dev",
+        "debug": true,
+        "$ref": "file://~/private.json#tuid_queue"
     },
     "constants": {
         "tuid.service.DEBUG": false,
