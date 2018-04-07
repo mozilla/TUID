@@ -3,7 +3,8 @@ pytest
 mo-future
 mo-kwargs>=1.7
 mo-logs
-mo_times
+mo-times
+mo-threads>=1.7
 jx_python
 toposort
 whatthepatch
