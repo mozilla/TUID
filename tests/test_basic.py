@@ -197,7 +197,6 @@ def test_one_addition_many_files(service):
     test_rev = "58eb13b394f4"
     dir = "/dom/base/"
     added_lines = [i for i in range(2148, 2159)] # range is not inclusive for the end number
-    print(added_lines)
     tmp = [dir + f for f in files]
 
     test_file = test_file_change + tmp
@@ -433,3 +432,13 @@ def test_long_file(service):
         )
 
     assert timer.duration.seconds < 30
+
+@pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
+def test_daemon(service):
+    from mo_threads import Signal
+    temp_signal = Signal()
+
+    # Run the daemon indefinitely to see if
+    # we can update all known files to the latest
+    # revisions. This can take a while though.
+    service._daemon(temp_signal)
