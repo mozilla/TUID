@@ -66,20 +66,7 @@ class TuidClient(object):
 
             with Timer("markup sources for {{num}} files", {"num": len(filenames)}):
                 # WHAT DO WE HAVE
-                proced_filenames = [file.lstrip('/') for file in filenames]
-
-                response = self.db.query(
-                    "SELECT file, tuids FROM tuid WHERE revision=" + quote_value(revision) +
-                    " AND file in " + sql_iso(sql_list(map(quote_value, proced_filenames)))
-                )
-                found = {file: json2value(tuids) for file, tuids in response.data}
-
-                remaining = set(filenames) - set(found.keys())
-                if remaining:
-                    more = self._get_tuid_from_endpoint(revision, remaining)
-                    if more == None:
-                        return
-                    found.update(more)
+                found = self._get_tuid_from_endpoint(revision, filenames)
 
                 for source in sources:
                     line_to_tuid = found[source.file.name]
@@ -105,11 +92,6 @@ class TuidClient(object):
         :return: A LIST OF TUIDS
         """
         revision = revision[:12]
-        # TRY THE DATABASE
-        response = self.db.query("SELECT tuids FROM tuid WHERE revision=" + quote_value(revision) + " AND file=" + quote_value(file.lstrip('/')))
-        if response.data:
-            return json2value(response.data[0][0])
-
         service_response = wrap(self._get_tuid_from_endpoint(revision, [file]))
         for f, t in service_response.items():
             return t
