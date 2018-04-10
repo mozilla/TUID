@@ -25,6 +25,7 @@ _ = service
 _ = hg_mozilla_org
 
 PAUSE_ON_FAILURE = 30
+DEBUG = True
 
 
 @override
@@ -35,6 +36,12 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
         request = queue.pop(till=please_stop)
         if please_stop:
             break
+        if not request:
+            Log.note("Nothing in queue, pausing for 5 seconds...")
+            (please_stop | Till(seconds=5)).wait()
+            continue
+        Log.note("Found something in queue")
+
         and_op = request.where['and']
 
         revision = None
@@ -59,11 +66,12 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
 
 if __name__ == '__main__':
     try:
+        tmp_signal = Signal()
         config = startup.read_settings()
         constants.set(config.constants)
         Log.start(config.debug)
 
-        # queue_consumer(kwargs=config, please_stop=False)
+        # queue_consumer(kwargs=config, please_stop=tmp_signal)
         worker = Thread.run("sqs consumer", queue_consumer, kwargs=config)
         Thread.wait_for_shutdown_signal(allow_exit=True, please_stop=worker.stopped)
     except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
