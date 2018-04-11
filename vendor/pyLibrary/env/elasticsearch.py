@@ -701,10 +701,10 @@ class Cluster(object):
 
         for k, m in list(schema.mappings.items()):
             if tjson:
-                schema.mappings[k] = add_typed_annotations(m)
+                m = schema.mappings[k] = wrap(add_typed_annotations(m))
 
-            schema.mappings[k].date_detection = False  # DISABLE DATE DETECTION
-            m.dynamic_templates = (
+            m.date_detection = False  # DISABLE DATE DETECTION
+            schema.mappings[k].dynamic_templates = (
                 DEFAULT_DYNAMIC_TEMPLATES +
                 m.dynamic_templates
             )
