@@ -17,6 +17,7 @@ from mo_times import Timer
 from mo_hg import hg_mozilla_org
 from mo_threads import Thread, Signal, Till
 from pyLibrary import aws
+from pyLibrary.env import http
 from tuid import service
 from tuid.client import TuidClient
 
@@ -32,6 +33,13 @@ DEBUG = True
 def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
     queue = aws.Queue(pull_queue)
     client = TuidClient(client)
+
+    while len(queue) > 0:
+        request = queue.pop(till=please_stop)
+        if request:
+            Log.note("Popping request from {{time}}", time=request.meta.request_time)
+            queue.commit()
+
     while not please_stop:
         request = queue.pop(till=please_stop)
         if please_stop:
@@ -56,13 +64,18 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
 
         with Timer("Make TUID request from {{timestamp|date}}", {"timestamp": request.meta.request_time}):
             client.enabled = True  # ENSURE THE REQUEST IS MADE
-            result = client._get_tuid_from_endpoint(revision, files)
+            result = http.post_json(
+                        "http://localhost:5000/tuid",
+                        json=request,
+                        timeout=1000
+                    )
             if not client.enabled:
                 Log.note("pausing consumer for {{num}}sec", num=PAUSE_ON_FAILURE)
                 Till(seconds=PAUSE_ON_FAILURE).wait()
             if result is None or len(result.keys()) != len(files):
                 Log.warning("expecting response for every file requested")
 
+        queue.commit()
 
 if __name__ == '__main__':
     try:
@@ -71,7 +84,7 @@ if __name__ == '__main__':
         constants.set(config.constants)
         Log.start(config.debug)
 
-        # queue_consumer(kwargs=config, please_stop=tmp_signal)
+        queue_consumer(kwargs=config, please_stop=tmp_signal)
         worker = Thread.run("sqs consumer", queue_consumer, kwargs=config)
         Thread.wait_for_shutdown_signal(allow_exit=True, please_stop=worker.stopped)
     except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT

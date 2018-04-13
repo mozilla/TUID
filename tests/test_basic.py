@@ -168,7 +168,7 @@ def test_many_files_one_revision(service):
     test_file_init = ["widget/cocoa/nsCocoaWindow.mm"]
     first_front = "739c536d2cd6"
     test_rev = "159e1105bdc7"
-    dir = "/dom/base/"
+    dir = ""
     tmp = [dir + f for f in files]
 
     test_file = test_file_init + tmp
@@ -195,7 +195,7 @@ def test_one_addition_many_files(service):
         files = json.load(f)
     test_file_change = ["widget/cocoa/nsCocoaWindow.mm"]
     test_rev = "58eb13b394f4"
-    dir = "/dom/base/"
+    dir = ""
     added_lines = [i for i in range(2148, 2159)] # range is not inclusive for the end number
     tmp = [dir + f for f in files]
 

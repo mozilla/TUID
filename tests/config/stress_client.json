@@ -46,19 +46,14 @@
         "processes": 1
 //        "ssl_context": "adhoc"
     },
-    "client":{
+    "client": {
         "endpoint": "http://localhost:5000/tuid",
-        "timeout": 60,
+        "timeout": 30,
         "push_queue": {
             "name": "active-data-tuid-dev",
             "debug": true,
             "$ref": "file://~/private.json#tuid_queue"
         }
-    },
-    "pull_queue":{
-        "name": "active-data-tuid-dev",
-        "debug": true,
-        "$ref": "file://~/private.json#tuid_queue"
     },
     "constants": {
         "tuid.service.DEBUG": false,
