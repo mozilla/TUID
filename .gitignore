@@ -9,3 +9,4 @@
 /vendor/pyLibrary/vendor/sqlite
 /*.sqlite
 /resources/tuid_app.db-journal
+/resources/config/kyle.json
