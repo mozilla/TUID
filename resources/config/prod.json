@@ -1,7 +1,8 @@
 {
 	"tuid": {
 		"database": {
-			"name": "resources/tuid_app.db"
+			"name": "resources/tuid_app.db",
+            "load_functions": false
 		},
 		"local_hg_source": "C:/mozilla-source/mozilla-central/",
 		"hg_for_building": "C:/mozilla-build/python/Scripts/hg.exe",
@@ -67,9 +68,8 @@
 			{
 				"log_type": "elasticsearch",
 				"host": "http://localhost",
-				"port": 9200,
 				"index": "debug_tuid_service",
-				"type": "active_data"
+				"type": "tuid_service"
 			},
 			{
 				"class": "logging.handlers.RotatingFileHandler",
