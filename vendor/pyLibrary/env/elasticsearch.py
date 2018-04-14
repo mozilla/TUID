@@ -118,12 +118,12 @@ class Index(Features):
         props = self.get_properties()
         if props[EXISTS_TYPE]:
             if tjson is False:
-                Log.error("expecting tjson paramter to match index properties")
+                Log.error("expecting tjson parameter to match properties of {{index}}", index=index)
             elif tjson == None:
                 tjson = kwargs.tjson = True
         else:
             if tjson is True:
-                Log.error("expecting tjson paramter to match index properties")
+                Log.error("expecting tjson parameter to match properties of {{index}}", index=index)
             elif tjson == None:
                 tjson = kwargs.tjson = False
 
