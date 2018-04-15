@@ -1,0 +1,53 @@
+{
+	"tuid": {
+		"database": {
+			"filename": "resources/tuid_app.db",
+            "load_functions": false
+		},
+		"hg": {
+			"branch": "mozilla-central"
+		}
+	},
+	"flask": {
+		"host": "0.0.0.0",
+		"port": 8079,
+		"debug": false,
+		"threaded": true,
+		"processes": 1
+	},
+	"constants": {
+		"pyLibrary.env.http.default_headers": {"Referer": "https://github.com/mozilla/TUID"}
+	},
+	"debug": {
+		"trace": true,
+		"cprofile": {
+			"enabled": false,
+			"filename": "./results/profile.tab"
+		},
+		"log": [
+			{
+				"log_type": "console"
+			},
+			{
+				"log_type": "ses",
+				"from_address": "klahnakoski@mozilla.com",
+				"to_address": "klahnakoski@mozilla.com",
+				"subject": "[ALERT][STAGING] Problem in TUID Service",
+				"$ref": "file://~/private.json#aws_credentials"
+			},
+			{
+				"log_type": "elasticsearch",
+				"host": "http://localhost",
+				"index": "debug_tuid_service",
+				"type": "tuid_service"
+			},
+			{
+				"class": "logging.handlers.RotatingFileHandler",
+				"filename": "/data1/logs/tuid_service.log",
+				"maxBytes": 10000000,
+				"backupCount": 10,
+				"encoding": "utf8"
+			}
+		]
+	}
+}

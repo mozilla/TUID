@@ -45,7 +45,6 @@ config = None
 service = None
 
 
-@gzip_wrapper
 @cors_wrapper
 def tuid_endpoint(path):
     try:
@@ -154,18 +153,13 @@ if __name__ in ("__main__",):
     OVERVIEW = File("tuid/public/index.html").read_bytes()
     flask_app = TUIDApp(__name__)
 
-    flask_app.add_url_rule(str('/tuid'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
-    flask_app.add_url_rule(str('/tuid/'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
-
-    flask_app.add_url_rule(str('/'), None, _head, defaults={'path': ''}, methods=[str('OPTIONS'), str('HEAD')])
-    flask_app.add_url_rule(str('/<path:path>'), None, _head, methods=[str('OPTIONS'), str('HEAD')])
-
-    flask_app.add_url_rule(str('/'), None, _default, defaults={'path': ''}, methods=[str('GET'), str('POST')])
-    flask_app.add_url_rule(str('/<path:path>'), None, _default, methods=[str('GET'), str('POST')])
-
+    flask_app.add_url_rule(str('/'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
+    flask_app.add_url_rule(str('/<path:path>'), None, tuid_endpoint, methods=[str('GET'), str('POST')])
 
     try:
-        config = startup.read_settings()
+        config = startup.read_settings(
+            filename=os.environ.get('TUID_CONFIG')
+        )
         constants.set(config.constants)
         Log.start(config.debug)
         service = TUIDService(config.tuid)
