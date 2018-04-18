@@ -117,7 +117,7 @@ class Index(Features):
 
         props = self.get_properties()
         if props == None:
-            tjson = kwargs.tjson = True
+            tjson = coalesce(kwargs.tjson, True)  # TYPED JSON IS DEFAULT
         elif props[EXISTS_TYPE]:
             if tjson is False:
                 Log.error("expecting tjson parameter to match properties of {{index}}", index=index)

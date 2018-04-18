@@ -26,25 +26,18 @@ app_process = None
 def app():
     global app_process
 
-    pythonpath = str("." + os.pathsep + "vendor")
-    if not app_process:
-        app_process = Process(
-            "TUID app",
-            ["python", "tuid/app.py"],
-            env={str("PYTHONPATH"): pythonpath},
-            debug=True
-        )
-        Till(seconds=5).wait()  # Time to warm up
-    yield
-    app_process.please_stop.go()
-    app_process.join(raise_on_error=False)
-
-
-def test_default(config, app):
-    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
-    response = http.get(url)
-    expected = File("tuid/public/index.html").read_bytes()
-    assert response.content == expected
+    # pythonpath = str("." + os.pathsep + "vendor")
+    # if not app_process:
+    #     app_process = Process(
+    #         "TUID app",
+    #         ["python", "tuid/app.py"],
+    #         env={str("PYTHONPATH"): pythonpath},
+    #         debug=True
+    #     )
+    #     Till(seconds=5).wait()  # Time to warm up
+    # yield
+    # app_process.please_stop.go()
+    # app_process.join(raise_on_error=False)
 
 
 def test_query_error(config, app):

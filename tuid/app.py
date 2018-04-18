@@ -21,9 +21,8 @@ from mo_logs import Log
 from mo_logs import constants, startup
 from mo_logs.strings import utf82unicode, unicode2utf8
 from mo_times import Timer
-from mo_threads import Thread
 
-from pyLibrary.env.flask_wrappers import gzip_wrapper, cors_wrapper
+from pyLibrary.env.flask_wrappers import cors_wrapper
 from tuid.service import TUIDService, TuidMap
 
 OVERVIEW = None
