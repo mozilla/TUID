@@ -41,7 +41,7 @@ def app():
 
 
 def test_default(config, app):
-    url = "http://localhost:" + text_type(config.flask.port)
+    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
     response = http.get(url)
     expected = File("tuid/public/index.html").read_bytes()
     assert response.content == expected
