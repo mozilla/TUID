@@ -21,6 +21,7 @@ from mo_logs import Log
 from mo_logs import constants, startup
 from mo_logs.strings import utf82unicode, unicode2utf8
 from mo_times import Timer
+from mo_threads import Thread
 
 from pyLibrary.env.flask_wrappers import gzip_wrapper, cors_wrapper
 from tuid.service import TUIDService, TuidMap
@@ -162,7 +163,11 @@ if __name__ in ("__main__",):
         )
         constants.set(config.constants)
         Log.start(config.debug)
+
         service = TUIDService(config.tuid)
+
+        # Run the daemon
+        #daemon = Thread.run("TUID Daemon", service._daemon)
     except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
         try:
             Log.error("Serious problem with TUID service construction!  Shutdown!", cause=e)
