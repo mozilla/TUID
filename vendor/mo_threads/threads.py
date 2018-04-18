@@ -359,6 +359,9 @@ class Thread(object):
 
 
 def stop_main_thread(*args):
+    global DEBUG
+
+    DEBUG = True
     try:
         if len(args):
             Log.warning("exit with {{value}}", value=args[0])
