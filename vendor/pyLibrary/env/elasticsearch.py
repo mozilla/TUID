@@ -129,12 +129,13 @@ class Index(Features):
             elif tjson == None:
                 tjson = kwargs.tjson = False
 
-        if tjson:
-            from pyLibrary.env.typed_inserter import TypedInserter
+        if not read_only:
+            if tjson:
+                from pyLibrary.env.typed_inserter import TypedInserter
 
-            self.encode = TypedInserter(self, id_column).typed_encode
-        else:
-            self.encode = get_encoder(id_column)
+                self.encode = TypedInserter(self, id_column).typed_encode
+            else:
+                self.encode = get_encoder(id_column)
 
     @property
     def url(self):
@@ -311,8 +312,6 @@ class Index(Features):
         else:
             raise NotImplementedError
 
-
-
     def extend(self, records):
         """
         records - MUST HAVE FORM OF
@@ -412,6 +411,15 @@ class Index(Features):
             Log.error("add() has changed to only accept one record, no lists")
         self.extend([record])
 
+    def add_property(self, name, details):
+        for n in jx.reverse(split_field(name)):
+            details = {"properties": {n: details}}
+
+        self.cluster.put(
+            "/" + self.settings.index + "/_mapping/" + self.settings.type,
+            data=details
+        )
+
     def refresh(self):
         self.cluster.post("/" + self.settings.index + "/_refresh")
 
@@ -441,7 +449,7 @@ class Index(Features):
         elif self.cluster.version.startswith(("1.4.", "1.5.", "1.6.", "1.7.", "5.", "6.")):
             result = self.cluster.put(
                 "/" + self.settings.index + "/_settings",
-                data=unicode2utf8('{"index":{"refresh_interval":' + value2json(interval) + '}}'),
+                data={"index": {"refresh_interval": interval}},
                 **kwargs
             )
 
@@ -537,7 +545,7 @@ class Cluster(object):
         return cluster
 
     @override
-    def __init__(self, host, port=9200, explore_metadata=True, kwargs=None):
+    def __init__(self, host, port=9200, explore_metadata=True, debug=False, kwargs=None):
         """
         settings.explore_metadata == True - IF PROBING THE CLUSTER FOR METADATA IS ALLOWED
         settings.timeout == NUMBER OF SECONDS TO WAIT FOR RESPONSE, OR SECONDS TO WAIT FOR DOWNLOAD (PASSED TO requests)
@@ -549,7 +557,7 @@ class Cluster(object):
         self.info = None
         self._metadata = None
         self.metadata_locker = Lock()
-        self.debug = kwargs.debug
+        self.debug = debug
         self.version = None
         self.path = kwargs.host + ":" + text_type(kwargs.port)
         self.get_metadata()
@@ -604,7 +612,7 @@ class Cluster(object):
         return indexes.last()
 
     @override
-    def get_index(self, index, type=None, alias=None, tjson=None, read_only=True, kwargs=None):
+    def get_index(self, index, type, alias=None, tjson=None, read_only=True, kwargs=None):
         """
         TESTS THAT THE INDEX EXISTS BEFORE RETURNING A HANDLE
         """
@@ -708,6 +716,7 @@ class Cluster(object):
             if tjson:
                 m = schema.mappings[k] = wrap(add_typed_annotations(m))
 
+            m.date_detection = False  # DISABLE DATE DETECTION
             m.dynamic_templates = (
                 DEFAULT_DYNAMIC_TEMPLATES +
                 m.dynamic_templates
@@ -1063,16 +1072,7 @@ class Alias(Features):
                 mappings = self.cluster.get("/"+self.settings.index+"/_mapping")[self.settings.index]
 
             # FIND MAPPING WITH MOST PROPERTIES (AND ASSUME THAT IS THE CANONICAL TYPE)
-            max_prop = -1
-            for _type, mapping in mappings.mappings.items():
-                if _type == "_default_":
-                    continue
-                num_prop = len(mapping.properties.keys())
-                if max_prop < num_prop:
-                    max_prop = num_prop
-                    self.settings.type = _type
-                    type = _type
-
+            type, props = get_best_mapping(mappings.mappings)
             if type == None:
                 Log.error("Can not find schema type for index {{index}}", index=coalesce(self.settings.alias, self.settings.index))
 
@@ -1269,6 +1269,23 @@ def parse_properties(parent_index_name, parent_name, esProperties):
     return columns
 
 
+def get_best_mapping(mapping):
+    """
+    THERE ARE MULTIPLE TYPES IN AN INDEX, PICK THE BEST
+    :param mapping: THE ES MAPPING DOCUMENT
+    :return: (type_name, mapping) PAIR (mapping.properties WILL HAVE PROPERTIES
+    """
+    best_k = None
+    best_m = None
+    for k, m in mapping.items():
+        if k == "_default_":
+            continue
+        if best_k is None or len(m.properties) > len(best_m.properties):
+            best_k = k
+            best_m = m
+    return best_k, best_m
+
+
 def get_encoder(id_expression="_id"):
     get_id = jx_expression_to_function(id_expression)
 
@@ -1422,12 +1439,19 @@ def add_typed_annotations(meta):
 
 
 def diff_schema(A, B):
-    return _diff_schema(A, B)
+    output =[]
+    def _diff_schema(path, A, B):
+        for k, av in A.items():
+            bv = B[k]
+            if bv == None:
+                output.append((concat_field(path, k), av))
+            elif av.type != bv.type:
+                Log.warning("inconsistent types: {{typeA}} vs {{typeB}}", typeA=av.type, typeB=bv.type)
+            _diff_schema(concat_field(path, k), av.properties, bv.properties)
 
-
-def _diff_schema(path, A, B):
     # what to do with conflicts?
-    pass
+    _diff_schema(".", A, B)
+    return output
 
 
 DEFAULT_DYNAMIC_TEMPLATES = wrap([
