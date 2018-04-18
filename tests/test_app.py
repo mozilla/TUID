@@ -26,18 +26,20 @@ app_process = None
 def app():
     global app_process
 
-    # pythonpath = str("." + os.pathsep + "vendor")
-    # if not app_process:
-    #     app_process = Process(
-    #         "TUID app",
-    #         ["python", "tuid/app.py"],
-    #         env={str("PYTHONPATH"): pythonpath},
-    #         debug=True
-    #     )
-    #     Till(seconds=5).wait()  # Time to warm up
-    # yield
-    # app_process.please_stop.go()
-    # app_process.join(raise_on_error=False)
+    pythonpath = str("." + os.pathsep + "vendor")
+    if not app_process:
+        app_process = Process(
+            "TUID app",
+            ["python", "tuid/app.py"],
+            env={str("PYTHONPATH"): pythonpath},
+            debug=True
+        )
+        for line in app_process.stderr:
+            if line.startswith(b' * Running on '):
+                break
+    yield
+    app_process.please_stop.go()
+    app_process.join(raise_on_error=False)
 
 
 def test_query_error(config, app):
