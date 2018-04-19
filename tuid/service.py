@@ -24,7 +24,7 @@ from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
 
-import json
+import threading
 
 DEBUG = False
 RETRY = {"times": 3, "sleep": 5}
@@ -46,9 +46,6 @@ class TUIDService:
             self.config = kwargs
 
             self.conn = conn if conn else sql.Sql(self.config.database.name)
-            #self.hg_cache = HgMozillaOrg(hg_cache) if hg_cache else Null
-            print(self.config)
-            print(self.config._hg_cache)
             self.hg_cache = HgMozillaOrg(kwargs=self.config._hg_cache, use_cache=True) if self.config._hg_cache else Null
 
             if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
@@ -174,23 +171,46 @@ class TUIDService:
         return line_origins
 
 
-    def get_diff(self, cset):
-        """
-        Returns the diff for a given revision.
-
-        :param cset: revision to get diff from
-        :return: unified diff object from diff_to_moves
-        """
+    # Gets a diff from a particular revision from https://hg.mozilla.org/
+    def _get_hg_diff(self, cset):
         url = 'https://hg.mozilla.org/' + self.config.hg.branch + '/raw-rev/' + cset
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
 
         # Ensure we get the diff before continuing
         try:
-            diff_object = http.get(url, retry=RETRY)
+            return http.get(url, retry=RETRY)
         except Exception as e:
             Log.error("Unexpected error while trying to get diff for: " + url  + " because of {{cause}}", cause=e)
             return None
+
+    # Gets an annotated file from a particular revision from https://hg.mozilla.org/
+    def _get_hg_annotate(self, cset, file, annotated_files, thread_num):
+        url = 'https://hg.mozilla.org/' + self.config.hg.branch + '/json-annotate/' + cset + "/" + file
+        if DEBUG:
+            Log.note("HG: {{url}}", url=url)
+
+        # Ensure we get the annotate before continuing
+        try:
+            annotated_files[thread_num] = http.get_json(url, retry=RETRY)
+            return
+        except Exception as e:
+            Log.error("Unexpected error while trying to get annotate for: " + url  + " because of {{cause}}", cause=e)
+            return
+
+
+    def get_diff(self, cset, diff_object=None):
+        """
+        Returns the diff for a given revision.
+
+        :param cset: revision to get diff from
+        :return: unified diff object from diff_to_moves
+        """
+        if diff_object is None:
+            diff_object = self._get_hg_diff(cset)
+            if diff_object is None:
+                return None
+
         try:
             return diff_to_moves(str(diff_object.content.decode('utf8')))
         except UnicodeDecodeError as e:
@@ -554,7 +574,7 @@ class TUIDService:
             elif file not in removed_files:
                 old_ann = self._get_annotation(rev, file)
                 if old_ann is None or (old_ann == '' and file in added_files):
-                    # File is new, or re-added - we need to create
+                    # File is new (likely from an error), or re-added - we need to create
                     # a new initial entry for this file.
                     tmp_res = self.get_tuids(file, proc_rev, commit=False)
                 else:
@@ -650,7 +670,7 @@ class TUIDService:
             )
 
 
-    def get_tuids(self, file, revision, commit=True):
+    def get_tuids(self, files, revision, commit=True):
         '''
         Returns (TUID, line) tuples for a given file at a given revision.
 
@@ -660,38 +680,71 @@ class TUIDService:
         diff information that was inserted into the DB to return TUIDs. This way
         we don't have to deal with child, parents, dates, etc..
 
-        :param file: name of file to get
+        :param files: list of files to get
         :param revision: revision at which to get the file
         :param commit: True to commit new TUIDs else False
         :return: List of TuidMap objects
         '''
-        revision = revision[:12]
-        file = file.lstrip('/')
 
         # Get annotated file (cannot get around using this).
         # Unfortunately, this also means we always have to
         # deal with a small network delay.
-        url = 'https://hg.mozilla.org/' + self.config.hg.branch + '/json-annotate/' + revision + "/" + file
 
-        existing_tuids = {}
-        tmp_tuids = []
-        already_ann = self._get_annotation(revision, file)
+        #url = 'https://hg.mozilla.org/' + self.config.hg.branch + '/json-annotate/' + revision + "/" + files
 
-        # If it's not defined, or there is a dummy record
-        if not already_ann:
-            if DEBUG:
-                Log.note("HG: {{url}}", url=url)
-            try:
-                annotated_object = http.get_json(url, retry=RETRY)
-                if isinstance(annotated_object, (text_type, str)):
-                    Log.error("Annotated object does not exist.")
-            except Exception as e:
-                # If we can't get the annotated file, return dummy record.
-                Log.warning("Error while obtaining annotated file for file {{file}} in revision {{revision}}", file=file, revision=revision, cause=e)
+        # For a single file, there is no need
+        # to put it in an array when given.
+        if not isinstance(files, list):
+            files = [files]
+
+        revision = revision[:12]
+        for count, file in enumerate(files):
+            files[count] = file.lstrip('/')
+
+        results = []
+        annotations_to_get = []
+        for file in files:
+            already_ann = self._get_annotation(revision, file)
+            if already_ann:
+                results.append((file, self.destringify_tuids(already_ann)))
+            elif already_ann[0] == '':
+                results.append((file, []))
+            else:
+                annotations_to_get.append(file)
+
+        if not annotations_to_get:
+            return results
+
+        # Get all the annotations in parallel
+        num_files = len(annotations_to_get)
+        annotated_files = [None] * num_files
+        threads = [None] * num_files
+        for i in range(num_files):
+            threads[i] = threading.Thread(target=self._get_hg_annotate, args=(revision, annotations_to_get[i], annotated_files, i))
+            threads[i].start()
+        for i in range(num_files):
+            threads[i].join()
+
+        print(annotated_files)
+
+        for fcount, annotated_object in enumerate(annotated_files):
+            existing_tuids = {}
+            tmp_tuids = []
+            file = annotations_to_get[fcount]
+
+            # If it's not defined at this revision, we need to add it in
+            errored = False
+            if isinstance(annotated_object, (text_type, str)):
+                errored = True
+                Log.warning("{{file}} does not exist in the revision {{cset}}", cset=revision, file=file)
+            elif annotated_object is None:
+                errored = True
+
+            if errored:
                 Log.note("Inserting dummy entry...")
                 self.insert_tuid_dummy(revision, file, commit=commit)
                 self.insert_annotate_dummy(revision, file, commit=commit)
-                return []
+                results.append((file, []))
 
             # Gather all missing csets and the
             # corresponding lines.
@@ -722,31 +775,26 @@ class TUIDService:
                 else:
                     with self.conn.transaction():
                         self._update_file_changesets(annotated_lines)
-        elif already_ann[0] == '':
-            return []
-        else:
-            return self.destringify_tuids(already_ann)
 
-        # Get the TUIDs for each line (can probably be optimized with a join)
-        tuids = tmp_tuids
-        for line_num in range(1, len(line_origins) + 1):
-            if line_num in existing_tuids:
-                tuids.append(TuidMap(existing_tuids[line_num], line_num))
-                continue
-            try:
-                tuid_tmp = self.conn.get_one(GET_TUID_QUERY,
-                                             line_origins[line_num - 1])
+            # Get the TUIDs for each line (can probably be optimized with a join)
+            tuids = tmp_tuids
+            for line_num in range(1, len(line_origins) + 1):
+                if line_num in existing_tuids:
+                    tuids.append(TuidMap(existing_tuids[line_num], line_num))
+                    continue
+                try:
+                    tuid_tmp = self.conn.get_one(GET_TUID_QUERY,
+                                                 line_origins[line_num - 1])
 
-                # Return dummy line if we can't find the TUID for this entry
-                # (likely because of an error from insertion).
-                if tuid_tmp:
-                    tuids.append(TuidMap(tuid_tmp[0], line_num))
-                else:
-                    tuids.append(MISSING)
-            except Exception as e:
-                Log.note("Unexpected error searching {{cause}}", cause=e)
+                    # Return dummy line if we can't find the TUID for this entry
+                    # (likely because of an error from insertion).
+                    if tuid_tmp:
+                        tuids.append(TuidMap(tuid_tmp[0], line_num))
+                    else:
+                        tuids.append(MISSING)
+                except Exception as e:
+                    Log.note("Unexpected error searching {{cause}}", cause=e)
 
-        if not already_ann:
             self.conn.execute(
                 "INSERT INTO annotations (revision, file, annotation) VALUES (?,?,?)",
                 (
@@ -758,7 +806,9 @@ class TUIDService:
 
             if commit:
                 self.conn.commit()
-        return tuids
+
+            results.append((file, tuids))
+        return results
 
 
     def _daemon(self, please_stop, only_coverage_revisions=False):
