@@ -90,31 +90,23 @@ class HgMozillaOrg(object):
         timeout=30 * SECOND,
         kwargs=None
     ):
-
-        print('aslhfl;jafh;lawhfaljgfliugwpfiuhPWOIFH')
         if not _hg_branches:
             _late_imports()
 
         self.es_locker = Lock()
         self.todo = mo_threads.Queue("todo for hg daemon", max=DAEMON_QUEUE_SIZE)
 
-        self.settings = kwargs['kwargs']
-        print(self.settings)
-        print(kwargs)
-        #self.timeout = Duration(timeout)
+        self.settings = kwargs
+        self.timeout = Duration(timeout)
 
         # VERIFY CONNECTIVITY
-        print('aslhfl;jafh;lawhfaljgfliugwpfiuhPWOIFH')
         with Explanation("Test connect with hg"):
             response = http.head(self.settings.hg.url)
 
-        print('aslhfl;jafh;lawhfaljgfliugwpfiuhPWOIFH')
-        if branches == None and not self.settings.branches:
+        if branches == None:
             self.branches = _hg_branches.get_branches(kwargs=kwargs)
             self.es = None
             return
-
-        print('aslhfl;jafh;lawhf')
 
         set_default(repo, {"schema": revision_schema})
         self.es = elasticsearch.Cluster(kwargs=repo).get_or_create_index(kwargs=repo)
@@ -650,21 +642,21 @@ def _copy_but(value, exclude):
 
 
 KNOWN_TAGS = {
-    "rev",
-    "node",
-    "user",
-    "description",
-    "desc",
-    "date",
-    "files",
-    "backedoutby",
-    "parents",
-    "children",
-    "branch",
-    "tags",
-    "pushuser",
-    "pushdate",
-    "pushid",
-    "phase",
+    "rev", 
+    "node", 
+    "user", 
+    "description", 
+    "desc", 
+    "date", 
+    "files", 
+    "backedoutby", 
+    "parents", 
+    "children", 
+    "branch", 
+    "tags", 
+    "pushuser", 
+    "pushdate", 
+    "pushid", 
+    "phase", 
     "bookmarks"
 }

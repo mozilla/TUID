@@ -106,7 +106,12 @@ class FromESMetadata(Schema):
         if not meta or self.last_es_metadata < Date.now() - OLD_METADATA:
             self.last_es_metadata = Date.now()
             metadata = self.default_es.get_metadata(force=True)
-            props = [(i, t, m.properties) for i, d in metadata.indices.items() if i in indexes for t, m in [get_best_mapping(d.mappings)]]
+            props = [
+                (self.default_es.get_index(index=i, type=t, debug=DEBUG), t, m.properties)
+                for i, d in metadata.indices.items()
+                if i in indexes
+                for t, m in [get_best_mapping(d.mappings)]
+            ]
 
             # CONFIRM ALL COLUMNS ARE SAME, FIX IF NOT
             all_comparisions = list(jx.pairwise(props)) + list(jx.pairwise(jx.reverse(props)))
@@ -115,14 +120,14 @@ class FromESMetadata(Schema):
                 diff = elasticsearch.diff_schema(p2, p1)
                 for d in diff:
                     dirty = True
-                    self.default_es.get_index(index=i2, type=t2).add_property(*d)
+                    i2.add_property(*d)
             meta = self.default_es.get_metadata(force=dirty).indices[canonical_index]
 
             data_type, mapping = get_best_mapping(meta.mappings)
             mapping.properties["_id"] = {"type": "string", "index": "not_analyzed"}
             self._parse_properties(alias, mapping, meta)
 
-    def _parse_properties(self, alias, properties, meta):
+    def _parse_properties(self, alias, mapping, meta):
         # IT IS IMPORTANT THAT NESTED PROPERTIES NAME ALL COLUMNS, AND
         # ALL COLUMNS ARE GIVEN NAMES FOR ALL NESTED PROPERTIES
         def add_column(c, query_path):
@@ -133,7 +138,7 @@ class FromESMetadata(Schema):
             with self.meta.columns.locker:
                 self.todo.add(self.meta.columns.add(c))
 
-        abs_columns = elasticsearch.parse_properties(alias, None, properties.properties)
+        abs_columns = elasticsearch.parse_properties(alias, None, mapping.properties)
         self.abs_columns.update(abs_columns)
         with Timer("upserting {{num}} columns", {"num": len(abs_columns)}, debug=DEBUG):
             # LIST OF EVERY NESTED PATH
@@ -440,6 +445,9 @@ class FromESMetadata(Schema):
 
                 column = self.todo.pop(Till(seconds=(10*MINUTE).seconds))
                 if column:
+                    if column is THREAD_STOP:
+                        continue
+
                     if DEBUG:
                         Log.note("update {{table}}.{{column}}", table=column.es_index, column=column.es_column)
                     if column.es_index in self.index_does_not_exist:

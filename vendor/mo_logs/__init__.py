@@ -103,6 +103,12 @@ class Log(object):
 
     @classmethod
     def stop(cls):
+        """
+        DECONSTRUCTS ANY LOGGING, AND RETURNS TO DIRECT-TO-stdout LOGGING
+        EXECUTING MULUTIPLE TIMES IN A ROW IS SAFE, IT HAS NO NET EFFECT, IT STILL LOGS TO stdout
+        :return: NOTHING
+        """
+
         from mo_threads import profiles
 
         if cls.cprofiler and hasattr(cls, "settings"):

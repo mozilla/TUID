@@ -110,6 +110,7 @@ class ColumnList(Container):
                 mc.partitions = jx.sort(values)
                 mc.multi = multi
                 mc.last_updated = Date.now()
+        self.dirty = False
 
     def __iter__(self):
         self._update_meta()
