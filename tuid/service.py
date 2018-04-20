@@ -10,7 +10,8 @@ from __future__ import unicode_literals
 
 from collections import namedtuple
 
-from mo_dots import Null, coalesce
+import time
+from mo_dots import Null, coalesce, wrap
 from mo_future import text_type
 from mo_kwargs import override
 from mo_logs import Log
@@ -173,16 +174,11 @@ class TUIDService:
 
     # Gets a diff from a particular revision from https://hg.mozilla.org/
     def _get_hg_diff(self, cset):
-        url = 'https://hg.mozilla.org/' + self.config.hg.branch + '/raw-rev/' + cset
-        if DEBUG:
-            Log.note("HG: {{url}}", url=url)
-
-        # Ensure we get the diff before continuing
-        try:
-            return http.get(url, retry=RETRY)
-        except Exception as e:
-            Log.error("Unexpected error while trying to get diff for: " + url  + " because of {{cause}}", cause=e)
-            return None
+        tmp = self.hg_cache.get_revision(wrap({
+            "changeset": {"id": cset},
+            "branch": {"name": self.config.hg.branch}
+        }))
+        return tmp['changeset']['diff']
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num):
@@ -199,23 +195,14 @@ class TUIDService:
             return
 
 
-    def get_diff(self, cset, diff_object=None):
+    def get_diff(self, cset):
         """
         Returns the diff for a given revision.
 
         :param cset: revision to get diff from
         :return: unified diff object from diff_to_moves
         """
-        if diff_object is None:
-            diff_object = self._get_hg_diff(cset)
-            if diff_object is None:
-                return None
-
-        try:
-            return diff_to_moves(str(diff_object.content.decode('utf8')))
-        except UnicodeDecodeError as e:
-            return diff_to_moves(str(diff_object.content.decode('latin-1')))
-
+        return self._get_hg_diff(cset)
 
     def get_tuids_from_revision(self, revision):
         """
@@ -233,17 +220,10 @@ class TUIDService:
             return None
 
         files = mozobject[revision]['files']
-        total = len(files)
 
-        for count, file in enumerate(files):
-            Log.note("{{file}} {{percent|percent(decimal=0)}}", file=file, percent=count / total)
-            tmp_res = self.get_tuids(file, revision)
-            if tmp_res:
-                result.append((file, tmp_res))
-            else:
-                Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=revision)
-                result.append((file, []))
-        return result
+        with self.conn.transaction():
+            results = self.get_tuids(files, revision)
+        return results
 
 
     def get_tuids_from_files(self, files, revision, going_forward=False):
@@ -304,9 +284,9 @@ class TUIDService:
                 else:
                     # File has never been seen before, get it's initial
                     # annotation to work from in the future.
-                    tmp_res = self.get_tuids(file, revision, commit=False)
+                    tmp_res = self.get_tuids(file, revision, commit=False)[0]
                     if tmp_res:
-                        result.append((file, tmp_res))
+                        result.append(tmp_res)
                     else:
                         Log.note("Error occured for file " + file + " in revision " + revision)
                         result.append((file, []))
@@ -354,16 +334,21 @@ class TUIDService:
         :return:
         '''
         # Add all added lines into the DB.
+        if file == 'toolkit/components/narrate/test/browser_voiceselect.js':
+            print('here')
+
+        if file == 'widget/cocoa/nsCocoaWindow.mm':
+            print('here')
         list_to_insert = []
         new_ann = [x for x in annotation]
         new_ann.sort(key=lambda x: x.line)
 
         def add_one(tl_tuple, lines):
             start = tl_tuple.line
-            return lines[:start - 1] + [tl_tuple] + [TuidMap(tmap.tuid, int(tmap.line) + 1) for tmap in lines[start - 1:]]
+            return lines[:start-1] + [tl_tuple] + [TuidMap(tmap.tuid, int(tmap.line) + 1) for tmap in lines[start-1:]]
 
         def remove_one(start, lines):
-            return lines[:start - 2] + [TuidMap(tmap.tuid, int(tmap.line) - 1) for tmap in lines[start:]]
+            return lines[:start-1] + [TuidMap(tmap.tuid, int(tmap.line) - 1) for tmap in lines[start:]]
 
         for f_proc in diff:
             if f_proc['new'].name.lstrip('/') != file:
@@ -400,7 +385,7 @@ class TUIDService:
 
         Built for quick continuous _forward_ updating of large sets
         of files of TUIDs. Backward updating should be done through
-        get_tuids(file, revision). If we cannot find a frontier, we will
+        get_tuids(files, revision). If we cannot find a frontier, we will
         stop looking after max_csets_proc and update all files at the given
         revision.
 
@@ -725,8 +710,6 @@ class TUIDService:
         for i in range(num_files):
             threads[i].join()
 
-        print(annotated_files)
-
         for fcount, annotated_object in enumerate(annotated_files):
             existing_tuids = {}
             tmp_tuids = []
@@ -745,6 +728,7 @@ class TUIDService:
                 self.insert_tuid_dummy(revision, file, commit=commit)
                 self.insert_annotate_dummy(revision, file, commit=commit)
                 results.append((file, []))
+                continue
 
             # Gather all missing csets and the
             # corresponding lines.

@@ -181,7 +181,7 @@ def test_many_files_one_revision(service):
     first_front = "739c536d2cd6"
     test_rev = "159e1105bdc7"
     dir = ""
-    tmp = [dir + f for f in files]
+    tmp = [dir + f for f in files][:10]
 
     test_file = test_file_init + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
@@ -201,7 +201,7 @@ def test_many_files_one_revision(service):
 @pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
 def test_one_addition_many_files(service):
     # Get current annotation
-    curr_tuids = service.get_tuids("widget/cocoa/nsCocoaWindow.mm", '159e1105bdc7')
+    curr_tuids = service.get_tuids_from_files(["widget/cocoa/nsCocoaWindow.mm"], '159e1105bdc7')[0]
 
     with open('resources/stressfiles.json', 'r') as f:
         files = json.load(f)
@@ -209,7 +209,7 @@ def test_one_addition_many_files(service):
     test_rev = "58eb13b394f4"
     dir = ""
     added_lines = [i for i in range(2148, 2159)] # range is not inclusive for the end number
-    tmp = [dir + f for f in files]
+    tmp = [dir + f for f in files][:1]
 
     test_file = test_file_change + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
@@ -223,7 +223,7 @@ def test_one_addition_many_files(service):
             for new_count, new_tmap in enumerate(el[1]):
                 # Check that unchanged lines have the
                 # same tuid and changed lines are different.
-                for old_count, old_tmap in enumerate(curr_tuids):
+                for old_count, old_tmap in enumerate(curr_tuids[1]):
                     if new_tmap.line == old_tmap.line:
                         if new_tmap.line in added_lines:
                             # Added lines should not have an equal
@@ -240,7 +240,9 @@ def test_one_addition_many_files(service):
 
                             # Though the new lines tuid should be equal to a tuid
                             # that is len(added_lines) back.
-                            assert curr_tuids[old_count-len(added_lines)+1].tuid == el[1][new_count].tuid
+                            if curr_tuids[1][old_count-len(added_lines)+1].tuid != el[1][new_count].tuid:
+                                print('here')
+                            assert curr_tuids[1][old_count-len(added_lines)+1].tuid == el[1][new_count].tuid
                         break
 
 @pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
@@ -375,9 +377,9 @@ def test_one_http_call_required(service):
         'browser/components/search/test/browser_aboutSearchReset.js':
             {'changes': {'removed': [67, 86, 119], 'added': []}},
         'toolkit/components/narrate/test/browser_voiceselect.js':
-            {'changes': {'removed': [6, 7], 'added': []}},
+            {'changes': {'removed': [7, 8], 'added': []}},
         'toolkit/components/narrate/test/browser_word_highlight.js':
-            {'changes': {'removed': [6, 7], 'added': []}},
+            {'changes': {'removed': [7, 8], 'added': []}},
     }
 
     files_not_changed = {
@@ -386,7 +388,7 @@ def test_one_http_call_required(service):
     }
 
     # SETUP
-    proc_files = files #[-10:] + [k for k in changed_files] # Useful in testing
+    proc_files = files[-10:] + [k for k in changed_files] # Useful in testing
     Log.note("Number of files to process: {{flen}}", flen=len(files))
     first_f_n_tuids = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "d63ed14ed622")
 
@@ -439,7 +441,7 @@ def test_long_file(service):
 
     with timer:
         service.get_tuids(
-            file="gfx/angle/checkout/src/libANGLE/formatutils.cpp",
+            files="gfx/angle/checkout/src/libANGLE/formatutils.cpp",
             revision="29dcc9cb77c3"
         )
 
