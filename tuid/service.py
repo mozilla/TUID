@@ -204,6 +204,35 @@ class TUIDService:
         """
         return self._get_hg_diff(cset)
 
+
+    def _pget_diff(self, cset, results, thread_num):
+        """
+        Returns the diff for a given revision.
+
+        :param cset: revision to get diff from
+        :return: unified diff object from diff_to_moves
+        """
+        results[thread_num] =  self._get_hg_diff(cset)
+        return
+
+
+    def get_diffs(self, csets):
+        # Get all the diffs in parallel
+        num_csets = len(csets.keys())
+        diffs = [None] * num_csets
+        threads = [None] * num_csets
+        for i, cset in enumerate(csets.keys()):
+            threads[i] = threading.Thread(target=self._pget_diff, args=(cset, diffs, i))
+            threads[i].start()
+        for i in range(num_csets):
+            threads[i].join()
+
+        dict_diffs = {}
+        for i, cset in enumerate(csets.keys()):
+            dict_diffs[cset] = diffs[i]
+        return dict_diffs
+
+
     def get_tuids_from_revision(self, revision):
         """
         Gets the TUIDs for the files modified by a revision.
@@ -476,10 +505,13 @@ class TUIDService:
                 final_rev = clog_obj['changesets'][len(clog_obj['changesets'])-1]['node'][:12]
 
         added_files = {}
+        parsed_diffs = {}
         if not still_looking:
-            for cset_len12 in diffs_cache:
-                parsed_diff = self.get_diff(cset_len12)
-                diffs_cache[cset_len12] = parsed_diff
+            parsed_diffs = self.get_diffs(diffs_cache)
+            print(parsed_diffs)
+            for cset_len12 in parsed_diffs:
+                parsed_diff = parsed_diffs[cset_len12]
+
                 for f_added in parsed_diff:
                     # Get new entries for removed files.
                     new_name = f_added['new'].name.lstrip('/')
@@ -553,7 +585,7 @@ class TUIDService:
                 # Apply all the diffs
                 tmp_res = old_ann
                 for i in csets_to_proc:
-                    tmp_res = self._apply_diff(tmp_res, diffs_cache[i], i, file)
+                    tmp_res = self._apply_diff(tmp_res, parsed_diffs[i], i, file)
 
                 ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
             elif file not in removed_files:
