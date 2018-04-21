@@ -280,6 +280,7 @@ class TUIDService:
 
         total = len(files)
         latestFileMod_inserts = {}
+        new_files = []
 
         with self.conn.transaction():
             for count, file in enumerate(files):
@@ -311,19 +312,22 @@ class TUIDService:
                     tmp_res = self.destringify_tuids(self._get_annotation(latest_rev[0], file))
                     result.append((file, tmp_res))
                 else:
-                    # File has never been seen before, get it's initial
-                    # annotation to work from in the future.
-                    tmp_res = self.get_tuids(file, revision, commit=False)[0]
-                    if tmp_res:
-                        result.append(tmp_res)
-                    else:
-                        Log.note("Error occured for file " + file + " in revision " + revision)
-                        result.append((file, []))
+                    new_files.append(file)
 
-                    # If this file has not been seen before,
-                    # add it to the latest modifications, else
-                    # it's already in there so update its past
-                    # revisions.
+            if len(new_files) > 0:
+                # File has never been seen before, get it's initial
+                # annotation to work from in the future.
+                tmp_res = self.get_tuids(new_files, revision, commit=False)
+                if tmp_res:
+                    result.extend(tmp_res)
+                else:
+                    Log.note("Error occured for files " + str(new_files) + " in revision " + revision)
+
+                # If this file has not been seen before,
+                # add it to the latest modifications, else
+                # it's already in there so update its past
+                # revisions.
+                for file in new_files:
                     latestFileMod_inserts[file] = (file, revision)
 
             # If we have files that need to have their frontier updated

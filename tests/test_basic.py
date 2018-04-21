@@ -169,11 +169,12 @@ def test_multi_parent_child_changes(service):
     for i in range(0, len(earliest_rev)):
         assert next_rev[i] == earliest_rev[i]
 
+
 def test_get_tuids_from_revision(service):
     tuids = service.get_tuids_from_revision("a6fdd6eae583")
     assert tuids != None
 
-@pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
+
 def test_many_files_one_revision(service):
     with open('resources/stressfiles.json', 'r') as f:
         files = json.load(f)
@@ -198,7 +199,6 @@ def test_many_files_one_revision(service):
         print("     "+el[0]+":"+str(len(el[1])))
 
 
-@pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
 def test_one_addition_many_files(service):
     # Get current annotation
     curr_tuids = service.get_tuids_from_files(["widget/cocoa/nsCocoaWindow.mm"], '159e1105bdc7')[0]
@@ -245,7 +245,7 @@ def test_one_addition_many_files(service):
                             assert curr_tuids[1][old_count-len(added_lines)+1].tuid == el[1][new_count].tuid
                         break
 
-@pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
+
 def test_one_http_call_required(service):
     files =[
         "/browser/base/content/test/general/browser_bug423833.js",
@@ -436,6 +436,7 @@ def test_one_http_call_required(service):
             for count, tmap1 in enumerate(tuids1):
                 assert tmap1.tuid == tuids2[count].tuid
 
+
 def test_long_file(service):
     timer = Timer("test", silent=True)
 
@@ -446,6 +447,7 @@ def test_long_file(service):
         )
 
     assert timer.duration.seconds < 30
+
 
 @pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
 def test_daemon(service):
