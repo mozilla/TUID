@@ -216,7 +216,7 @@ class TUIDService:
         return
 
 
-    def get_diffs(self, csets):
+    def pget_diffs(self, csets):
         # Get all the diffs in parallel
         num_csets = len(csets.keys())
         diffs = [None] * num_csets
@@ -231,6 +231,13 @@ class TUIDService:
         for i, cset in enumerate(csets.keys()):
             dict_diffs[cset] = diffs[i]
         return dict_diffs
+
+    def get_diffs(self, csets):
+        # Get all the diffs
+        list_diffs = []
+        for cset in csets:
+            list_diffs.append({'cset': cset, 'diff': self._get_hg_diff(cset)})
+        return list_diffs
 
 
     def get_tuids_from_revision(self, revision):
@@ -341,13 +348,16 @@ class TUIDService:
                 while count < len(listed_inserts):
                     inserts_list = listed_inserts[count:count + SQL_BATCH_SIZE]
                     count += SQL_BATCH_SIZE
-                    self.conn.execute(
-                        "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                        sql_list(
-                            sql_iso(sql_list(map(quote_value, i)))
-                            for i in inserts_list
+                    try:
+                        self.conn.execute(
+                            "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+                            sql_list(
+                                sql_iso(sql_list(map(quote_value, i)))
+                                for i in inserts_list
+                            )
                         )
-                    )
+                    except Exception as e:
+                        Log.error("Error inserting into latestFileMods, {{error}}", error=e)
 
         return result
 
@@ -367,11 +377,6 @@ class TUIDService:
         :return:
         '''
         # Add all added lines into the DB.
-        if file == 'toolkit/components/narrate/test/browser_voiceselect.js':
-            print('here')
-
-        if file == 'widget/cocoa/nsCocoaWindow.mm':
-            print('here')
         list_to_insert = []
         new_ann = [x for x in annotation]
         new_ann.sort(key=lambda x: x.line)
@@ -452,7 +457,7 @@ class TUIDService:
 
         final_rev = revision  # Revision we are searching from
         csets_proced = 0
-        diffs_cache = {}
+        diffs_cache = []
         removed_files = {}
         if DEBUG:
             Log.note("Searching for the following frontiers: {{csets}}", csets=str([cset for cset in latest_csets]))
@@ -466,8 +471,13 @@ class TUIDService:
             try:
                 Log.note("Searching through changelog {{url}}", url=clog_url)
                 clog_obj = http.get_json(clog_url, retry=RETRY)
+                if isinstance(clog_obj, (text_type, str)):
+                    Log.error(
+                        "Revision {{cset}} does not exist in the {{branch}} branch",
+                        cset=final_rev, branch=self.config.hg.branch
+                    )
             except Exception as e:
-                Log.error("Unexpected error getting changset-log for {{url}}", url=clog_url, error=e)
+                Log.error("Unexpected error getting changset-log for {{url}}: {{error}}", url=clog_url, error=e)
 
             # For each changeset/node
             still_looking = True
@@ -485,7 +495,7 @@ class TUIDService:
 
                     # If there are still frontiers left to explore,
                     # add the files this node modifies to the processing list.
-                    diffs_cache[cset_len12] = None
+                    diffs_cache.append(cset_len12)
 
                 if cset_len12 in latest_csets:
                     # Found a frontier, remove it from search list.
@@ -511,10 +521,11 @@ class TUIDService:
         added_files = {}
         parsed_diffs = {}
         if not still_looking:
-            parsed_diffs = self.get_diffs(diffs_cache)
-            print(parsed_diffs)
-            for cset_len12 in parsed_diffs:
-                parsed_diff = parsed_diffs[cset_len12]
+            all_diffs = self.get_diffs(diffs_cache)
+
+            for csets_diff in all_diffs:
+                cset_len12 = csets_diff['cset']
+                parsed_diff = csets_diff['diff']
 
                 for f_added in parsed_diff:
                     # Get new entries for removed files.
@@ -551,12 +562,16 @@ class TUIDService:
                     # because any frontier for the new_name file should be at this revision or
                     # further ahead - never earlier.
                     if old_name != new_name:
-                        Log.error("Should not have made it here, can't find a frontier for {{file}}", file=new_name)
+                        Log.warning("Should not have made it here, can't find a frontier for {{file}}", file=new_name)
+                        continue
 
                     if new_name in files_to_process:
                         files_to_process[new_name].append(cset_len12)
                     else:
                         files_to_process[new_name] = [cset_len12]
+
+            # Build a dict for faster access to the diffs
+            parsed_diffs = {entry['cset']: entry['diff'] for entry in all_diffs}
 
         # Process each file that needs it based on the
         # files_to_process list.
