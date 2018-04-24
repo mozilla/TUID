@@ -10,6 +10,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
+from mo_future import text_type
 from mo_kwargs import override
 from mo_logs import startup, constants, Log
 from mo_times import Timer
@@ -34,11 +35,11 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
     queue = aws.Queue(pull_queue)
     client = TuidClient(client)
 
-    while len(queue) > 0:
-        request = queue.pop(till=please_stop)
-        if request:
-            Log.note("Popping request from {{time}}", time=request.meta.request_time)
-            queue.commit()
+    #while len(queue) > 0:
+    #    request = queue.pop(till=please_stop)
+    #    if request:
+    #        Log.note("Popping request from {{time}}", time=request.meta.request_time)
+    #        queue.commit()
 
     while not please_stop:
         request = queue.pop(till=please_stop)
@@ -62,17 +63,33 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
             elif a.eq.path:
                 files = [a.eq.path]
 
+        if len(files) <= 0:
+            Log.warning("No files in the given request: {{request}}", request=request)
+            continue
+
+        clog_url = 'https://hg.mozilla.org/mozilla-central/json-log/' + revision[:12]
+        clog_obj = http.get_json(clog_url)
+        if isinstance(clog_obj, (text_type, str)):
+            Log.warning(
+                "Revision {{cset}} does not exist in the {{branch}} branch",
+                cset=revision[:12], branch='mozilla-central'
+            )
+            queue.commit()
+            continue
+        else:
+            Log.note("Revision {{cset}} exists on mozilla-central.", cset=revision[:12])
+
         with Timer("Make TUID request from {{timestamp|date}}", {"timestamp": request.meta.request_time}):
             client.enabled = True  # ENSURE THE REQUEST IS MADE
             result = http.post_json(
                         "http://localhost:5000/tuid",
                         json=request,
-                        timeout=1000
+                        timeout=10000
                     )
             if not client.enabled:
                 Log.note("pausing consumer for {{num}}sec", num=PAUSE_ON_FAILURE)
                 Till(seconds=PAUSE_ON_FAILURE).wait()
-            if result is None or len(result.keys()) != len(files):
+            if result is None or len(result.data) != len(files):
                 Log.warning("expecting response for every file requested")
 
         queue.commit()
