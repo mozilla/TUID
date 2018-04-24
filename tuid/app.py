@@ -72,9 +72,13 @@ def tuid_endpoint(path):
             paths = unwraplist(coalesce(paths, a['in'].path, a.eq.path))
 
         paths = listwrap(paths)
-        # RETURN TUIDS
-        with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
-            response = service.get_tuids_from_files(revision=rev, files=paths, going_forward=True)
+        if len(paths) <= 0:
+            Log.warning("Can't find file paths found in request: {{request}}", request=request_body)
+            response = [("Error in app.py - no paths found", [])]
+        else:
+            # RETURN TUIDS
+            with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
+                response = service.get_tuids_from_files(revision=rev, files=paths, going_forward=True)
 
         if query.meta.format == 'list':
             formatter = _stream_list
