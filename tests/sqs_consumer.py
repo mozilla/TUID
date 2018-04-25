@@ -34,6 +34,7 @@ DEBUG = True
 def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
     queue = aws.Queue(pull_queue)
     client = TuidClient(client)
+    try_revs = {}
 
     #while len(queue) > 0:
     #    request = queue.pop(till=please_stop)
@@ -67,6 +68,14 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
             Log.warning("No files in the given request: {{request}}", request=request)
             continue
 
+        if revision[:12] in try_revs:
+            Log.warning(
+                "Revision {{cset}} does not exist in the {{branch}} branch",
+                cset=revision[:12], branch='mozilla-central'
+            )
+            queue.commit()
+            continue
+
         clog_url = 'https://hg.mozilla.org/mozilla-central/json-log/' + revision[:12]
         clog_obj = http.get_json(clog_url)
         if isinstance(clog_obj, (text_type, str)):
@@ -74,6 +83,7 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
                 "Revision {{cset}} does not exist in the {{branch}} branch",
                 cset=revision[:12], branch='mozilla-central'
             )
+            try_revs[revision[:12]] = True
             queue.commit()
             continue
         else:
