@@ -481,7 +481,7 @@ class TUIDService:
 
             # For each changeset/node
             still_looking = True
-            for clog_cset in clog_obj['changesets']:
+            for clog_cset in clog_obj['changesets'][:-1]:
                 cset_len12 = clog_cset['node'][:12]
 
                 if still_looking:
@@ -521,7 +521,15 @@ class TUIDService:
         added_files = {}
         parsed_diffs = {}
         if not still_looking:
+            print('diffs_cache')
+            print(diffs_cache)
+
             all_diffs = self.get_diffs(diffs_cache)
+            print('all_diffs')
+            print(all_diffs)
+
+            # Build a dict for faster access to the diffs
+            parsed_diffs = {entry['cset']: entry['diff'] for entry in all_diffs}
 
             for csets_diff in all_diffs:
                 cset_len12 = csets_diff['cset']
@@ -570,9 +578,6 @@ class TUIDService:
                     else:
                         files_to_process[new_name] = [cset_len12]
 
-            # Build a dict for faster access to the diffs
-            parsed_diffs = {entry['cset']: entry['diff'] for entry in all_diffs}
-
         # Process each file that needs it based on the
         # files_to_process list.
         result = []
@@ -603,6 +608,8 @@ class TUIDService:
 
                 # Apply all the diffs
                 tmp_res = old_ann
+                print('csets_to_proc:')
+                print(csets_to_proc)
                 for i in csets_to_proc:
                     tmp_res = self._apply_diff(tmp_res, parsed_diffs[i], i, file)
 
