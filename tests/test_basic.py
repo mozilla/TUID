@@ -219,6 +219,7 @@ def test_one_addition_many_files(service):
     for el in new:
         print("     "+el[0]+":"+str(len(el[1])))
         if el[0] == test_file_change[0]:
+            assert len(el[1]) == 4074
             # For each of the new tuids
             for new_count, new_tmap in enumerate(el[1]):
                 # Check that unchanged lines have the
