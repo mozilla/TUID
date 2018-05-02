@@ -455,8 +455,7 @@ def test_long_file(service):
     assert timer.duration.seconds < 30
 
 
-@pytest.mark.skip()
-# @pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
+@pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
 def test_daemon(service):
     from mo_threads import Signal
     temp_signal = Signal()
