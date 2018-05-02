@@ -10,7 +10,7 @@
 from __future__ import division
 from __future__ import unicode_literals
 
-from mo_dots import listwrap, wrap
+from mo_dots import listwrap, wrap, coalesce
 from mo_json import json2value, value2json
 from mo_kwargs import override
 from mo_logs import Log
@@ -26,16 +26,14 @@ DEBUG = True
 class TuidClient(object):
 
     @override
-    def __init__(self, endpoint, push_queue=None, timeout=30, db_filename="tuid_client.sqlite", kwargs=None):
+    def __init__(self, endpoint, push_queue=None, timeout=30, db=None, kwargs=None):
         self.enabled = True
         self.endpoint = endpoint
         self.timeout = timeout
         self.push_queue = aws.Queue(push_queue) if push_queue else None
         self.config = kwargs
 
-        #if DEBUG:
-        #    File(db_filename).delete()
-        self.db = Sqlite(filename=db_filename)
+        self.db = Sqlite(filename=coalesce(db.filename, "tuid_client.sqlite"), kwargs=db)
 
         if not self.db.query("SELECT name FROM sqlite_master WHERE type='table';").data:
             self._setup()

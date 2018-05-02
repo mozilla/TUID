@@ -20,7 +20,7 @@ class Sql:
 
     def commit(self):
         self.db.commit()
-        
+
     def rollback(self):
         self.db.rollback()
 
@@ -35,9 +35,6 @@ class Sql:
 
     def transaction(self):
         return Transaction(self)
-
-    def rollback(self):
-        self.execute("ROLLBACK")
 
 
 class Transaction(object):
