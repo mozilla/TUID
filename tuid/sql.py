@@ -36,6 +36,9 @@ class Sql:
     def transaction(self):
         return Transaction(self)
 
+    def rollback(self):
+        self.execute("ROLLBACK")
+
 
 class Transaction(object):
     def __init__(self, db):

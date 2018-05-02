@@ -11,13 +11,14 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import re
+import sys
 from collections import Mapping
 from copy import copy
 
 import mo_threads
 from mo_dots import set_default, Null, coalesce, unwraplist, listwrap, wrap, Data
 from mo_future import text_type, binary_type
-from mo_hg.parse import diff_to_json
+from mo_hg.parse import diff_to_json, diff_to_moves
 from mo_hg.repos.changesets import Changeset
 from mo_hg.repos.pushs import Push
 from mo_hg.repos.revisions import Revision, revision_schema
@@ -64,9 +65,8 @@ DAEMON_RECENT_HG_PULL = 2 * SECOND  # DETERMINE IF WE GOT DATA FROM HG (RECENT),
 MAX_TODO_AGE = DAY  # THE DAEMON WILL NEVER STOP SCANNING; DO NOT ADD OLD REVISIONS TO THE todo QUEUE
 MIN_ETL_AGE = Date("22sep2017").unix  # sept 22nd 2017  ARTIFACTS OLDER THAN THIS IN ES ARE REPLACED
 
-
 GET_DIFF = True
-MAX_DIFF_SIZE = 1000
+MAX_DIFF_SIZE = sys.maxsize
 DIFF_URL = "{{location}}/raw-rev/{{rev}}"
 FILE_URL = "{{location}}/raw-file/{{rev}}{{path}}"
 
@@ -120,7 +120,7 @@ class HgMozillaOrg(object):
 
         Thread.run("setup_es", setup_es)
         self.branches = _hg_branches.get_branches(kwargs=kwargs)
-
+        self.timeout = timeout
         Thread.run("hg daemon", self._daemon)
 
     def _daemon(self, please_stop):
@@ -168,7 +168,7 @@ class HgMozillaOrg(object):
                     self._find_revision(r)
 
     @cache(duration=HOUR, lock=True)
-    def get_revision(self, revision, locale=None, get_diff=False):
+    def get_revision(self, revision, locale=None, get_diff=True):
         """
         EXPECTING INCOMPLETE revision OBJECT
         RETURNS revision
@@ -553,19 +553,19 @@ class HgMozillaOrg(object):
                 Log.note("get unified diff from {{url}}", url=url)
             try:
                 response = http.get(url)
-                diff = response.content.decode("utf8", "replace")
+                diff = response.content.decode("utf8")
                 json_diff = diff_to_json(diff)
                 num_changes = _count(c for f in json_diff for c in f.changes)
                 if json_diff:
                     if num_changes < MAX_DIFF_SIZE:
-                        return json_diff
+                        return diff_to_moves(str(diff))
                     elif revision.changeset.description.startswith("merge "):
-                        return None  # IGNORE THE MERGE CHANGESETS
+                        return diff_to_moves(str(diff))  # IGNORE THE MERGE CHANGESETS?
                     else:
                         Log.warning("Revision at {{url}} has a diff with {{num}} changes, ignored", url=url, num=num_changes)
-                        for file in json_diff:
-                            file.changes = None
-                        return json_diff
+                        #for file in json_diff:
+                        #    file.changes = None
+                        return diff_to_moves(diff)
             except Exception as e:
                 Log.warning("could not get unified diff", cause=e)
 
