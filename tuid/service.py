@@ -896,7 +896,6 @@ class TUIDService:
                     # Get a changelog
                     clog_url = 'https://hg.mozilla.org/' + self.config.hg.branch + '/json-log/' + final_rev
                     try:
-                        Log.note("Searching through changelog {{url}}", url=clog_url)
                         clog_obj = http.get_json(clog_url, retry=RETRY)
                     except Exception as e:
                         Log.error("Unexpected error getting changset-log for {{url}}", url=clog_url, error=e)

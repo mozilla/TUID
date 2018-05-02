@@ -21,12 +21,17 @@ from tuid import sql
 from tuid.service import TUIDService
 
 
+_service = None
+
 @pytest.fixture
 def service(config, new_db):
+    global _service
     if new_db == 'yes':
         return TUIDService(conn=sql.Sql(":memory:"), kwargs=config.tuid)
     elif new_db == 'no':
-        return TUIDService(conn=sql.Sql("resources/test.db"), kwargs=config.tuid)
+        if _service is None:
+            _service = TUIDService(conn=sql.Sql("resources/test.db"), kwargs=config.tuid)
+        return _service
     else:
         Log.error("expecting 'yes' or 'no'")
 
@@ -450,7 +455,8 @@ def test_long_file(service):
     assert timer.duration.seconds < 30
 
 
-@pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
+@pytest.mark.skip()
+# @pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
 def test_daemon(service):
     from mo_threads import Signal
     temp_signal = Signal()
