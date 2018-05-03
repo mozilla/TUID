@@ -31,7 +31,7 @@ def new_db(request):
 
 @pytest.fixture(scope="session")
 def config():
-    config = startup.read_settings(filename=os.environ.get('TRAVIS'))
+    config = startup.read_settings(filename=os.environ.get('TUID_CONFIG'))
     constants.set(config.constants)
     Log.start(config.debug)
     return config
