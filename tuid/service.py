@@ -174,11 +174,14 @@ class TUIDService:
 
     # Gets a diff from a particular revision from https://hg.mozilla.org/
     def _get_hg_diff(self, cset):
-        tmp = self.hg_cache.get_revision(wrap({
-            "changeset": {"id": cset},
-            "branch": {"name": self.config.hg.branch}
-        }))
-        return tmp['changeset']['diff']
+        tmp = self.hg_cache.get_revision(
+            wrap({
+                "changeset": {"id": cset},
+                "branch": {"name": self.config.hg.branch}
+            }),
+            get_moves=True
+        )
+        return tmp['changeset']['moves']
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num):
