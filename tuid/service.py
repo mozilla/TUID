@@ -196,8 +196,7 @@ class TUIDService:
             annotated_files[thread_num] = http.get_json(url, retry=RETRY)
             return
         except Exception as e:
-            Log.error("Unexpected error while trying to get annotate for: " + url  + " because of {{cause}}", cause=e)
-            return
+            Log.error("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
 
 
     def get_diff(self, cset):

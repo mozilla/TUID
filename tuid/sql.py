@@ -22,7 +22,7 @@ class Sql:
         self.db.commit()
 
     def rollback(self):
-        self.db.rollback()
+        self.db.execute("ROLLBACK")
 
     def get(self, sql, params=None):
         if params:
