@@ -17,8 +17,7 @@ from flask import Flask, Response
 
 from mo_dots import listwrap, coalesce, unwraplist
 from mo_json import value2json, json2value
-from mo_logs import Log
-from mo_logs import constants, startup
+from mo_logs import Log, constants, startup
 from mo_logs.strings import utf82unicode, unicode2utf8
 from mo_times import Timer
 from pyLibrary.env.flask_wrappers import cors_wrapper
