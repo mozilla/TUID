@@ -1,7 +1,7 @@
 {
     "tuid": {
         "database": {
-            "name": "../../resources/tuid_app.db"
+            "name": "resources/tuid_app.db"
         },
         "local_hg_source": "C:/mozilla-source/mozilla-central/",
         "hg_for_building": "C:/mozilla-build/python/Scripts/hg.exe",
