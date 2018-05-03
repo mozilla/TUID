@@ -46,12 +46,7 @@
     },
     "client":{
         "endpoint": "http://localhost:5000/tuid",
-        "timeout": 60,
-        "push_queue": {
-            "name": "active-data-tuid-dev",
-            "debug": true,
-            "$ref": "file://~/private.json#tuid_queue"
-        }
+        "timeout": 60
     },
     "constants": {
         "tuid.service.DEBUG": false,
