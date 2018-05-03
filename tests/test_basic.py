@@ -8,18 +8,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
-
-import pytest
 import json
 import os
+
+import pytest
+
 from mo_logs import Log
 from mo_times import Timer
-
 from pyLibrary.env import http
-
 from tuid import sql
 from tuid.service import TUIDService
-
+from tuid.util import map_to_array
 
 _service = None
 
@@ -206,50 +205,35 @@ def test_many_files_one_revision(service):
 
 def test_one_addition_many_files(service):
     # Get current annotation
-    curr_tuids = service.get_tuids_from_files(["widget/cocoa/nsCocoaWindow.mm"], '159e1105bdc7')[0]
+    _, curr_tuids = service.get_tuids_from_files(["widget/cocoa/nsCocoaWindow.mm"], '159e1105bdc7')[0]
+    curr_tuid_array = map_to_array(curr_tuids)
+
+    # remove line 2148, add eleven lines
+    expected_tuid_array = curr_tuid_array[:2147] + ([-1] * 11) + curr_tuid_array[2148:]
 
     with open('resources/stressfiles.json', 'r') as f:
         files = json.load(f)
     test_file_change = ["widget/cocoa/nsCocoaWindow.mm"]
-    test_rev = "58eb13b394f4"
+    test_rev = "58eb13b394f4"  # 11 Lines added, 1 removed
     dir = ""
-    added_lines = [i for i in range(2148, 2159)] # range is not inclusive for the end number
-    tmp = [dir + f for f in files][:1]
+    tmp = [dir + f for f in files][:1]  # TEST WITH SOME OTHER NUMBER OF FILES
 
     test_file = test_file_change + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    new = service.get_tuids_from_files(test_file,test_rev)
+    tuid_response = service.get_tuids_from_files(test_file,test_rev)
     print("new:")
-    for el in new:
-        print("     "+el[0]+":"+str(len(el[1])))
-        if el[0] == test_file_change[0]:
-            assert len(el[1]) == 4074
-            # For each of the new tuids
-            for new_count, new_tmap in enumerate(el[1]):
-                # Check that unchanged lines have the
-                # same tuid and changed lines are different.
-                for old_count, old_tmap in enumerate(curr_tuids[1]):
-                    if new_tmap.line == old_tmap.line:
-                        if new_tmap.line in added_lines:
-                            # Added lines should not have an equal
-                            # tuid to the old lines.
-                            assert old_tmap.tuid != new_tmap.tuid
-                        elif new_tmap.line < added_lines[0]:
-                            # All values before added lines should have
-                            # equal tuids.
-                            assert old_tmap.tuid == new_tmap.tuid
-                        elif new_tmap.line > added_lines[-1]:
-                            # Lines that come after the added lines
-                            # should not have an equal tuid.
-                            assert old_tmap.tuid != new_tmap.tuid
+    for filename, tuids in tuid_response:
+        print("     "+filename+":"+str(len(tuids)))
+        if filename != test_file_change[0]:
+            continue
+        new_tuid_array = map_to_array(tuids)
 
-                            # Though the new lines tuid should be equal to a tuid
-                            # that is len(added_lines) back.
-                            if curr_tuids[1][old_count-len(added_lines)+1].tuid != el[1][new_count].tuid:
-                                print('here')
-                            assert curr_tuids[1][old_count-len(added_lines)+1].tuid == el[1][new_count].tuid
-                        break
+        assert len(new_tuid_array) == len(expected_tuid_array)
+        for new_tuid, curr_tuid in zip(new_tuid_array, expected_tuid_array):
+            if curr_tuid == -1:
+                continue
+            assert(new_tuid, curr_tuid)
 
 
 def test_one_http_call_required(service):

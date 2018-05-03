@@ -27,6 +27,8 @@ from tuid import sql
 
 import threading
 
+from tuid.util import MISSING, TuidMap
+
 DEBUG = False
 RETRY = {"times": 3, "sleep": 5}
 SQL_BATCH_SIZE = 500
@@ -966,7 +968,3 @@ class TUIDService:
                 (please_stop | Till(seconds=DAEMON_WAIT_AT_NEWEST.seconds)).wait()
 
 
-# Used for increasing readability
-# Can be accessed with tmap_obj.line, tmap_obj.tuid
-TuidMap = namedtuple(str("TuidMap"), [str("tuid"), str("line")])
-MISSING = TuidMap(-1, 0)

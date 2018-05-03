@@ -22,7 +22,8 @@ from mo_logs import constants, startup
 from mo_logs.strings import utf82unicode, unicode2utf8
 from mo_times import Timer
 from pyLibrary.env.flask_wrappers import cors_wrapper
-from tuid.service import TUIDService, TuidMap
+from tuid.service import TUIDService
+from tuid.util import map_to_array
 
 OVERVIEW = None
 
@@ -105,7 +106,7 @@ def tuid_endpoint(path):
 def _stream_table(files):
     yield b'{"format":"table", "header":["path", "tuids"], "data":['
     for f, pairs in files:
-        yield value2json([f, _map_to_array(pairs)]).encode('utf8')
+        yield value2json([f, map_to_array(pairs)]).encode('utf8')
     yield b']}'
 
 
@@ -113,27 +114,9 @@ def _stream_list(files):
     sep = b'{"format":"list", "data":['
     for f, pairs in files:
         yield sep
-        yield value2json({"path": f, "tuids": _map_to_array(pairs)}).encode('utf8')
+        yield value2json({"path": f, "tuids": map_to_array(pairs)}).encode('utf8')
         sep = b","
     yield b']}'
-
-
-def _map_to_array(pairs):
-    """
-    MAP THE (tuid, line) PAIRS TO A SINGLE ARRAY OF TUIDS
-    :param pairs:
-    :return:
-    """
-    if pairs:
-        pairs = [TuidMap(*p) for p in pairs]
-        max_line = max(p.line for p in pairs)
-        tuids = [None] * max_line
-        for p in pairs:
-            if p.line:  # line==0 IS A PLACEHOLDER FOR FILES THAT DO NOT EXIST
-                tuids[p.line-1] = p.tuid
-        return tuids
-    else:
-        return None
 
 
 @cors_wrapper
