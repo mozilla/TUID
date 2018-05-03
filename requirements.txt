@@ -9,5 +9,5 @@ jx_python
 toposort
 whatthepatch
 flask
-
+beautifulsoup4
 
