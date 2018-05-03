@@ -14,7 +14,7 @@ env:
 
   global:
     - PYTHONPATH=.:tests:vendor
-    - TRAVIS=1
+    - TRAVIS=tests/travis/config.json
 
 install:
   - "wget ${ES_DOWNLOAD_URL}"
