@@ -231,20 +231,12 @@ def post_json(url, **kwargs):
     else:
         Log.error(u"Expecting `json` parameter")
 
-    try:
-        response = post(url, **kwargs)
-        details = json2value(utf82unicode(response.content))
-        if response.status_code not in [200, 201]:
-            Log.error(u"Bad response code {{code}}", code=response.status_code, cause=Except.wrap(details))
-        else:
-            return details
-    except Exception as e:
-        if u"Bad response code {{code}}" in e:
-            raise e
-        else:
-            Log.error(u"Unexpected return value {{content}}", content=c, cause=e)
-
-
+    response = post(url, **kwargs)
+    details = json2value(utf82unicode(response.content))
+    if response.status_code not in [200, 201]:
+        Log.error(u"Bad response code {{code}}", code=response.status_code, cause=Except.wrap(details))
+    else:
+        return details
 
 
 def put(url, **kwargs):

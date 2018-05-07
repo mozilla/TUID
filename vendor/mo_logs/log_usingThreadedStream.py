@@ -93,7 +93,9 @@ def time_delta_pusher(please_stop, appender, queue, interval):
     next_run = time() + interval
 
     while not please_stop:
+        Thread.current().cprofiler.disable()
         (Till(till=next_run) | please_stop).wait()
+        Thread.current().cprofiler.enable()
         next_run = time() + interval
         logs = queue.pop_all()
         if not logs:
