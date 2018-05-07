@@ -10,7 +10,7 @@
 from __future__ import division
 from __future__ import unicode_literals
 
-from mo_dots import listwrap, wrap, coalesce
+from mo_dots import wrap, coalesce
 from mo_json import json2value, value2json
 from mo_kwargs import override
 from mo_logs import Log
@@ -49,58 +49,27 @@ class TuidClient(object):
         )
         """)
 
-    def annotate_sources(self, revision, sources):
-        """
-        :param revision: REVISION NUMBER TO USE FOR MARKUP
-        :param sources: LIST OF COVERAGE SOURCE STRUCTURES TO MARKUP
-        :return: NOTHING, sources ARE MARKED UP
-        """
-        try:
-            revision = revision[:12]
-            sources = listwrap(sources)
-            filenames = sources.file.name
-
-            with Timer("markup sources for {{num}} files", {"num": len(filenames)}):
-                # WHAT DO WE HAVE
-                found = self._get_tuid_from_endpoint(revision, filenames)
-                if found == None:
-                    return  # THIS IS A FAILURE STATE, AND A WARNING HAS ALREADY BEEN RAISED, DO NOTHING
-
-                for source in sources:
-                    line_to_tuid = found[source.file.name]
-                    if line_to_tuid != None:
-                        source.file.tuid_covered = [
-                            {"line": line, "tuid": line_to_tuid[line]}
-                            for line in source.file.covered
-                            if line_to_tuid[line]
-                        ]
-                        source.file.tuid_uncovered = [
-                            {"line": line, "tuid": line_to_tuid[line]}
-                            for line in source.file.uncovered
-                            if line_to_tuid[line]
-                        ]
-        except Exception as e:
-            self.enabled = False
-            Log.warning("unexpected failure", cause=e)
-
     def get_tuid(self, revision, file):
         """
         :param revision: THE REVISION NUNMBER
         :param file: THE FULL PATH TO A SINGLE FILE
         :return: A LIST OF TUIDS
         """
-        revision = revision[:12]
-        service_response = wrap(self._get_tuid_from_endpoint(revision, [file]))
+        service_response = wrap(self.get_tuids(revision, [file]))
         for f, t in service_response.items():
             return t
 
-    def _get_tuid_from_endpoint(self, revision, files):
+    def get_tuids(self, revision, files):
         """
         GET TUIDS FROM ENDPOINT, AND STORE IN DB
         :param revision:
         :param files:
         :return: MAP FROM FILENAME TO TUID LIST
         """
+
+        # SCRUB INPUTS
+        revision = revision[:12]
+        files = [file.lstrip('/') for file in files]
 
         with Timer(
             "ask tuid service for {{num}} files at {{revision|left(12)}}",
@@ -109,15 +78,13 @@ class TuidClient(object):
             silent=not self.enabled
         ):
             try:
-                proced_filenames = [file.lstrip('/') for file in files]
-
                 response = self.db.query(
                     "SELECT file, tuids FROM tuid WHERE revision=" + quote_value(revision) +
-                    " AND file in " + sql_iso(sql_list(map(quote_value, proced_filenames)))
+                    " AND file in " + sql_iso(sql_list(map(quote_value, files)))
                 )
                 found = {file: json2value(tuids) for file, tuids in response.data}
 
-                remaining = set(proced_filenames) - set(found.keys())
+                remaining = set(files) - set(found.keys())
                 new_response = None
                 if remaining:
                     request = wrap({
