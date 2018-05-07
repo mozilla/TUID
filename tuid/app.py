@@ -19,6 +19,7 @@ from mo_dots import listwrap, coalesce, unwraplist
 from mo_json import value2json, json2value
 from mo_logs import Log, constants, startup
 from mo_logs.strings import utf82unicode, unicode2utf8
+from mo_threads import Thread
 from mo_times import Timer
 from pyLibrary.env.flask_wrappers import cors_wrapper
 from tuid.service import TUIDService
@@ -32,9 +33,10 @@ class TUIDApp(Flask):
     def run(self, *args, **kwargs):
         # ENSURE THE LOGGING IS CLEANED UP
         try:
+            Thread.run("tuid daemon", service._daemon)
             Flask.run(self, *args, **kwargs)
         except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
-            Log.warning("Serious problem with TUID service construction!  Shutdown!", cause=e)
+            Log.warning("TUID service shutdown!", cause=e)
         finally:
             Log.stop()
 
