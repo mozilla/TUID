@@ -231,6 +231,7 @@ def post_json(url, **kwargs):
     else:
         Log.error(u"Expecting `json` parameter")
 
+    response = None
     try:
         response = post(url, **kwargs)
         details = json2value(utf82unicode(response.content))
