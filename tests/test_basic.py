@@ -39,8 +39,7 @@ def test_new_then_old(service):
     # delete database then run this test
     old = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838")
     new = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62")
-    print(old)
-    print(new)
+
     assert len(old) == len(new)
     for i in range(0, len(old)):
         assert old[i] == new[i]
@@ -95,7 +94,7 @@ def test_parallel_get_tuids(service):
     with open('resources/stressfiles.json', 'r') as f:
         files = json.load(f)
     old = service.get_tuids(files[:15], "a5a2ae162869")
-    print(old)
+
     assert old is not None
 
 
