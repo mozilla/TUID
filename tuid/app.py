@@ -150,9 +150,6 @@ if __name__ in ("__main__",):
         Log.start(config.debug)
 
         service = TUIDService(config.tuid)
-
-        # Run the daemon
-        #daemon = Thread.run("TUID Daemon", service._daemon)
     except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
         try:
             Log.error("Serious problem with TUID service construction!  Shutdown!", cause=e)

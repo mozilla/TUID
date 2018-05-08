@@ -242,6 +242,10 @@ def post_json(url, **kwargs):
         if u"Bad response code {{code}}" in e:
             raise e
         else:
+            if response:
+                c = response.content
+            else:
+                c = 'No response content.'
             Log.error(u"Unexpected return value {{content}}", content=c, cause=e)
 
 
