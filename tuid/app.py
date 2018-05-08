@@ -14,16 +14,16 @@ import os
 
 import flask
 from flask import Flask, Response
-from mo_dots import listwrap, coalesce, unwraplist
-from mo_files import File
-from mo_json import value2json, json2value
-from mo_logs import Log
-from mo_logs import constants, startup
-from mo_logs.strings import utf82unicode, unicode2utf8
-from mo_times import Timer
 
-from pyLibrary.env.flask_wrappers import gzip_wrapper, cors_wrapper
-from tuid.service import TUIDService, TuidMap
+from mo_dots import listwrap, coalesce, unwraplist
+from mo_json import value2json, json2value
+from mo_logs import Log, constants, startup
+from mo_logs.strings import utf82unicode, unicode2utf8
+from mo_threads import Thread
+from mo_times import Timer
+from pyLibrary.env.flask_wrappers import cors_wrapper
+from tuid.service import TUIDService
+from tuid.util import map_to_array
 
 OVERVIEW = None
 
@@ -33,9 +33,10 @@ class TUIDApp(Flask):
     def run(self, *args, **kwargs):
         # ENSURE THE LOGGING IS CLEANED UP
         try:
+            #Thread.run("tuid daemon", service._daemon)
             Flask.run(self, *args, **kwargs)
         except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
-            Log.warning("Serious problem with TUID service construction!  Shutdown!", cause=e)
+            Log.warning("TUID service shutdown!", cause=e)
         finally:
             Log.stop()
 
@@ -72,9 +73,13 @@ def tuid_endpoint(path):
             paths = unwraplist(coalesce(paths, a['in'].path, a.eq.path))
 
         paths = listwrap(paths)
-        # RETURN TUIDS
-        with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
-            response = service.get_tuids_from_files(revision=rev, files=paths, going_forward=True)
+        if len(paths) <= 0:
+            Log.warning("Can't find file paths found in request: {{request}}", request=request_body)
+            response = [("Error in app.py - no paths found", [])]
+        else:
+            # RETURN TUIDS
+            with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
+                response = service.get_tuids_from_files(revision=rev, files=paths, going_forward=True)
 
         if query.meta.format == 'list':
             formatter = _stream_list
@@ -102,7 +107,7 @@ def tuid_endpoint(path):
 def _stream_table(files):
     yield b'{"format":"table", "header":["path", "tuids"], "data":['
     for f, pairs in files:
-        yield value2json([f, _map_to_array(pairs)]).encode('utf8')
+        yield value2json([f, map_to_array(pairs)]).encode('utf8')
     yield b']}'
 
 
@@ -110,27 +115,9 @@ def _stream_list(files):
     sep = b'{"format":"list", "data":['
     for f, pairs in files:
         yield sep
-        yield value2json({"path": f, "tuids": _map_to_array(pairs)}).encode('utf8')
+        yield value2json({"path": f, "tuids": map_to_array(pairs)}).encode('utf8')
         sep = b","
     yield b']}'
-
-
-def _map_to_array(pairs):
-    """
-    MAP THE (tuid, line) PAIRS TO A SINGLE ARRAY OF TUIDS
-    :param pairs:
-    :return:
-    """
-    if pairs:
-        pairs = [TuidMap(*p) for p in pairs]
-        max_line = max(p.line for p in pairs)
-        tuids = [None] * max_line
-        for p in pairs:
-            if p.line:  # line==0 IS A PLACEHOLDER FOR FILES THAT DO NOT EXIST
-                tuids[p.line-1] = p.tuid
-        return tuids
-    else:
-        return None
 
 
 @cors_wrapper
@@ -150,7 +137,6 @@ def _default(path):
 
 
 if __name__ in ("__main__",):
-    OVERVIEW = File("tuid/public/index.html").read_bytes()
     flask_app = TUIDApp(__name__)
 
     flask_app.add_url_rule(str('/'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
@@ -162,6 +148,7 @@ if __name__ in ("__main__",):
         )
         constants.set(config.constants)
         Log.start(config.debug)
+
         service = TUIDService(config.tuid)
     except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
         try:

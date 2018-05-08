@@ -34,17 +34,12 @@ def app():
             env={str("PYTHONPATH"): pythonpath},
             debug=True
         )
-        Till(seconds=5).wait()  # Time to warm up
+        for line in app_process.stderr:
+            if line.startswith(b' * Running on '):
+                break
     yield
-    app_process.please_stop.go()
+    app_process.stop()
     app_process.join(raise_on_error=False)
-
-
-def test_default(config, app):
-    url = "http://localhost:" + text_type(config.flask.port)
-    response = http.get(url)
-    expected = File("tuid/public/index.html").read_bytes()
-    assert response.content == expected
 
 
 def test_query_error(config, app):

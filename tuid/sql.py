@@ -21,6 +21,9 @@ class Sql:
     def commit(self):
         self.db.commit()
 
+    def rollback(self):
+        self.db.execute("ROLLBACK")
+
     def get(self, sql, params=None):
         if params:
             for p in params:

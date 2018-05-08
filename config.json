@@ -8,7 +8,7 @@
         "hg": {
             "branch": "mozilla-central"
         },
-        "_hg_cache": {
+        "hg_cache": {
             "use_cache": true,
             "hg": {
                 "url": "https://hg.mozilla.org"
@@ -43,9 +43,9 @@
         "debug": false,
         "threaded": true,
         "processes": 1
-//        "ssl_context": "adhoc"
+        //        "ssl_context": "adhoc"
     },
-    "client":{
+    "client": {
         "endpoint": "http://localhost:5000/tuid",
         "timeout": 60,
         "push_queue": {
@@ -54,7 +54,7 @@
             "$ref": "file://~/private.json#tuid_queue"
         }
     },
-    "pull_queue":{
+    "pull_queue": {
         "name": "active-data-tuid-dev",
         "debug": true,
         "$ref": "file://~/private.json#tuid_queue"
@@ -62,7 +62,10 @@
     "constants": {
         "tuid.service.DEBUG": false,
         "pyLibrary.env.http.DEBUG": true,
-        "pyLibrary.env.http.default_headers": {"Referer": "https://github.com/mozilla/TUID"},
+        "pyLibrary.env.http.default_headers": {
+            "Referer": "https://github.com/mozilla/TUID",
+            "User-Agent": "TUID Service"
+        },
         "pyLibrary.sql.sqlite.DEBUG": false,
         "pyLibrary.sql.sqlite.DEBUG_INSERT": false,
         "pyLibrary.sql.sqlite.DEBUG_EXECUTE": false,

@@ -8,9 +8,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
+import os
+
 import pytest
-from mo_files import File
-from mo_json import json2value
+
 from mo_logs import Log, constants, startup
 
 config = None
@@ -30,7 +31,7 @@ def new_db(request):
 
 @pytest.fixture(scope="session")
 def config():
-    config = json2value(File("config.json").read(), flexible=True, leaves=True)
+    config = startup.read_settings(filename=os.environ.get('TUID_CONFIG'))
     constants.set(config.constants)
     Log.start(config.debug)
     return config

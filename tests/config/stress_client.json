@@ -9,7 +9,7 @@
             "branch": "mozilla-central"
         },
         "hg_cache": {},
-        "_hg_cache": {
+        "hg_cache": {
             "use_cache": true,
             "hg": {
                 "url": "https://hg.mozilla.org"
