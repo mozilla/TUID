@@ -181,9 +181,10 @@ class TUIDService:
                 "changeset": {"id": cset},
                 "branch": {"name": self.config.hg.branch}
             }),
-            get_moves=True
+            None, False, True
         )
-        return tmp['changeset']['moves']
+        output = tmp['changeset']['moves']
+        return output
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num):
