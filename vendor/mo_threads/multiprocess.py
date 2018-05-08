@@ -152,6 +152,7 @@ class Process(object):
     def _kill(self):
         try:
             self.service.kill()
+            Log.note("Service was successfully terminated.")
         except Exception as e:
             ee = Except.wrap(e)
             if 'The operation completed successfully' in ee:
