@@ -485,7 +485,9 @@ class TUIDService:
 
             # For each changeset/node
             still_looking = True
-            for clog_cset in clog_obj['changesets'][:-1]:
+            for count, clog_cset in enumerate(clog_obj['changesets']):
+                if count >= len(clog_obj['changesets']) - 1:
+                    break
                 cset_len12 = clog_cset['node'][:12]
 
                 if still_looking:
