@@ -325,7 +325,7 @@ class TUIDService:
                             )
                         )
                     except Exception as e:
-                        Log.error("Error inserting into latestFileMods, {{error}}", error=e)
+                        Log.warning("Error inserting into latestFileMods, {{error}}", error=e)
 
         return result
 
