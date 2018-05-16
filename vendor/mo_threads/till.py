@@ -62,6 +62,9 @@ class Till(Signal):
                 Log.error("Duration objects for Till are no longer allowed")
 
             timeout = now + timeout
+        else:
+            from mo_logs import Log
+            Log.error("Should not happen")
 
         Signal.__init__(self, name=text_type(timeout))
 
