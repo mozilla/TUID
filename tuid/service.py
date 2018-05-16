@@ -11,6 +11,7 @@ from __future__ import unicode_literals
 from collections import namedtuple
 
 import time
+import objgraph
 from mo_dots import Null, coalesce, wrap
 from mo_future import text_type
 from mo_kwargs import override
@@ -26,6 +27,7 @@ from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
 
 import threading
+import gc
 
 from tuid.util import MISSING, TuidMap
 
@@ -256,6 +258,14 @@ class TUIDService:
         total = len(files)
         latestFileMod_inserts = {}
         new_files = []
+        objgraph.show_most_common_types(limit=20)
+        tps = objgraph.most_common_types(limit=10)
+        objgraph.typestats(objgraph.get_leaking_objects())
+
+        for tp in tps:
+            obj_list = objgraph.by_type(tp[0])
+            obj = obj_list[-1]
+            objgraph.show_backrefs(obj, max_depth=10)
 
         with self.conn.transaction():
             for count, file in enumerate(files):
@@ -316,16 +326,16 @@ class TUIDService:
                 while count < len(listed_inserts):
                     inserts_list = listed_inserts[count:count + SQL_BATCH_SIZE]
                     count += SQL_BATCH_SIZE
-                    try:
-                        self.conn.execute(
-                            "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                            sql_list(
-                                sql_iso(sql_list(map(quote_value, i)))
-                                for i in inserts_list
-                            )
+                    #try:
+                    self.conn.execute(
+                        "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+                        sql_list(
+                            sql_iso(sql_list(map(quote_value, i)))
+                            for i in inserts_list
                         )
-                    except Exception as e:
-                        Log.error("Error inserting into latestFileMods, {{error}}", error=e)
+                    )
+                    #except Exception as e:
+                    #    Log.warning("Error inserting into latestFileMods, {{error}}", error=e)
 
         return result
 
@@ -676,7 +686,15 @@ class TUIDService:
             )
 
 
-    def get_tuids(self, files, revision, commit=True):
+    def get_tuids(self, files, revision, commit=True, chunk=50):
+        count = 0
+        results = []
+        while count < len(files):
+            results.extend(self._get_tuids(files[count:count+chunk], revision, commit=commit))
+            count += chunk
+        return results
+
+    def _get_tuids(self, files, revision, commit=True):
         '''
         Returns (TUID, line) tuples for a given file at a given revision.
 
@@ -807,6 +825,11 @@ class TUIDService:
                 self.conn.commit()
 
             results.append((file, tuids))
+
+        del threads
+        del annotated_files
+        gc.collect()
+
         return results
 
 
