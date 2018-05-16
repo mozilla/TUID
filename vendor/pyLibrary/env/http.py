@@ -238,7 +238,6 @@ def post_json(url, **kwargs):
     else:
         return details
 
-
 def put(url, **kwargs):
     return HttpResponse(request('put', url, **kwargs))
 

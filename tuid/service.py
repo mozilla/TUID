@@ -181,9 +181,10 @@ class TUIDService:
                 "changeset": {"id": cset},
                 "branch": {"name": self.config.hg.branch}
             }),
-            get_moves=True
+            None, False, True
         )
-        return tmp['changeset']['moves']
+        output = tmp['changeset']['moves']
+        return output
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num):
@@ -198,43 +199,6 @@ class TUIDService:
         except Exception as e:
             Log.error("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
 
-
-    def get_diff(self, cset):
-        """
-        Returns the diff for a given revision.
-
-        :param cset: revision to get diff from
-        :return: unified diff object from diff_to_moves
-        """
-        return self._get_hg_diff(cset)
-
-
-    def _pget_diff(self, cset, results, thread_num):
-        """
-        Returns the diff for a given revision.
-
-        :param cset: revision to get diff from
-        :return: unified diff object from diff_to_moves
-        """
-        results[thread_num] =  self._get_hg_diff(cset)
-        return
-
-
-    def pget_diffs(self, csets):
-        # Get all the diffs in parallel
-        num_csets = len(csets.keys())
-        diffs = [None] * num_csets
-        threads = [None] * num_csets
-        for i, cset in enumerate(csets.keys()):
-            threads[i] = threading.Thread(target=self._pget_diff, args=(cset, diffs, i))
-            threads[i].start()
-        for i in range(num_csets):
-            threads[i].join()
-
-        dict_diffs = {}
-        for i, cset in enumerate(csets.keys()):
-            dict_diffs[cset] = diffs[i]
-        return dict_diffs
 
     def get_diffs(self, csets):
         # Get all the diffs
@@ -485,7 +449,9 @@ class TUIDService:
 
             # For each changeset/node
             still_looking = True
-            for clog_cset in clog_obj['changesets'][:-1]:
+            for count, clog_cset in enumerate(clog_obj['changesets']):
+                if count >= len(clog_obj['changesets']) - 1:
+                    break
                 cset_len12 = clog_cset['node'][:12]
 
                 if still_looking:
@@ -525,12 +491,7 @@ class TUIDService:
         added_files = {}
         parsed_diffs = {}
         if not still_looking:
-            print('diffs_cache')
-            print(diffs_cache)
-
             all_diffs = self.get_diffs(diffs_cache)
-            print('all_diffs')
-            print(all_diffs)
 
             # Build a dict for faster access to the diffs
             parsed_diffs = {entry['cset']: entry['diff'] for entry in all_diffs}
@@ -612,8 +573,6 @@ class TUIDService:
 
                 # Apply all the diffs
                 tmp_res = old_ann
-                print('csets_to_proc:')
-                print(csets_to_proc)
                 for i in csets_to_proc:
                     tmp_res = self._apply_diff(tmp_res, parsed_diffs[i], i, file)
 
@@ -732,12 +691,6 @@ class TUIDService:
         :param commit: True to commit new TUIDs else False
         :return: List of TuidMap objects
         '''
-
-        # Get annotated file (cannot get around using this).
-        # Unfortunately, this also means we always have to
-        # deal with a small network delay.
-
-        #url = 'https://hg.mozilla.org/' + self.config.hg.branch + '/json-annotate/' + revision + "/" + files
 
         # For a single file, there is no need
         # to put it in an array when given.
@@ -965,5 +918,3 @@ class TUIDService:
 
             if not ran_changesets:
                 (please_stop | Till(seconds=DAEMON_WAIT_AT_NEWEST.seconds)).wait()
-
-

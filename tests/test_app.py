@@ -38,7 +38,7 @@ def app():
             if line.startswith(b' * Running on '):
                 break
     yield
-    app_process.please_stop.go()
+    app_process.stop()
     app_process.join(raise_on_error=False)
 
 
