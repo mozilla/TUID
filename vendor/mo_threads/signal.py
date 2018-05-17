@@ -15,6 +15,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
+from weakref import ref
+
 from mo_future import allocate_lock as _allocate_lock, text_type
 from mo_logs import Log
 
@@ -31,7 +33,7 @@ class Signal(object):
     on_go() - METHOD FOR OTHER THREAD TO RUN WHEN ACTIVATING SIGNAL
     """
 
-    __slots__ = ["_name", "lock", "_go", "job_queue", "waiting_threads"]
+    __slots__ = ["_name", "lock", "_go", "job_queue", "waiting_threads", "__weakref__"]
 
     def __init__(self, name=None):
         if DEBUG and name:
@@ -160,11 +162,7 @@ class Signal(object):
         self.on_go(output.go)
         other.on_go(output.go)
 
-        # REMOVE output FROM self AND other
-        def remove_goes():
-            self.remove_go(output.go)
-            other.remove_go(output.go)
-        output.on_go(remove_goes)
+        output.on_go(remove_goes(self, other, output))
         return output
 
     def __ror__(self, other):
@@ -185,6 +183,22 @@ class Signal(object):
         self.on_go(gen.done)
         other.on_go(gen.done)
         return output
+
+
+def remove_goes(self, other, output):
+    # REMOVE output FROM self AND other
+    s = ref(self)
+    o = ref(other)
+
+    def _remove_goes():
+        temp = s()
+        if temp is not None:
+            temp.remove_go(output.go)
+        temp = o()
+        if temp is not None:
+            temp.remove_go(output.go)
+
+    return _remove_goes
 
 
 class AndSignals(object):
