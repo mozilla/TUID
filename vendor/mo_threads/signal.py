@@ -15,6 +15,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
+import random
 from weakref import ref
 
 from mo_future import allocate_lock as _allocate_lock, text_type
@@ -22,6 +23,8 @@ from mo_logs import Log
 
 DEBUG = False
 DEBUG_SIGNAL = False
+SEED = random.Random()
+
 
 
 class Signal(object):
@@ -123,13 +126,25 @@ class Signal(object):
                     Log.note("Adding target to signal {{name|quote}}", name=self.name)
                 if not self.job_queue:
                     self.job_queue = [target]
+                    return
                 else:
                     self.job_queue.append(target)
+
+                    if len(self.job_queue) > 10 and SEED.randrange(0, 1000) == 0:
+                        # RANDOM CLEANUP OF DEPENDANT SIGNALS THAT HAVE BEEN GARBAGE COLLECTED
+                        self._cleanup_job_queue()
                 return
 
         if DEBUG_SIGNAL:
             Log.note("Signal {{name|quote}} already triggered, running job immediately", name=self.name)
         target()
+
+    def _cleanup_job_queue(self):
+        self.job_queue = [
+            j
+            for j in self.job_queue
+            if not isinstance(j, WeakGo) or j.exists
+        ]
 
     def remove_go(self, target):
         """
@@ -159,10 +174,16 @@ class Signal(object):
             Log.error("Expecting OR with other signal")
 
         output = Signal(self.name + " | " + other.name)
-        self.on_go(output.go)
-        other.on_go(output.go)
+        to_go = WeakGo(output)
 
-        output.on_go(remove_goes(self, other, output))
+        self.on_go(to_go)
+        other.on_go(to_go)
+
+        # REMOVE output FROM self AND other
+        def remove_goes():
+            self.remove_go(to_go)
+            other.remove_go(to_go)
+        output.on_go(remove_goes)
         return output
 
     def __ror__(self, other):
@@ -185,22 +206,6 @@ class Signal(object):
         return output
 
 
-def remove_goes(self, other, output):
-    # REMOVE output FROM self AND other
-    s = ref(self)
-    o = ref(other)
-
-    def _remove_goes():
-        temp = s()
-        if temp is not None:
-            temp.remove_go(output.go)
-        temp = o()
-        if temp is not None:
-            temp.remove_go(output.go)
-
-    return _remove_goes
-
-
 class AndSignals(object):
     __slots__ = ["signal", "remaining", "locker"]
 
@@ -221,6 +226,25 @@ class AndSignals(object):
             remaining = self.remaining
         if not remaining:
             self.signal.go()
+
+
+class WeakGo(object):
+    """
+    WEAK REFERENCE TO go() OF ANOTHER SIGNAL
+    """
+    __slots__ = ["signal"]
+
+    def __init__(self, signal):
+        self.signal = ref(signal)
+
+    @property
+    def exists(self):
+        return self.signal() is not None
+
+    def __call__(self, *args, **kwargs):
+        s = self.signal()
+        if s is not None:
+            s.go()
 
 
 DONE = Signal()
