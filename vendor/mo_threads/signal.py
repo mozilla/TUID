@@ -124,27 +124,16 @@ class Signal(object):
             if not self._go:
                 if DEBUG and self._name:
                     Log.note("Adding target to signal {{name|quote}}", name=self.name)
+
                 if not self.job_queue:
                     self.job_queue = [target]
-                    return
                 else:
                     self.job_queue.append(target)
-
-                    if len(self.job_queue) > 10 and SEED.randrange(0, 1000) == 0:
-                        # RANDOM CLEANUP OF DEPENDANT SIGNALS THAT HAVE BEEN GARBAGE COLLECTED
-                        self._cleanup_job_queue()
                 return
 
         if DEBUG_SIGNAL:
             Log.note("Signal {{name|quote}} already triggered, running job immediately", name=self.name)
         target()
-
-    def _cleanup_job_queue(self):
-        self.job_queue = [
-            j
-            for j in self.job_queue
-            if not isinstance(j, WeakGo) or j.exists
-        ]
 
     def remove_go(self, target):
         """
@@ -152,7 +141,10 @@ class Signal(object):
         """
         with self.lock:
             if not self._go:
-                self.job_queue.remove(target)
+                try:
+                    self.job_queue.remove(target)
+                except ValueError:
+                    pass
 
     @property
     def name(self):
@@ -174,16 +166,7 @@ class Signal(object):
             Log.error("Expecting OR with other signal")
 
         output = Signal(self.name + " | " + other.name)
-        to_go = WeakGo(output)
-
-        self.on_go(to_go)
-        other.on_go(to_go)
-
-        # REMOVE output FROM self AND other
-        def remove_goes():
-            self.remove_go(to_go)
-            other.remove_go(to_go)
-        output.on_go(remove_goes)
+        OrSignal(output, (self, other))
         return output
 
     def __ror__(self, other):
@@ -228,18 +211,23 @@ class AndSignals(object):
             self.signal.go()
 
 
-class WeakGo(object):
+class OrSignal(object):
     """
-    WEAK REFERENCE TO go() OF ANOTHER SIGNAL
+    A SELF-REFERENTIAL CLUSTER OF SIGNALING METHODS TO IMPLEMENT __or__()
+    MANAGE SELF-REMOVAL UPON NOT NEEDING THE signal OBJECT ANY LONGER
     """
-    __slots__ = ["signal"]
+    __slots__ = ["signal", "dependencies"]
 
-    def __init__(self, signal):
-        self.signal = ref(signal)
+    def __init__(self, signal, dependencies):
+        self.dependencies = dependencies
+        self.signal = ref(signal, self.cleanup)
+        for d in dependencies:
+            d.on_go(self)
+        signal.on_go(self.cleanup)
 
-    @property
-    def exists(self):
-        return self.signal() is not None
+    def cleanup(self, r=None):
+        for d in self.dependencies:
+            d.remove_go(self)
 
     def __call__(self, *args, **kwargs):
         s = self.signal()

@@ -31,6 +31,8 @@ class Till(Signal):
     """
     TIMEOUT AS A SIGNAL
     """
+    __slots__ = []
+
     locker = _allocate_lock()
     next_ping = time()
     done = Signal("Timers shutdown")
