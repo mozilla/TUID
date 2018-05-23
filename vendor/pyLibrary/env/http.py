@@ -31,7 +31,7 @@ from jx_python import jx
 from mo_dots import Data, coalesce, wrap, set_default, unwrap, Null
 from mo_future import text_type, PY2
 from mo_json import value2json, json2value
-from mo_logs import Log
+from mo_logs import Log, strings
 from mo_logs.strings import utf82unicode, unicode2utf8
 from mo_logs.exceptions import Except
 from mo_math import Math
@@ -231,26 +231,12 @@ def post_json(url, **kwargs):
     else:
         Log.error(u"Expecting `json` parameter")
 
-    response = None
-    try:
-        response = post(url, **kwargs)
-        details = json2value(utf82unicode(response.content))
-        if response.status_code not in [200, 201]:
-            Log.error(u"Bad response code {{code}}", code=response.status_code, cause=Except.wrap(details))
-        else:
-            return details
-    except Exception as e:
-        if u"Bad response code {{code}}" in e:
-            raise e
-        else:
-            if response:
-                c = response.content
-            else:
-                c = 'No response content.'
-            Log.error(u"Unexpected return value {{content}}", content=c, cause=e)
-
-
-
+    response = post(url, **kwargs)
+    details = json2value(utf82unicode(response.content))
+    if response.status_code not in [200, 201]:
+        Log.error(u"Bad response code {{code}}", code=response.status_code, cause=Except.wrap(details))
+    else:
+        return details
 
 def put(url, **kwargs):
     return HttpResponse(request('put', url, **kwargs))

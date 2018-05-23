@@ -11,6 +11,7 @@ from __future__ import unicode_literals
 from collections import namedtuple
 
 import time
+import objgraph
 from mo_dots import Null, coalesce, wrap
 from mo_future import text_type
 from mo_kwargs import override
@@ -18,7 +19,7 @@ from mo_logs import Log
 
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_hg.parse import diff_to_moves
-from mo_threads import Till
+from mo_threads import Till, Thread
 from mo_times.durations import SECOND
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, sql_iso
@@ -26,6 +27,7 @@ from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
 
 import threading
+import gc
 
 from tuid.util import MISSING, TuidMap
 
@@ -187,7 +189,7 @@ class TUIDService:
         return output
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
-    def _get_hg_annotate(self, cset, file, annotated_files, thread_num):
+    def _get_hg_annotate(self, cset, file, annotated_files, thread_num, please_stop=None):
         url = 'https://hg.mozilla.org/' + self.config.hg.branch + '/json-annotate/' + cset + "/" + file
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
@@ -316,16 +318,16 @@ class TUIDService:
                 while count < len(listed_inserts):
                     inserts_list = listed_inserts[count:count + SQL_BATCH_SIZE]
                     count += SQL_BATCH_SIZE
-                    try:
-                        self.conn.execute(
-                            "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                            sql_list(
-                                sql_iso(sql_list(map(quote_value, i)))
-                                for i in inserts_list
-                            )
+                    #try:
+                    self.conn.execute(
+                        "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+                        sql_list(
+                            sql_iso(sql_list(map(quote_value, i)))
+                            for i in inserts_list
                         )
-                    except Exception as e:
-                        Log.warning("Error inserting into latestFileMods, {{error}}", error=e)
+                    )
+                    #except Exception as e:
+                    #    Log.warning("Error inserting into latestFileMods, {{error}}", error=e)
 
         return result
 
@@ -676,7 +678,15 @@ class TUIDService:
             )
 
 
-    def get_tuids(self, files, revision, commit=True):
+    def get_tuids(self, files, revision, commit=True, chunk=50):
+        count = 0
+        results = []
+        while count < len(files):
+            results.extend(self._get_tuids(files[count:count+chunk], revision, commit=commit))
+            count += chunk
+        return results
+
+    def _get_tuids(self, files, revision, commit=True):
         '''
         Returns (TUID, line) tuples for a given file at a given revision.
 
@@ -719,11 +729,15 @@ class TUIDService:
         num_files = len(annotations_to_get)
         annotated_files = [None] * num_files
         threads = [None] * num_files
-        for i in range(num_files):
-            threads[i] = threading.Thread(target=self._get_hg_annotate, args=(revision, annotations_to_get[i], annotated_files, i))
-            threads[i].start()
-        for i in range(num_files):
-            threads[i].join()
+
+        # Get all the annotations in parallel
+        annotated_files = [None] * len(annotations_to_get)
+        threads = [
+            Thread.run(str(i), self._get_hg_annotate, revision, annotations_to_get[i], annotated_files, i)
+            for i, a in enumerate(annotations_to_get)
+        ]
+        for t in threads:
+            t.join()
 
         for fcount, annotated_object in enumerate(annotated_files):
             existing_tuids = {}
@@ -807,6 +821,11 @@ class TUIDService:
                 self.conn.commit()
 
             results.append((file, tuids))
+
+        del threads
+        del annotated_files
+        gc.collect()
+
         return results
 
 
