@@ -19,7 +19,7 @@ from mo_logs import Log
 
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_hg.parse import diff_to_moves
-from mo_threads import Till
+from mo_threads import Till, Thread
 from mo_times.durations import SECOND
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, sql_iso
@@ -189,7 +189,7 @@ class TUIDService:
         return output
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
-    def _get_hg_annotate(self, cset, file, annotated_files, thread_num):
+    def _get_hg_annotate(self, cset, file, annotated_files, thread_num, please_stop=None):
         url = 'https://hg.mozilla.org/' + self.config.hg.branch + '/json-annotate/' + cset + "/" + file
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
@@ -258,14 +258,6 @@ class TUIDService:
         total = len(files)
         latestFileMod_inserts = {}
         new_files = []
-        objgraph.show_most_common_types(limit=20)
-        tps = objgraph.most_common_types(limit=10)
-        objgraph.typestats(objgraph.get_leaking_objects())
-
-        for tp in tps:
-            obj_list = objgraph.by_type(tp[0])
-            obj = obj_list[-1]
-            objgraph.show_backrefs(obj, max_depth=10)
 
         with self.conn.transaction():
             for count, file in enumerate(files):
@@ -737,11 +729,15 @@ class TUIDService:
         num_files = len(annotations_to_get)
         annotated_files = [None] * num_files
         threads = [None] * num_files
-        for i in range(num_files):
-            threads[i] = threading.Thread(target=self._get_hg_annotate, args=(revision, annotations_to_get[i], annotated_files, i))
-            threads[i].start()
-        for i in range(num_files):
-            threads[i].join()
+
+        # Get all the annotations in parallel
+        annotated_files = [None] * len(annotations_to_get)
+        threads = [
+            Thread.run(str(i), self._get_hg_annotate, revision, annotations_to_get[i], annotated_files, i)
+            for i, a in enumerate(annotations_to_get)
+        ]
+        for t in threads:
+            t.join()
 
         for fcount, annotated_object in enumerate(annotated_files):
             existing_tuids = {}
