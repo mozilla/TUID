@@ -48,6 +48,14 @@ service = None
 def tuid_endpoint(path):
     try:
         request_body = flask.request.get_data().strip()
+        if not request_body:
+            return Response(
+                unicode2utf8("expecting query"),
+                status=400,
+                headers={
+                    "Content-Type": "text/html"
+                }
+            )
         query = json2value(utf82unicode(request_body))
 
         # ENSURE THE QUERY HAS THE CORRECT FORM
