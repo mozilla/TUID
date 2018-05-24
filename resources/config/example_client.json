@@ -1,0 +1,17 @@
+{
+    "client": {
+        "endpoint": "http://localhost:5000/tuid",
+        "timeout": 30,
+        "push_queue": {
+            "name": "active-data-tuid-dev",
+            "debug": true,
+            "$ref": "file://~/private.json#tuid_queue"
+        }
+    },
+    "constants": {
+        "pyLibrary.env.http.default_headers": {"Referer": "https://github.com/mozilla/TUID"}
+    },
+    "debug": {
+        "trace": true
+    }
+}

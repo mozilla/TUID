@@ -1,1 +1,12 @@
 /*.db
+/.cache
+/.pytest_cache
+/resources/test.db
+/resources/test.db-journal
+/resources/stress.db
+*.pyc
+/resources/tuid_app.db
+/vendor/pyLibrary/vendor/sqlite
+/*.sqlite
+/resources/tuid_app.db-journal
+/resources/config/kyle.json

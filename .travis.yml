@@ -1,0 +1,31 @@
+language: python
+python:
+  - "2.7"
+
+branches:
+  only:
+  - master
+  - dev
+  - dev_gmierz
+
+env:
+  matrix:
+    - ES_VERSION=6.2.4  ES_DOWNLOAD_URL=https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-6.2.4.tar.gz
+
+  global:
+    - PYTHONPATH=.:tests:vendor
+    - TRAVIS=1
+    - TUID_CONFIG=tests/travis/config.json
+
+install:
+  - "wget ${ES_DOWNLOAD_URL}"
+  - "tar -xzf elasticsearch-${ES_VERSION}.tar.gz"
+  - "sudo cp -f tests/travis/elasticsearch-${ES_VERSION}.yml ./elasticsearch-${ES_VERSION}/config/elasticsearch.yml"
+  - "./elasticsearch-${ES_VERSION}/bin/elasticsearch &"
+  - "pip install -r tests/requirements.txt"
+  - "pip install -r requirements.txt"
+  - "wget -q --waitretry=1 --retry-connrefused -T 10 -O - http://127.0.0.1:9200"
+
+script:
+- "python -m pytest --capture=no tests"
+- "python -m pytest --capture=no tests"
