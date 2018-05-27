@@ -45,9 +45,9 @@ class Transaction(object):
         pass
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if isinstance(exc_val, Exception):
-            self.db.rollback()
-        else:
+        if not isinstance(exc_val, Exception):
+        #    self.db.rollback()
+        #else:
             self.db.commit()
 
     def execute(self, sql, params=None):

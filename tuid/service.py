@@ -188,6 +188,7 @@ class TUIDService:
         output = tmp['changeset']['moves']
         return output
 
+
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num, please_stop=None):
         url = 'https://hg.mozilla.org/' + self.config.hg.branch + '/json-annotate/' + cset + "/" + file
@@ -197,9 +198,10 @@ class TUIDService:
         # Ensure we get the annotate before continuing
         try:
             annotated_files[thread_num] = http.get_json(url, retry=RETRY)
-            return
         except Exception as e:
-            Log.error("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
+            annotated_files[thread_num] = []
+            Log.warning("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
+        return
 
 
     def get_diffs(self, csets):
@@ -365,9 +367,13 @@ class TUIDService:
             f_diff = f_proc['changes']
             for change in f_diff:
                 if change.action == '+':
-                    new_tuid = self.tuid()
+                    tuid_tmp = self._get_one_tuid(cset, file, change.line+1)
+                    if not tuid_tmp:
+                        new_tuid = self.tuid()
+                        list_to_insert.append((new_tuid, cset, file, change.line+1))
+                    else:
+                        new_tuid = tuid_tmp[0]
                     new_ann = add_one(TuidMap(new_tuid, change.line+1), new_ann)
-                    list_to_insert.append((new_tuid, cset, file, change.line+1))
                 elif change.action == '-':
                     new_ann = remove_one(change.line+1, new_ann)
             break # Found the file, exit searching
@@ -559,13 +565,14 @@ class TUIDService:
             # annotation and update the file.
             proc_rev = rev
             proc = False
-            if file in files_to_process:
+            if file in files_to_process and not still_looking:
                 proc = True
                 proc_rev = revision
                 Log.note("Frontier update: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ", count=count,
                                                 total=total, file=file, rev=proc_rev, percent=count / total)
 
             modified = True
+            tmp_res = None
             if proc and file not in removed_files and csets_proced < max_csets_proc:
                 # Process this file using the diffs found
 
@@ -579,22 +586,26 @@ class TUIDService:
                     tmp_res = self._apply_diff(tmp_res, parsed_diffs[i], i, file)
 
                 ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
-            elif file not in removed_files:
+            elif file not in removed_files and not still_looking:
                 old_ann = self._get_annotation(rev, file)
                 if old_ann is None or (old_ann == '' and file in added_files):
                     # File is new (likely from an error), or re-added - we need to create
                     # a new initial entry for this file.
-                    tmp_res = self.get_tuids(file, proc_rev, commit=False)
+                    tmp_res = self.get_tuids(file, proc_rev, commit=False)[0][1]
                 else:
                     # File was not modified since last
                     # known revision
                     tmp_res = self.destringify_tuids(old_ann) if old_ann != '' else []
                     ann_inserts.append((revision, file, old_ann[0]))
                     modified = False
-            else:
+            elif not still_looking:
                 # File was removed
                 ann_inserts.append((revision, file, ''))
                 tmp_res = None
+            elif still_looking:
+                # If we were still looking by the end, get a new
+                # annotation for this file.
+                tmp_res = self.get_tuids(file, revision, commit=False)[0][1]
 
             if tmp_res:
                 result.append((file, tmp_res))
@@ -822,6 +833,8 @@ class TUIDService:
 
             results.append((file, tuids))
 
+        # Try to prevent some memory leaking
+        # with these calls.
         del threads
         del annotated_files
         gc.collect()

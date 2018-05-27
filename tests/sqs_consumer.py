@@ -28,7 +28,7 @@ _ = hg_mozilla_org
 
 PAUSE_ON_FAILURE = 30
 DEBUG = True
-
+RETRY = {"times": 3, "sleep": 5}
 
 @override
 def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
@@ -77,7 +77,7 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
             continue
 
         clog_url = 'https://hg.mozilla.org/mozilla-central/json-log/' + revision[:12]
-        clog_obj = http.get_json(clog_url)
+        clog_obj = http.get_json(clog_url, retry=RETRY)
         if isinstance(clog_obj, (text_type, str)):
             Log.warning(
                 "Revision {{cset}} does not exist in the {{branch}} branch",

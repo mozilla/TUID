@@ -51,6 +51,14 @@ class Date(object):
         if self.unix is None:
             self.unix = parse(*args).unix
 
+    def __hash__(self):
+        return self.unix.__hash__()
+
+    def __eq__(self, val):
+        if val is not None and type(val) == Date:
+            return self.unix == val.unix
+        return False
+
     def __nonzero__(self):
         return True
 
