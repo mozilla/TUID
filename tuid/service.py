@@ -498,7 +498,7 @@ class TUIDService:
 
         added_files = {}
         parsed_diffs = {}
-        if not still_looking:
+        if not all([latest_csets[cs] for cs in latest_csets]): # If there is at least one frontier that was found
             all_diffs = self.get_diffs(diffs_cache)
 
             # Build a dict for faster access to the diffs
@@ -562,7 +562,7 @@ class TUIDService:
             file = file_n_rev[0]
             rev = file_n_rev[1]
 
-            if still_looking:
+            if latest_csets[rev]:
                 # If we were still looking by the end, get a new
                 # annotation for this file.
                 anns_to_get.append(file)
@@ -591,7 +591,9 @@ class TUIDService:
                 tmp_res = old_ann
                 for i in csets_to_proc:
                     tmp_res = self._apply_diff(tmp_res, parsed_diffs[i], i, file)
-
+                    if i != revision:
+                        # Add all intermediate diffs while we're here
+                        ann_inserts.append((i, file, self.stringify_tuids(tmp_res)))
                 ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
             elif file not in removed_files:
                 old_ann = self._get_annotation(rev, file)
