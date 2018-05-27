@@ -556,16 +556,23 @@ class TUIDService:
         result = []
         ann_inserts = []
         latestFileMod_inserts = {}
+        anns_to_get = []
         total = len(frontier_list)
         for count, file_n_rev in enumerate(frontier_list):
             file = file_n_rev[0]
             rev = file_n_rev[1]
 
+            if still_looking:
+                # If we were still looking by the end, get a new
+                # annotation for this file.
+                anns_to_get.append(file)
+                continue
+
             # If the file was modified, get it's newest
             # annotation and update the file.
             proc_rev = rev
             proc = False
-            if file in files_to_process and not still_looking:
+            if file in files_to_process:
                 proc = True
                 proc_rev = revision
                 Log.note("Frontier update: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ", count=count,
@@ -573,7 +580,7 @@ class TUIDService:
 
             modified = True
             tmp_res = None
-            if proc and file not in removed_files and csets_proced < max_csets_proc:
+            if proc and file not in removed_files:
                 # Process this file using the diffs found
 
                 # Reverse the list, we always find the newest diff first
@@ -586,7 +593,7 @@ class TUIDService:
                     tmp_res = self._apply_diff(tmp_res, parsed_diffs[i], i, file)
 
                 ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
-            elif file not in removed_files and not still_looking:
+            elif file not in removed_files:
                 old_ann = self._get_annotation(rev, file)
                 if old_ann is None or (old_ann == '' and file in added_files):
                     # File is new (likely from an error), or re-added - we need to create
@@ -598,14 +605,10 @@ class TUIDService:
                     tmp_res = self.destringify_tuids(old_ann) if old_ann != '' else []
                     ann_inserts.append((revision, file, old_ann[0]))
                     modified = False
-            elif not still_looking:
+            else:
                 # File was removed
                 ann_inserts.append((revision, file, ''))
                 tmp_res = None
-            elif still_looking:
-                # If we were still looking by the end, get a new
-                # annotation for this file.
-                tmp_res = self.get_tuids(file, revision, commit=False)[0][1]
 
             if tmp_res:
                 result.append((file, tmp_res))
@@ -619,16 +622,16 @@ class TUIDService:
                 Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=proc_rev)
                 result.append((file, []))
 
-            # Save the newest frontier revision
-            latest_rev = rev
-            if (csets_proced < max_csets_proc and not still_looking) or going_forward:
-                # If we have found all frontiers, update to the
-                # latest revision. Otherwise, the requested
-                # revision is too far away (can't be sure
-                # if it's past). Unless we are told that we are
-                # going forward.
-                latest_rev = revision
+            # If we have found all frontiers, update to the
+            # latest revision. Otherwise, the requested
+            # revision is too far away (can't be sure
+            # if it's past). Unless we are told that we are
+            # going forward.
+            latest_rev = revision
             latestFileMod_inserts[file] = (file, latest_rev)
+
+        if len(anns_to_get) > 0:
+            result.extend(self.get_tuids(anns_to_get, revision, commit=False))
 
         if len(latestFileMod_inserts) > 0:
             count = 0
@@ -809,7 +812,6 @@ class TUIDService:
                 try:
                     tuid_tmp = self.conn.get_one(GET_TUID_QUERY,
                                                  line_origins[line_num - 1])
-
                     # Return dummy line if we can't find the TUID for this entry
                     # (likely because of an error from insertion).
                     if tuid_tmp:
