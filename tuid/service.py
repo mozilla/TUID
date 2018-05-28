@@ -33,6 +33,7 @@ from tuid.util import MISSING, TuidMap
 
 DEBUG = False
 RETRY = {"times": 3, "sleep": 5}
+SQL_ANN_BATCH_SIZE = 5
 SQL_BATCH_SIZE = 500
 DAEMON_WAIT_AT_NEWEST = 30 * SECOND # Time to wait at the newest revision before polling again.
 
@@ -591,9 +592,7 @@ class TUIDService:
                 tmp_res = old_ann
                 for i in csets_to_proc:
                     tmp_res = self._apply_diff(tmp_res, parsed_diffs[i], i, file)
-                    if i != revision:
-                        # Add all intermediate diffs while we're here
-                        ann_inserts.append((i, file, self.stringify_tuids(tmp_res)))
+
                 ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
             elif file not in removed_files:
                 old_ann = self._get_annotation(rev, file)
@@ -650,12 +649,16 @@ class TUIDService:
             count = 0
             ann_inserts = list(set(ann_inserts))
             while count < len(ann_inserts):
-                tmp_inserts = ann_inserts[count:count + SQL_BATCH_SIZE]
-                count += SQL_BATCH_SIZE
-                self.conn.execute(
-                    "INSERT INTO annotations (revision, file, annotation) VALUES " +
-                    sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
-                )
+                tmp_inserts = ann_inserts[count:count + SQL_ANN_BATCH_SIZE]
+                count += SQL_ANN_BATCH_SIZE
+                try:
+                    self.conn.execute(
+                        "INSERT INTO annotations (revision, file, annotation) VALUES " +
+                        sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
+                    )
+                except Exception as e:
+                    Log.note("Error inserting into annotations table: {{inserting}}", inserting=tmp_inserts)
+                    Log.error("Error found: {{cause}}", cause=e)
 
         return result
 
@@ -766,6 +769,17 @@ class TUIDService:
                 errored = True
                 Log.warning("{{file}} does not exist in the revision {{cset}}", cset=revision, file=file)
             elif annotated_object is None:
+                Log.warning(
+                    "Unexpected error getting annotation for: {{file}} in the revision {{cset}}",
+                    cset=revision, file=file
+                )
+                errored = True
+            elif 'annotate' not in annotated_object:
+                Log.warning(
+                    "Missing annotate, type got: {{ann_type}}, expecting:dict returned when getting " +
+                    "annotation for: {{file}} in the revision {{cset}}",
+                    cset=revision, file=file, ann_type=type(annotated_object)
+                )
                 errored = True
 
             if errored:
