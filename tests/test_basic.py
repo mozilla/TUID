@@ -438,6 +438,33 @@ def test_long_file(service):
     assert timer.duration.seconds < 30
 
 
+def test_out_of_order_get_tuids_from_files(service):
+    rev_initial = "3eccd139667d"
+    rev_latest = "4e9446f9e8f0"
+    rev_middle = "9b7db28b360d"
+    test_file = ["dom/base/nsWrapperCache.cpp"]
+    check_lines = [41]
+
+    result1 = service.get_tuids_from_files(test_file, rev_initial)
+    result2 = service.get_tuids_from_files(test_file, rev_latest)
+    test_result = service.get_tuids_from_files(test_file, rev_middle)
+
+    # Check that test_result's tuids at line 41 is different from
+    # result 2.
+    for (fname, tuids2) in result2:
+        if fname not in test_file:
+            # If we find another file, this test fails
+            assert fname == test_file[0]
+
+        for (fname_test, tuids_test) in test_result:
+            # Check that check_line entries are different
+            for count, tmap in enumerate(tuids2):
+                if tmap.line not in check_lines:
+                    assert tmap.tuid == tuids_test[count].tuid
+                else:
+                    assert tmap.tuid != tuids_test[count].tuid
+
+
 @pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
 def test_daemon(service):
     from mo_threads import Signal

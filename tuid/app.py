@@ -19,7 +19,7 @@ from mo_dots import listwrap, coalesce, unwraplist
 from mo_json import value2json, json2value
 from mo_logs import Log, constants, startup
 from mo_logs.strings import utf82unicode, unicode2utf8
-from mo_times import Timer
+from mo_times import Timer, Date
 from pyLibrary.env.flask_wrappers import cors_wrapper
 from tuid.service import TUIDService
 from tuid.util import map_to_array
@@ -85,7 +85,7 @@ def tuid_endpoint(path):
         else:
             # RETURN TUIDS
             with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
-                response = service.get_tuids_from_files(revision=rev, files=paths, going_forward=True)
+                response = service.get_tuids_from_files(revision=rev, files=paths)
 
         if query.meta.format == 'list':
             formatter = _stream_list

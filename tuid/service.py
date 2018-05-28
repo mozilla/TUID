@@ -33,6 +33,7 @@ from tuid.util import MISSING, TuidMap
 
 DEBUG = False
 RETRY = {"times": 3, "sleep": 5}
+SQL_ANN_BATCH_SIZE = 5
 SQL_BATCH_SIZE = 500
 DAEMON_WAIT_AT_NEWEST = 30 * SECOND # Time to wait at the newest revision before polling again.
 
@@ -188,6 +189,7 @@ class TUIDService:
         output = tmp['changeset']['moves']
         return output
 
+
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num, please_stop=None):
         url = 'https://hg.mozilla.org/' + self.config.hg.branch + '/json-annotate/' + cset + "/" + file
@@ -197,9 +199,10 @@ class TUIDService:
         # Ensure we get the annotate before continuing
         try:
             annotated_files[thread_num] = http.get_json(url, retry=RETRY)
-            return
         except Exception as e:
-            Log.error("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
+            annotated_files[thread_num] = []
+            Log.warning("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
+        return
 
 
     def get_diffs(self, csets):
@@ -365,9 +368,13 @@ class TUIDService:
             f_diff = f_proc['changes']
             for change in f_diff:
                 if change.action == '+':
-                    new_tuid = self.tuid()
+                    tuid_tmp = self._get_one_tuid(cset, file, change.line+1)
+                    if not tuid_tmp:
+                        new_tuid = self.tuid()
+                        list_to_insert.append((new_tuid, cset, file, change.line+1))
+                    else:
+                        new_tuid = tuid_tmp[0]
                     new_ann = add_one(TuidMap(new_tuid, change.line+1), new_ann)
-                    list_to_insert.append((new_tuid, cset, file, change.line+1))
                 elif change.action == '-':
                     new_ann = remove_one(change.line+1, new_ann)
             break # Found the file, exit searching
@@ -492,7 +499,7 @@ class TUIDService:
 
         added_files = {}
         parsed_diffs = {}
-        if not still_looking:
+        if not all([latest_csets[cs] for cs in latest_csets]): # If there is at least one frontier that was found
             all_diffs = self.get_diffs(diffs_cache)
 
             # Build a dict for faster access to the diffs
@@ -550,10 +557,17 @@ class TUIDService:
         result = []
         ann_inserts = []
         latestFileMod_inserts = {}
+        anns_to_get = []
         total = len(frontier_list)
         for count, file_n_rev in enumerate(frontier_list):
             file = file_n_rev[0]
             rev = file_n_rev[1]
+
+            if latest_csets[rev]:
+                # If we were still looking by the end, get a new
+                # annotation for this file.
+                anns_to_get.append(file)
+                continue
 
             # If the file was modified, get it's newest
             # annotation and update the file.
@@ -566,7 +580,8 @@ class TUIDService:
                                                 total=total, file=file, rev=proc_rev, percent=count / total)
 
             modified = True
-            if proc and file not in removed_files and csets_proced < max_csets_proc:
+            tmp_res = None
+            if proc and file not in removed_files:
                 # Process this file using the diffs found
 
                 # Reverse the list, we always find the newest diff first
@@ -584,7 +599,7 @@ class TUIDService:
                 if old_ann is None or (old_ann == '' and file in added_files):
                     # File is new (likely from an error), or re-added - we need to create
                     # a new initial entry for this file.
-                    tmp_res = self.get_tuids(file, proc_rev, commit=False)
+                    tmp_res = self.get_tuids(file, proc_rev, commit=False)[0][1]
                 else:
                     # File was not modified since last
                     # known revision
@@ -608,16 +623,16 @@ class TUIDService:
                 Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=proc_rev)
                 result.append((file, []))
 
-            # Save the newest frontier revision
-            latest_rev = rev
-            if (csets_proced < max_csets_proc and not still_looking) or going_forward:
-                # If we have found all frontiers, update to the
-                # latest revision. Otherwise, the requested
-                # revision is too far away (can't be sure
-                # if it's past). Unless we are told that we are
-                # going forward.
-                latest_rev = revision
+            # If we have found all frontiers, update to the
+            # latest revision. Otherwise, the requested
+            # revision is too far away (can't be sure
+            # if it's past). Unless we are told that we are
+            # going forward.
+            latest_rev = revision
             latestFileMod_inserts[file] = (file, latest_rev)
+
+        if len(anns_to_get) > 0:
+            result.extend(self.get_tuids(anns_to_get, revision, commit=False))
 
         if len(latestFileMod_inserts) > 0:
             count = 0
@@ -634,12 +649,16 @@ class TUIDService:
             count = 0
             ann_inserts = list(set(ann_inserts))
             while count < len(ann_inserts):
-                tmp_inserts = ann_inserts[count:count + SQL_BATCH_SIZE]
-                count += SQL_BATCH_SIZE
-                self.conn.execute(
-                    "INSERT INTO annotations (revision, file, annotation) VALUES " +
-                    sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
-                )
+                tmp_inserts = ann_inserts[count:count + SQL_ANN_BATCH_SIZE]
+                count += SQL_ANN_BATCH_SIZE
+                try:
+                    self.conn.execute(
+                        "INSERT INTO annotations (revision, file, annotation) VALUES " +
+                        sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
+                    )
+                except Exception as e:
+                    Log.note("Error inserting into annotations table: {{inserting}}", inserting=tmp_inserts)
+                    Log.error("Error found: {{cause}}", cause=e)
 
         return result
 
@@ -750,6 +769,17 @@ class TUIDService:
                 errored = True
                 Log.warning("{{file}} does not exist in the revision {{cset}}", cset=revision, file=file)
             elif annotated_object is None:
+                Log.warning(
+                    "Unexpected error getting annotation for: {{file}} in the revision {{cset}}",
+                    cset=revision, file=file
+                )
+                errored = True
+            elif 'annotate' not in annotated_object:
+                Log.warning(
+                    "Missing annotate, type got: {{ann_type}}, expecting:dict returned when getting " +
+                    "annotation for: {{file}} in the revision {{cset}}",
+                    cset=revision, file=file, ann_type=type(annotated_object)
+                )
                 errored = True
 
             if errored:
@@ -798,7 +828,6 @@ class TUIDService:
                 try:
                     tuid_tmp = self.conn.get_one(GET_TUID_QUERY,
                                                  line_origins[line_num - 1])
-
                     # Return dummy line if we can't find the TUID for this entry
                     # (likely because of an error from insertion).
                     if tuid_tmp:
@@ -822,6 +851,8 @@ class TUIDService:
 
             results.append((file, tuids))
 
+        # Try to prevent some memory leaking
+        # with these calls.
         del threads
         del annotated_files
         gc.collect()
