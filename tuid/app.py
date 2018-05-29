@@ -25,7 +25,7 @@ from tuid.service import TUIDService
 from tuid.util import map_to_array
 
 OVERVIEW = None
-
+QUERY_SIZE_LIMIT = 10 * 1000 * 1000
 
 class TUIDApp(Flask):
 
@@ -47,8 +47,9 @@ service = None
 @cors_wrapper
 def tuid_endpoint(path):
     try:
-        request_body = flask.request.get_data().strip()
-        if not request_body:
+
+        if flask.request.headers.get("content-length", "") in ["", "0"]:
+            # ASSUME A BROWSER HIT THIS POINT, SEND text/html RESPONSE BACK
             return Response(
                 unicode2utf8("expecting query"),
                 status=400,
@@ -56,6 +57,15 @@ def tuid_endpoint(path):
                     "Content-Type": "text/html"
                 }
             )
+        elif int(flask.request.headers["content-length"]) > QUERY_SIZE_LIMIT:
+            return Response(
+                unicode2utf8("request content too large"),
+                status=400,
+                headers={
+                    "Content-Type": "text/html"
+                }
+            )
+        request_body = flask.request.get_data().strip()
         query = json2value(utf82unicode(request_body))
 
         # ENSURE THE QUERY HAS THE CORRECT FORM
