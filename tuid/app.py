@@ -165,9 +165,10 @@ if __name__ in ("__main__",):
             Log.stop()
 
     if config.flask:
+        print("here1")
         if config.flask.port and config.args.process_num:
             config.flask.port += config.args.process_num
-
+        print("here2")
         Log.note("Running Service.")
         flask_app.run(**config.flask)
 
