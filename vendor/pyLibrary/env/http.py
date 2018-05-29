@@ -31,9 +31,9 @@ from jx_python import jx
 from mo_dots import Data, coalesce, wrap, set_default, unwrap, Null
 from mo_future import text_type, PY2
 from mo_json import value2json, json2value
-from mo_logs import Log, strings
-from mo_logs.strings import utf82unicode, unicode2utf8
+from mo_logs import Log
 from mo_logs.exceptions import Except
+from mo_logs.strings import utf82unicode, unicode2utf8
 from mo_math import Math
 from mo_threads import Lock
 from mo_threads import Till
@@ -109,7 +109,7 @@ def request(method, url, zip=None, retry=None, **kwargs):
         if zip is None:
             zip = ZIP_REQUEST
 
-        if isinstance(url, text_type):
+        if PY2 and isinstance(url, unicode):
             # httplib.py WILL **FREAK OUT** IF IT SEES ANY UNICODE
             url = url.encode('ascii')
 
