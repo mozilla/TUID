@@ -4,8 +4,23 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
+#
 
-from pyLibrary.sql.sqlite import Sqlite, quote_value
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
+import sqlite3
+
+from mo_dots import Data, coalesce
+from mo_files import File
+from mo_kwargs import override
+from mo_logs import Log
+from pyLibrary import convert
+from pyLibrary.sql.sqlite import quote_value
+
+DEBUG = False
+TRACE = True
 
 
 class Sql:
@@ -58,3 +73,51 @@ class Transaction(object):
 
     def get_one(self, sql, params=None):
         return self.db.getone(sql, params)
+
+
+class Sqlite(object):
+    """
+    Allows multi-threaded access
+    Loads extension functions (like SQRT)
+    """
+
+    @override
+    def __init__(self, filename=None):
+        self.filename = File(filename).abspath
+        self.db = sqlite3.connect(coalesce(self.filename, ':memory:'), check_same_thread=True)
+        self.db.isolation_level = None
+
+        if DEBUG:
+            Log.note("Sqlite version {{version}}", version=self.query("select sqlite_version()").data[0][0])
+
+    def query(self, command):
+        curr = self.db.execute(command)
+        data = curr.fetchall()
+        if DEBUG and data:
+            text = convert.table2csv(list(data))
+            Log.note("Result:\n{{data}}", data=text)
+        return Data(
+            meta={"format": "table"},
+            header=[d[0] for d in curr.description] if curr.description else None,
+            data=data
+        )
+
+    def execute(self, command):
+        self.query(command)
+
+    def commit(self):
+        return self.db.commit()
+
+    def rollback(self):
+        return self.db.rollback()
+
+    def close(self):
+        self.db.commit()
+        self.db.close()
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
