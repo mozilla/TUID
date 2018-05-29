@@ -35,6 +35,18 @@ def service(config, new_db):
         Log.error("expecting 'yes' or 'no'")
 
 
+def test_tryrepo_tuids(service):
+    test_file = ["dom/base/nsWrapperCache.cpp", "testing/mochitest/baselinecoverage/browser_chrome/browser.ini"]
+    test_revision = "0f4946791ddb"
+
+    found_file = False
+    result = service.get_tuids_from_files(test_file, test_revision, repo='try')
+    for file, tuids in result:
+        if file == 'testing/mochitest/baselinecoverage/browser_chrome/browser.ini':
+            found_file = True
+            assert len(tuids) == 3
+    assert found_file
+
 def test_new_then_old(service):
     # delete database then run this test
     old = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838")
@@ -436,6 +448,62 @@ def test_long_file(service):
         )
 
     assert timer.duration.seconds < 30
+
+
+def test_out_of_order_get_tuids_from_files(service):
+    rev_initial = "3eccd139667d"
+    rev_latest = "4e9446f9e8f0"
+    rev_middle = "9b7db28b360d"
+    test_file = ["dom/base/nsWrapperCache.cpp"]
+    check_lines = [41]
+
+    result1 = service.get_tuids_from_files(test_file, rev_initial)
+    result2 = service.get_tuids_from_files(test_file, rev_latest)
+    test_result = service.get_tuids_from_files(test_file, rev_middle)
+
+    # Check that test_result's tuids at line 41 is different from
+    # result 2.
+    for (fname, tuids2) in result2:
+        if fname not in test_file:
+            # If we find another file, this test fails
+            assert fname == test_file[0]
+
+        for (fname_test, tuids_test) in test_result:
+            # Check that check_line entries are different
+            for count, tmap in enumerate(tuids2):
+                if tmap.line not in check_lines:
+                    assert tmap.tuid == tuids_test[count].tuid
+                else:
+                    assert tmap.tuid != tuids_test[count].tuid
+
+
+def test_out_of_order_going_forward_get_tuids_from_files(service):
+    rev_initial = "3eccd139667d"
+    rev_latest = "4e9446f9e8f0"
+    rev_latest2 = "9dfb7673f106393b79226"
+    rev_middle = "9b7db28b360d"
+    test_file = ["dom/base/nsWrapperCache.cpp"]
+    check_lines = [41]
+
+    result1 = service.get_tuids_from_files(test_file, rev_initial, going_forward=True)
+    result2 = service.get_tuids_from_files(test_file, rev_latest, going_forward=True)
+    test_result = service.get_tuids_from_files(test_file, rev_middle, going_forward=True)
+    result2 = service.get_tuids_from_files(test_file, rev_latest2, going_forward=True)
+
+    # Check that test_result's tuids at line 41 is different from
+    # result 2.
+    for (fname, tuids2) in result2:
+        if fname not in test_file:
+            # If we find another file, this test fails
+            assert fname == test_file[0]
+
+        for (fname_test, tuids_test) in test_result:
+            # Check that check_line entries are different
+            for count, tmap in enumerate(tuids2):
+                if tmap.line not in check_lines:
+                    assert tmap.tuid == tuids_test[count].tuid
+                else:
+                    assert tmap.tuid != tuids_test[count].tuid
 
 
 @pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")

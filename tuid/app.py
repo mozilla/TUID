@@ -19,7 +19,7 @@ from mo_dots import listwrap, coalesce, unwraplist
 from mo_json import value2json, json2value
 from mo_logs import Log, constants, startup
 from mo_logs.strings import utf82unicode, unicode2utf8
-from mo_times import Timer
+from mo_times import Timer, Date
 from pyLibrary.env.flask_wrappers import cors_wrapper
 from tuid.service import TUIDService
 from tuid.util import map_to_array
@@ -67,6 +67,7 @@ def tuid_endpoint(path):
             )
         request_body = flask.request.get_data().strip()
         query = json2value(utf82unicode(request_body))
+        repo = query['branch'] if 'branch' in query else 'mozilla-central'
 
         # ENSURE THE QUERY HAS THE CORRECT FORM
         if query['from'] != 'files':
@@ -95,7 +96,7 @@ def tuid_endpoint(path):
         else:
             # RETURN TUIDS
             with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
-                response = service.get_tuids_from_files(revision=rev, files=paths, going_forward=True)
+                response = service.get_tuids_from_files(revision=rev, files=paths, going_forward=True, repo=repo)
 
         if query.meta.format == 'list':
             formatter = _stream_list
@@ -153,8 +154,8 @@ def _default(path):
 
 
 if __name__ in ("__main__",):
+    Log.note("Starting TUID Service App...")
     flask_app = TUIDApp(__name__)
-
     flask_app.add_url_rule(str('/'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
     flask_app.add_url_rule(str('/<path:path>'), None, tuid_endpoint, methods=[str('GET'), str('POST')])
 
@@ -166,6 +167,7 @@ if __name__ in ("__main__",):
         Log.start(config.debug)
 
         service = TUIDService(config.tuid)
+        Log.note("Started TUID Service.")
     except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
         try:
             Log.error("Serious problem with TUID service construction!  Shutdown!", cause=e)
@@ -173,9 +175,11 @@ if __name__ in ("__main__",):
             Log.stop()
 
     if config.flask:
+        print("here1")
         if config.flask.port and config.args.process_num:
             config.flask.port += config.args.process_num
-
+        print("here2")
+        Log.note("Running Service.")
         flask_app.run(**config.flask)
 
 
