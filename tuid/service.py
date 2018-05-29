@@ -472,7 +472,14 @@ class TUIDService:
             else:
                 files_to_update.append(file)
 
+        if len(log_existing_files) > 0:
+            Log.note("Try revision run - existing entries: {{count}}/{{total}} | {{percent}}",
+                     count=str(len(log_existing_files)), total=str(len(files)),
+                     percent=str(100*(len(log_existing_files)/len(files)))
+            )
+
         if len(files_to_update) <= 0:
+            Log.note("Found all files for try revision request: {{cset}}", cset=revision)
             return result
 
         # There are files to process, so let's find all the diffs.
@@ -517,7 +524,7 @@ class TUIDService:
                     cset=curr_rev, state=clog_obj['phase']
                 )
                 return [(file, []) for file in files]
-            curr_rev = clog_obj['parents'][0]
+            curr_rev = clog_obj['parents'][0][:12]
 
         added_files = {}
         removed_files = {}
@@ -563,12 +570,15 @@ class TUIDService:
             ann_inserts = []
             for file in files_to_update:
                 if file in added_files:
+                    Log.note("Try revision run - added: {{file}}", file=file)
                     anns_to_get.append(file)
                 elif file in removed_files:
+                    Log.note("Try revision run - removed: {{file}}", file=file)
                     ann_inserts.append((revision, file, ''))
                     result.append((file, []))
                 elif file in files_to_process:
                     # Reverse the list, we always find the newest diff first
+                    Log.note("Try revision run - modified: {{file}}", file=file)
                     csets_to_proc = files_to_process[file][::-1]
                     old_ann = curr_annots_dict[file]
 
@@ -581,6 +591,7 @@ class TUIDService:
                     result.append((file, tmp_res))
                 else:
                     # Nothing changed with the file, use it's current annotation
+                    Log.note("Try revision run - not modified: {{file}}", file=file)
                     ann_inserts.append((revision, file, self.stringify_tuids(curr_annots_dict[file])))
                     result.append((file, curr_annots_dict[file]))
 
