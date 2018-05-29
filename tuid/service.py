@@ -234,8 +234,7 @@ class TUIDService:
 
         files = mozobject[revision]['files']
 
-        with self.conn.transaction():
-            results = self.get_tuids(files, revision)
+        results = self.get_tuids(files, revision)
         return results
 
 
