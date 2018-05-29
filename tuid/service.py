@@ -11,7 +11,6 @@ from __future__ import unicode_literals
 from collections import namedtuple
 
 import time
-import objgraph
 from mo_dots import Null, coalesce, wrap
 from mo_future import text_type
 from mo_kwargs import override
