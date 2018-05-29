@@ -57,7 +57,7 @@ class Transaction(object):
         self.db = db
 
     def __enter__(self):
-        pass
+        self.db.execute("BEGIN TRANSACTION")
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if isinstance(exc_val, Exception):
@@ -109,7 +109,7 @@ class Sqlite(object):
         return self.db.commit()
 
     def rollback(self):
-        return self.db.rollback()
+        self.db.rollback()
 
     def close(self):
         self.db.commit()

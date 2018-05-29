@@ -50,19 +50,23 @@ def test_transactions(service):
     listed_inserts = [('test' + str(count), str(count)) for count,entry in enumerate(listed_inserts)]
     listed_inserts.append('hello world')
     excepted = True
-    with service.conn.transaction():
-        count = 0
-        while count < len(listed_inserts):
-            tmp_inserts = listed_inserts[count:count + 50]
-            count += 50
-            service.conn.execute(
-                "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
-            )
-        excepted = False
+    try:
+        with service.conn.transaction():
+            count = 0
+            while count < len(listed_inserts):
+                tmp_inserts = listed_inserts[count:count + 50]
+                count += 50
+                service.conn.execute(
+                    "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+                    sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
+                )
+            excepted = False
+    except Exception as e:
+        Log.note("Hit an exception: Expected: 11 values for 2 columns, Got: {{cause}}", cause=e)
 
     # Check that the transaction was undone
     latestTestMods = service.conn.get_one("SELECT revision FROM latestFileMod WHERE file=?", ('test1',))
+
     assert not latestTestMods
     assert excepted
 
