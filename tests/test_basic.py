@@ -19,6 +19,8 @@ from pyLibrary.env import http
 from tuid import sql
 from tuid.service import TUIDService
 from tuid.util import map_to_array
+from pyLibrary.sql import sql_list, sql_iso
+from pyLibrary.sql.sqlite import quote_value
 
 _service = None
 
@@ -34,6 +36,35 @@ def service(config, new_db):
     else:
         Log.error("expecting 'yes' or 'no'")
 
+
+def test_transactions(service):
+    # This should pass
+    with service.conn.transaction():
+        old = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838", commit=False)
+        new = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62", commit=False)
+
+    assert len(old) == len(new)
+
+    # This should cause a transaction failure
+    listed_inserts = [None] * 100
+    listed_inserts = [('test' + str(count), str(count)) for count,entry in enumerate(listed_inserts)]
+    listed_inserts.append('hello world')
+    excepted = True
+    with service.conn.transaction():
+        count = 0
+        while count < len(listed_inserts):
+            tmp_inserts = listed_inserts[count:count + 50]
+            count += 50
+            service.conn.execute(
+                "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+                sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
+            )
+        excepted = False
+
+    # Check that the transaction was undone
+    latestTestMods = service.conn.get_one("SELECT revision FROM latestFileMod WHERE file=?", ('test1',))
+    assert not latestTestMods
+    assert excepted
 
 def test_tryrepo_tuids(service):
     test_file = ["dom/base/nsWrapperCache.cpp", "testing/mochitest/baselinecoverage/browser_chrome/browser.ini"]
