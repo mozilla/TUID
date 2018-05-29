@@ -42,6 +42,21 @@ def app():
     app_process.join(raise_on_error=False)
 
 
+def test_empty_query(config, app):
+    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
+    response = http.get(url)
+    assert response.status_code == 400
+    assert response.content == b"expecting query"
+
+@pytest.mark.skipif(not (os.environ.get('TRAVIS'), "can not send request on windows, I do not know why")
+def test_query_too_big(config, app):
+    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
+    name = "a"*10000000
+    response = http.get(url, json={"from": name})
+    assert response.status_code == 400
+    assert response.content == b"request too large"
+
+
 def test_query_error(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
     response = http.get(url, json={"from": "files"})

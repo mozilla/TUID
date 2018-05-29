@@ -59,7 +59,7 @@ def tuid_endpoint(path):
             )
         elif int(flask.request.headers["content-length"]) > QUERY_SIZE_LIMIT:
             return Response(
-                unicode2utf8("request content too large"),
+                unicode2utf8("request too large"),
                 status=400,
                 headers={
                     "Content-Type": "text/html"
