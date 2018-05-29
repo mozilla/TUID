@@ -57,7 +57,7 @@ def tuid_endpoint(path):
                 }
             )
         query = json2value(utf82unicode(request_body))
-        repo = query['branch']
+        repo = query['branch'] if 'branch' in query else 'mozilla-central'
 
         # ENSURE THE QUERY HAS THE CORRECT FORM
         if query['from'] != 'files':
@@ -144,8 +144,8 @@ def _default(path):
 
 
 if __name__ in ("__main__",):
+    Log.note("Starting TUID Service App...")
     flask_app = TUIDApp(__name__)
-
     flask_app.add_url_rule(str('/'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
     flask_app.add_url_rule(str('/<path:path>'), None, tuid_endpoint, methods=[str('GET'), str('POST')])
 
@@ -157,6 +157,7 @@ if __name__ in ("__main__",):
         Log.start(config.debug)
 
         service = TUIDService(config.tuid)
+        Log.note("Started TUID Service.")
     except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
         try:
             Log.error("Serious problem with TUID service construction!  Shutdown!", cause=e)
@@ -167,6 +168,7 @@ if __name__ in ("__main__",):
         if config.flask.port and config.args.process_num:
             config.flask.port += config.args.process_num
 
+        Log.note("Running Service.")
         flask_app.run(**config.flask)
 
 
