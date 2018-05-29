@@ -57,6 +57,7 @@ def tuid_endpoint(path):
                 }
             )
         query = json2value(utf82unicode(request_body))
+        repo = query['branch']
 
         # ENSURE THE QUERY HAS THE CORRECT FORM
         if query['from'] != 'files':
@@ -85,7 +86,7 @@ def tuid_endpoint(path):
         else:
             # RETURN TUIDS
             with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
-                response = service.get_tuids_from_files(revision=rev, files=paths)
+                response = service.get_tuids_from_files(revision=rev, files=paths, going_forward=True, repo=repo)
 
         if query.meta.format == 'list':
             formatter = _stream_list

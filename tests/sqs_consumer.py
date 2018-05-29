@@ -35,6 +35,7 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
     queue = aws.Queue(pull_queue)
     client = TuidClient(client)
     try_revs = {}
+    test_try_revs = True
 
     #while len(queue) > 0:
     #    request = queue.pop(till=please_stop)
@@ -51,6 +52,7 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
             (please_stop | Till(seconds=5)).wait()
             continue
         Log.note("Found something in queue")
+        repo = 'mozilla-central'
 
         and_op = request.where['and']
 
@@ -68,7 +70,7 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
             Log.warning("No files in the given request: {{request}}", request=request)
             continue
 
-        if revision[:12] in try_revs:
+        if revision[:12] in try_revs and not test_try_revs:
             Log.warning(
                 "Revision {{cset}} does not exist in the {{branch}} branch",
                 cset=revision[:12], branch='mozilla-central'
@@ -84,11 +86,27 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
                 cset=revision[:12], branch='mozilla-central'
             )
             try_revs[revision[:12]] = True
-            queue.commit()
-            continue
+            if not test_try_revs:
+                queue.commit()
+                continue
+            else:
+                json_rev_url = 'https://hg.mozilla.org/try/json-rev/' + revision[:12]
+                clog_obj = http.get_json(json_rev_url, retry=RETRY)
+                if 'phase' not in clog_obj:
+                    Log.warning(
+                        "Revision {{cset}} does not exist in the try branch",
+                        cset=revision[:12], branch='mozilla-central'
+                    )
+                    queue.commit()
+                    continue
+
+                if clog_obj['phase'] == 'draft':
+                    repo = 'try'
+
         else:
             Log.note("Revision {{cset}} exists on mozilla-central.", cset=revision[:12])
 
+        request.branch = repo
         with Timer("Make TUID request from {{timestamp|date}}", {"timestamp": request.meta.request_time}):
             client.enabled = True  # ENSURE THE REQUEST IS MADE
             result = http.post_json(
