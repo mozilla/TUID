@@ -13,7 +13,7 @@ import os
 
 import pytest
 
-from mo_logs import Log
+from mo_logs import Log, Except
 from mo_times import Timer
 from pyLibrary.env import http
 from tuid import sql
@@ -45,11 +45,11 @@ def test_transactions(service):
 
     assert len(old) == len(new)
 
-    # This should cause a transaction failure
-    listed_inserts = [None] * 100
-    listed_inserts = [('test' + str(count), str(count)) for count,entry in enumerate(listed_inserts)]
-    listed_inserts.append('hello world')
-    excepted = True
+
+    # listed_inserts = [None] * 100
+    listed_inserts = [('test' + str(count), str(count)) for count, entry in enumerate(range(100))]
+    listed_inserts.append('hello world')  # This should cause a transaction failure
+
     try:
         with service.conn.transaction():
             count = 0
@@ -60,15 +60,16 @@ def test_transactions(service):
                     "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
                     sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
                 )
-            excepted = False
+            assert False  # SHOULD NOT GET HERE
     except Exception as e:
-        Log.note("Hit an exception: Expected: 11 values for 2 columns, Got: {{cause}}", cause=e)
+        e = Except.wrap(e)
+        assert "11 values for 2 columns" in e
 
     # Check that the transaction was undone
     latestTestMods = service.conn.get_one("SELECT revision FROM latestFileMod WHERE file=?", ('test1',))
 
     assert not latestTestMods
-    assert excepted
+
 
 def test_tryrepo_tuids(service):
     test_file = ["dom/base/nsWrapperCache.cpp", "testing/mochitest/baselinecoverage/browser_chrome/browser.ini"]
