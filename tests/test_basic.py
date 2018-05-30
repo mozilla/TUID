@@ -542,7 +542,7 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
                     assert tmap.tuid != tuids_test[count].tuid
 
 
-@pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
+@pytest.mark.skip(reason="Never completes")
 def test_daemon(service):
     from mo_threads import Signal
     temp_signal = Signal()

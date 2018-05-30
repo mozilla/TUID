@@ -19,7 +19,7 @@ from decimal import Decimal
 
 from mo_dots import FlatList, NullType, Data, wrap_leaves, wrap, Null
 from mo_dots.objects import DataObject
-from mo_future import text_type, none_type, long, binary_type
+from mo_future import text_type, none_type, long, binary_type, PY2
 from mo_logs import Except, strings, Log
 from mo_logs.strings import expand_template
 from mo_times import Date, Duration
@@ -336,9 +336,12 @@ def json2value(json_string, params=Null, flexible=False, leaves=False):
             char_str = " "
         Log.error(CAN_NOT_DECODE_JSON + ":\n{{char_str}}\n{{hexx_str}}\n", char_str=char_str, hexx_str=hexx_str, cause=e)
 
-
-def bytes2hex(value, separator=" "):
-    return separator.join('{:02X}'.format(ord(x)) for x in value)
+if PY2:
+    def bytes2hex(value, separator=" "):
+        return separator.join('{:02X}'.format(ord(x)) for x in value)
+else:
+    def bytes2hex(value, separator=" "):
+        return separator.join('{:02X}'.format(x) for x in value)
 
 
 def utf82unicode(value):
