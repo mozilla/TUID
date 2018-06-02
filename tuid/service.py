@@ -23,11 +23,11 @@ from mo_times.durations import SECOND
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
-from tuid import sql
 
 import threading
 import gc
 
+from tuid import sql
 from tuid.util import MISSING, TuidMap
 
 DEBUG = False

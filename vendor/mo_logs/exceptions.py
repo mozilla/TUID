@@ -46,7 +46,7 @@ class Except(Exception):
         self.type = type
         self.template = template
         self.params = set_default(kwargs, params)
-        self.cause = cause
+        self.cause = Except.wrap(cause)
 
         if not trace:
             self.trace=extract_stack(2)

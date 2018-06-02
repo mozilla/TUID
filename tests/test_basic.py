@@ -9,18 +9,17 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import json
-import os
 
 import pytest
 
 from mo_logs import Log, Except
 from mo_times import Timer
 from pyLibrary.env import http
+from pyLibrary.sql import sql_list, sql_iso
+from pyLibrary.sql.sqlite import quote_value, Sqlite
 from tuid import sql
 from tuid.service import TUIDService
 from tuid.util import map_to_array
-from pyLibrary.sql import sql_list, sql_iso
-from pyLibrary.sql.sqlite import quote_value
 
 _service = None
 
@@ -45,22 +44,21 @@ def test_transactions(service):
 
     assert len(old) == len(new)
 
-
     # listed_inserts = [None] * 100
     listed_inserts = [('test' + str(count), str(count)) for count, entry in enumerate(range(100))]
     listed_inserts.append('hello world')  # This should cause a transaction failure
 
     try:
-        with service.conn.transaction():
+        with service.conn.transaction() as t:
             count = 0
             while count < len(listed_inserts):
                 tmp_inserts = listed_inserts[count:count + 50]
                 count += 50
-                service.conn.execute(
+                t.execute(
                     "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
                     sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
                 )
-            assert False  # SHOULD NOT GET HERE
+        assert False  # SHOULD NOT GET HERE
     except Exception as e:
         e = Except.wrap(e)
         assert "11 values for 2 columns" in e

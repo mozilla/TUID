@@ -17,7 +17,7 @@ from tempfile import mkdtemp, NamedTemporaryFile
 
 import os
 from mo_future import text_type, binary_type
-from mo_dots import get_module, coalesce
+from mo_dots import get_module, coalesce, Null
 from mo_logs import Log, Except
 from mo_threads import Thread, Till
 
@@ -29,7 +29,9 @@ class File(object):
     """
 
     def __new__(cls, filename, buffering=2 ** 14, suffix=None):
-        if isinstance(filename, File):
+        if filename == None:
+            return Null
+        elif isinstance(filename, File):
             return filename
         else:
             return object.__new__(cls)
