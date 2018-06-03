@@ -151,8 +151,7 @@ def request(method, url, zip=None, retry=None, **kwargs):
                 Till(seconds=retry.sleep).wait()
 
             try:
-                if DEBUG:
-                    Log.note(u"http {{method|upper}} to {{url}}", method=method, url=text_type(url))
+                DEBUG and Log.note(u"http {{method|upper}} to {{url}}", method=method, url=text_type(url))
                 request_count += 1
                 return session.request(method=method, url=url, **kwargs)
             except Exception as e:

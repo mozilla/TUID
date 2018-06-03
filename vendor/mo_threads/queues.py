@@ -143,8 +143,7 @@ class Queue(object):
         """
         wait_time = 5
 
-        if DEBUG and len(self.queue) > 1 * 1000 * 1000:
-            Log.warning("Queue {{name}} has over a million items")
+        (DEBUG and len(self.queue) > 1 * 1000 * 1000) and Log.warning("Queue {{name}} has over a million items")
 
         now = time()
         if timeout != None:
@@ -205,8 +204,7 @@ class Queue(object):
                     if self.please_stop:
                         break
                     return None
-        if DEBUG or not self.silent:
-            Log.note(self.name + " queue stopped")
+        (DEBUG or not self.silent) and Log.note(self.name + " queue stopped")
         return THREAD_STOP
 
     def pop_all(self):
