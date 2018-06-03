@@ -19,8 +19,7 @@ from mo_logs.strings import utf82unicode
 from mo_threads import Process
 from pyLibrary.env import http
 
-app_process = True
-
+app_process = None
 
 
 @pytest.fixture(scope="session")
