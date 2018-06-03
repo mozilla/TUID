@@ -131,8 +131,8 @@ class TUIDService:
             transaction.execute(
                 "INSERT INTO annotations (revision, file, annotation) VALUES (?, ?, ?)",
                 (rev[:12], file_name, ''))
-            if commit:
-                self.conn.commit()
+            # if commit:
+            #     self.conn.commit()
         return [(rev[:12], file_name, '')]
 
 
