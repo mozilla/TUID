@@ -68,13 +68,13 @@ class Transaction():
         return self.transaction.query(sql).data
 
     def get_one(self, sql, params=None):
-        return self.transaction.get(sql, params)[0]
+        return self.get(sql, params)[0]
 
     def query(self, query):
         return self.transaction.query(query)
 
     def commit(self):
-        self.transaction.commit()
+        Log.error("do not know how to handle")
 
     def rollback(self):
-        self.transaction.rollback()
+        Log.error("do not know how to handle")

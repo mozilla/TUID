@@ -223,7 +223,7 @@ def _worker(this, queue, please_stop):
             if Sqlite.canonical:
                 this.db = Sqlite.canonical
             else:
-                this.db = sqlite3.connect(coalesce(this.filename, ':memory:'), check_same_thread=False)
+                this.db = sqlite3.connect(coalesce(this.filename, ':memory:'), check_same_thread=True, isolation_level=None)
         except Exception as e:
             Log.error("could not open file {{filename}}", filename=this.filename, cause=e)
 
@@ -237,7 +237,7 @@ def _worker(this, queue, please_stop):
                 break
             query, result, signal, trace, transaction, thread = command_item
 
-            with Timer("SQL Timing", silent=DEBUG):
+            with Timer("SQL Timing", debug=DEBUG):
                 if transaction is None:
                     # THIS IS A TRANSACTIONLESS QUERY, DELAY IT IF THERE IS A CURRENT TRANSACTION
                     if current_transaction:

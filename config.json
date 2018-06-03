@@ -66,7 +66,7 @@
             "Referer": "https://github.com/mozilla/TUID",
             "User-Agent": "TUID Service"
         },
-        "pyLibrary.sql.sqlite.DEBUG": true,
+        "pyLibrary.sql.sqlite.DEBUG": false,
         "mo_hg.hg_mozilla_org.DAEMON_HG_INTERVAL": 0
     },
     "debug": {
