@@ -30,7 +30,7 @@ from mo_math import Math
 from mo_times import Date
 from pymysql import connect, InterfaceError, cursors
 
-from mo_future import text_type, utf8_json_encoder
+from mo_future import text_type, utf8_json_encoder, binary_type
 from pyLibrary.sql import SQL, SQL_NULL, SQL_SELECT, SQL_LIMIT, SQL_WHERE, SQL_LEFT_JOIN, SQL_FROM, SQL_AND, sql_list, sql_iso, SQL_ASC, SQL_TRUE, SQL_ONE, SQL_DESC, SQL_IS_NULL, sql_alias
 from pyLibrary.sql.sqlite import join_column
 
@@ -159,7 +159,15 @@ class MySQL(object):
         self.transaction_level += 1
         self.execute("SET TIME_ZONE='+00:00'")
         if EXECUTE_TIMEOUT:
-            self.execute("SET MAX_EXECUTION_TIME=" + text_type(EXECUTE_TIMEOUT))
+            try:
+                self.execute("SET MAX_EXECUTION_TIME=" + text_type(EXECUTE_TIMEOUT))
+                self._execute_backlog()
+            except Exception as e:
+                e = Except.wrap(e)
+                if "Unknown system variable 'MAX_EXECUTION_TIME'" in e:
+                    globals()['EXECUTE_TIMEOUT'] = 0  # THIS VERSION OF MYSQL DOES NOT HAVE SESSION LEVEL VARIABLE
+                else:
+                    raise e
 
     def close(self):
         if self.transaction_level > 0:
@@ -271,7 +279,8 @@ class MySQL(object):
 
             return result
         except Exception as e:
-            if isinstance(e, InterfaceError) or e.message.find("InterfaceError") >= 0:
+            e = Except.wrap(e)
+            if "InterfaceError" in e:
                 Log.error("Did you close the db connection?", e)
             Log.error("Problem executing SQL:\n{{sql|indent}}", sql=sql, cause=e, stack_depth=1)
 
@@ -623,7 +632,7 @@ class MySQL(object):
 
 def utf8_to_unicode(v):
     try:
-        if isinstance(v, str):
+        if isinstance(v, binary_type):
             return v.decode("utf8")
         else:
             return v

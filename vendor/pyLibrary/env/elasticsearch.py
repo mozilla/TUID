@@ -21,7 +21,7 @@ from jx_python.meta import Column
 from mo_dots import wrap, FlatList, coalesce, Null, Data, set_default, listwrap, literal_field, ROOT_PATH, concat_field, split_field
 from mo_future import text_type, binary_type
 from mo_json import value2json, json2value
-from mo_json.typed_encoder import EXISTS_TYPE, BOOLEAN_TYPE, STRING_TYPE, NUMBER_TYPE, NESTED_TYPE, TYPE_PREFIX
+from mo_json.typed_encoder import EXISTS_TYPE, BOOLEAN_TYPE, STRING_TYPE, NUMBER_TYPE, NESTED_TYPE, TYPE_PREFIX, json_type_to_inserter_type
 from mo_kwargs import override
 from mo_logs import Log, strings
 from mo_logs.exceptions import Except
@@ -367,7 +367,7 @@ class Index(Features):
                             id=items[i].index._id
                         )
                     Log.error("Problems with insert", cause=cause)
-
+            pass
         except Exception as e:
             e = Except.wrap(e)
             if e.message.startswith("sequence item "):
@@ -479,7 +479,7 @@ class Index(Features):
                 elif "503 UnavailableShardsException" in e:
                     Log.note("waiting for ES to initialize shards ({{num}} pending)", num=len(_buffer))
                 else:
-                    Log.warning("Problem with sending to ES ({{num}} pending)", num=len(_buffer), cause=still_have_hope)
+                    Log.warning("Problem with sending to ES, trying again ({{num}} pending)", num=len(_buffer), cause=still_have_hope)
             elif not_possible:
                 # THERE IS NOTHING WE CAN DO
                 Log.warning("Not inserted, will not try again", cause=not_possible[0:10:])
@@ -886,6 +886,7 @@ class Cluster(object):
                 )
             return details
         except Exception as e:
+            e = Except.wrap(e)
             if url[0:4] != "http":
                 suggestion = " (did you forget \"http://\" prefix on the host name?)"
             else:
@@ -1431,8 +1432,6 @@ def retro_properties(properties):
 
 
 def add_typed_annotations(meta):
-    from pyLibrary.env.typed_inserter import json_type_to_inserter_type
-
     if meta.type in ["text", "keyword", "string", "float", "double", "integer", "nested", "boolean"]:
         return {
             "type": "object",

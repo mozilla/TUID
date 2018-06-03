@@ -55,6 +55,9 @@ if PY3:
     from io import BytesIO
     from _thread import allocate_lock, get_ident, start_new_thread, interrupt_main
 
+    def iteritems(d):
+        return d.items()
+
     def transpose(*args):
         return list(zip(*args))
 
@@ -113,6 +116,9 @@ else:
     from StringIO import StringIO
     from io import BytesIO
     from thread import allocate_lock, get_ident, start_new_thread, interrupt_main
+
+    def iteritems(d):
+        return d.iteritems()
 
     def get_function_name(func):
         return func.func_name

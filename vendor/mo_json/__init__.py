@@ -64,8 +64,8 @@ def float2json(value):
         value = abs(value)
         sci = value.__format__(".15e")
         mantissa, str_exp = sci.split("e")
-        int_exp = int(str_exp)
-        digits = _snap_to_base_10(mantissa)
+        digits, more_digits = _snap_to_base_10(mantissa)
+        int_exp = int(str_exp) + more_digits
         if int_exp > 15:
             return sign + digits[0] + '.' + (digits[1:].rstrip('0') or '0') + u"e" + text_type(int_exp)
         elif int_exp >= 0:
@@ -81,15 +81,17 @@ def float2json(value):
 
 
 def _snap_to_base_10(mantissa):
-    digits = ''.join(mantissa.split('.'))
+    digits = mantissa.replace('.', '')
     if SNAP_TO_BASE_10:
-        f9 = strings.find(digits, '999', start=1)
+        f9 = strings.find(digits, '999')
         f0 = strings.find(digits, '000')
-        if f9 < f0:
-            digits = digits[:f9 - 1] + text_type(int(digits[f9 - 1]) + 1) + ('0' * (16 - f9))  # we know the last digit is not 9
+        if f9 == 0:
+            return '1000000000000000', 1
+        elif f9 < f0:
+            digits = text_type(int(digits[:f9]) + 1) + ('0' * (16 - f9))
         else:
             digits = digits[:f0]+('0'*(16-f0))
-    return digits
+    return digits, 0
 
 
 def _scrub_number(value):

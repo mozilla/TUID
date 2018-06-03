@@ -45,11 +45,19 @@ DEBUG = False
 FILE_SIZE_LIMIT = 100 * 1024 * 1024
 MIN_READ_SIZE = 8 * 1024
 ZIP_REQUEST = False
+
 default_headers = Data()  # TODO: MAKE THIS VARIABLE A SPECIAL TYPE OF EXPECTED MODULE PARAMETER SO IT COMPLAINS IF NOT SET
 default_timeout = 600
+DEFAULTS = {
+    "allow_redirects": True,
+    "stream": True,
+    "verify": True,
+    "timeout": 600,
+    "zip": False,
+    "retry": {"times": 1, "sleep": 0}
+}
 
 _warning_sent = False
-
 request_count = 0
 
 
@@ -87,7 +95,7 @@ def request(method, url, zip=None, retry=None, **kwargs):
         failures = []
         for remaining, u in jx.countdown(url):
             try:
-                response = request(method, u, zip=zip, retry=retry, **kwargs)
+                response = request(method, u, retry=retry, **kwargs)
                 if Math.round(response.status_code, decimal=-2) not in [400, 500]:
                     return response
                 if not remaining:
@@ -106,15 +114,9 @@ def request(method, url, zip=None, retry=None, **kwargs):
     session.headers.update(default_headers)
 
     with closing(sess):
-        if zip is None:
-            zip = ZIP_REQUEST
-
-        if PY2 and isinstance(url, unicode):
+        if PY2 and isinstance(url, text_type):
             # httplib.py WILL **FREAK OUT** IF IT SEES ANY UNICODE
             url = url.encode('ascii')
-
-        _to_ascii_dict(kwargs)
-        timeout = kwargs['timeout'] = coalesce(kwargs.get('timeout'), default_timeout)
 
         if retry == None:
             retry = Data(times=1, sleep=0)
@@ -126,6 +128,9 @@ def request(method, url, zip=None, retry=None, **kwargs):
                 retry.sleep = retry.sleep.seconds
             set_default(retry, {"times": 1, "sleep": 0})
 
+        _to_ascii_dict(kwargs)
+        set_default(kwargs, DEFAULTS)
+
         if 'json' in kwargs:
             kwargs['data'] = value2json(kwargs['json']).encode('utf8')
             del kwargs['json']
@@ -134,7 +139,7 @@ def request(method, url, zip=None, retry=None, **kwargs):
             headers = kwargs['headers'] = unwrap(coalesce(kwargs.get('headers'), {}))
             set_default(headers, {'Accept-Encoding': 'compress, gzip'})
 
-            if zip and len(coalesce(kwargs.get('data'))) > 1000:
+            if kwargs['zip'] and len(coalesce(kwargs.get('data'))) > 1000:
                 compressed = convert.bytes2zip(kwargs['data'])
                 headers['content-encoding'] = 'gzip'
                 kwargs['data'] = compressed
@@ -153,12 +158,15 @@ def request(method, url, zip=None, retry=None, **kwargs):
             try:
                 DEBUG and Log.note(u"http {{method|upper}} to {{url}}", method=method, url=text_type(url))
                 request_count += 1
+
+                del kwargs['retry']
+                del kwargs['zip']
                 return session.request(method=method, url=url, **kwargs)
             except Exception as e:
                 errors.append(Except.wrap(e))
 
         if " Read timed out." in errors[0]:
-            Log.error(u"Tried {{times}} times: Timeout failure (timeout was {{timeout}}", timeout=timeout, times=retry.times, cause=errors[0])
+            Log.error(u"Tried {{times}} times: Timeout failure (timeout was {{timeout}}", timeout=kwargs['timeout'], times=retry.times, cause=errors[0])
         else:
             Log.error(u"Tried {{times}} times: Request failure of {{url}}", url=url, times=retry.times, cause=errors[0])
 
@@ -182,8 +190,6 @@ else:
 
 
 def get(url, **kwargs):
-    kwargs.setdefault('allow_redirects', True)
-    kwargs.setdefault('stream', True)
     return HttpResponse(request('get', url, **kwargs))
 
 
@@ -203,19 +209,14 @@ def get_json(url, **kwargs):
 
 
 def options(url, **kwargs):
-    kwargs.setdefault('allow_redirects', True)
-    kwargs.setdefault('stream', True)
     return HttpResponse(request('options', url, **kwargs))
 
 
 def head(url, **kwargs):
-    kwargs.setdefault('allow_redirects', False)
-    kwargs.setdefault('stream', True)
     return HttpResponse(request('head', url, **kwargs))
 
 
 def post(url, **kwargs):
-    kwargs.setdefault('stream', True)
     return HttpResponse(request('post', url, **kwargs))
 
 
@@ -230,7 +231,6 @@ def post_json(url, **kwargs):
         kwargs['data'] = unicode2utf8(value2json(kwargs['data']))
     else:
         Log.error(u"Expecting `json` parameter")
-
     response = post(url, **kwargs)
     details = json2value(utf82unicode(response.content))
     if response.status_code not in [200, 201]:
@@ -243,7 +243,6 @@ def put(url, **kwargs):
 
 
 def patch(url, **kwargs):
-    kwargs.setdefault('stream', True)
     return HttpResponse(request('patch', url, **kwargs))
 
 

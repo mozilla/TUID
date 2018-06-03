@@ -561,7 +561,7 @@ class HgMozillaOrg(object):
                             file.changes = None
                         return json_diff
             except Exception as e:
-                Log.warning("could not get unified diff", cause=e)
+                Log.warning("could not get unified diff from {{url}}", url=url, cause=e)
 
         return inner(revision.changeset.id)
 
@@ -605,10 +605,10 @@ class HgMozillaOrg(object):
             url = expand_template(DIFF_URL, {"location": revision.branch.url, "rev": changeset_id})
             DEBUG and Log.note("get unified diff from {{url}}", url=url)
             try:
-                moves = http.get(url).content.decode('utf8')
+                moves = http.get(url).content.decode('latin1')  # THE ENCODING DOES NOT MATTER BECAUSE WE ONLY USE THE '+', '-' PREFIXES IN THE DIFF
                 return diff_to_moves(text_type(moves))
             except Exception as e:
-                Log.warning("could not get unified diff", cause=e)
+                Log.warning("could not get unified diff from {{url}}", url=url, cause=e)
 
         return inner(revision.changeset.id)
 
@@ -665,7 +665,8 @@ for k in [
     "children",
     "parents",
     "phase",
-    "bookmarks"
+    "bookmarks",
+    "tags"
 ]:
     _exclude_from_repo[k] = True
 _exclude_from_repo = _exclude_from_repo

@@ -338,7 +338,7 @@ def unicode2Date(value, format=None):
     """
     CONVERT UNICODE STRING TO UNIX TIMESTAMP VALUE
     """
-    ## http://docs.python.org/2/library/datetime.html#strftime-and-strptime-behavior
+    # http://docs.python.org/2/library/datetime.html#strftime-and-strptime-behavior
     if value == None:
         return None
 
@@ -435,6 +435,8 @@ def datetime2unix(value):
 
 
 def unix2datetime(unix):
+    if unix == None:
+        return Null
     return datetime.utcfromtimestamp(unix)
 
 

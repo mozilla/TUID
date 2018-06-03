@@ -146,9 +146,8 @@ class ListContainer(Container, jx_base.Namespace, jx_base.Table):
         return self.where(where)
 
     def where(self, where):
-        temp = None
         if isinstance(where, Mapping):
-            exec ("def temp(row):\n    return " + jx_expression(where).to_python())
+            temp = compile_expression(jx_expression(where).to_python())
         elif isinstance(where, Expression):
             temp = compile_expression(where.to_python())
         else:
@@ -280,9 +279,9 @@ class ListContainer(Container, jx_base.Namespace, jx_base.Table):
         return self.schema
 
     def get_table(self, name):
-        if self.name != name:
-            Log.error("This container only has table by name of {{name}}", name=name)
-        return self
+        if self is name or self.name == name:
+            return self
+        Log.error("This container only has table by name of {{name}}", name=name)
 
 
 def _exec(code):
