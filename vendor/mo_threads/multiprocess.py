@@ -14,7 +14,7 @@ import os
 import subprocess
 
 from mo_dots import set_default, NullType
-from mo_future import none_type
+from mo_future import none_type, binary_type
 from mo_logs import Log, strings
 from mo_logs.exceptions import Except
 from mo_threads.lock import Lock
@@ -146,8 +146,8 @@ class Process(object):
             if line:
                 if self.debug:
                     Log.note("{{process}} (stdin): {{line}}", process=self.name, line=line.rstrip())
-                pipe.write(line + b"\n")
-        pipe.close()
+                pipe.write(line.encode('utf8') + b"\n")
+        # pipe.close()
 
     def _kill(self):
         try:

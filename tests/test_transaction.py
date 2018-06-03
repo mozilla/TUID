@@ -13,22 +13,69 @@ from mo_threads import Signal, Thread
 from pyLibrary.sql import sqlite, sql_iso
 from pyLibrary.sql.sqlite import Sqlite, quote_value
 
-# NONE OF THESE TESTS ARE GOOD, BUT THE CODE MY BE USEFUL FOR MAKING GOOD TESTS
+sqlite.DEBUG = True
 
-# sqlite.DEBUG = True
-#
-# def test_interleaved_transactions():
-#     db, threads, signals = _setup()
-#     a, b = signals.a, signals.b
-#
-#     # INTERLEAVED TRANSACTION STEPS
-#     for i in range(4):
-#         _perform(a, i)
-#         _perform(b, i)
-#
-#     _teardown(db, threads)
-#
-#
+
+def test_interleaved_transactions():
+    db, threads, signals = _setup()
+    a, b = signals.a, signals.b
+
+    # INTERLEAVED TRANSACTION STEPS
+    for i in range(3):
+        _perform(a, i)
+        _perform(b, i)
+
+    _teardown(db, threads)
+
+
+def test_two_commands():
+    db, threads, signals = _setup()
+    a, b = signals.a, signals.b
+
+    _perform(a, 0)
+    _perform(a, 1)
+    _perform(b, 0)
+    _perform(b, 1)
+    _perform(a, 2)
+    _perform(b, 2)
+
+    _teardown(db, threads)
+
+
+def test_nested_transaction1():
+    db = Sqlite()
+    db.query("CREATE TABLE my_table (value TEXT)")
+
+    with db.transaction() as t:
+        t.execute("INSERT INTO my_table VALUES ('a')")
+
+        result = t.query("SELECT * FROM my_table")
+        assert len(result.data) == 1
+        assert result.data[0][0] == 'a'
+
+        with db.transaction() as t2:
+            t2.execute("INSERT INTO my_table VALUES ('b')")
+
+    _teardown(db, {})
+
+
+def test_nested_transaction2():
+    db = Sqlite()
+    db.query("CREATE TABLE my_table (value TEXT)")
+
+    with db.transaction() as t:
+        with db.transaction() as t2:
+            t2.execute("INSERT INTO my_table VALUES ('b')")
+
+            result = t2.query("SELECT * FROM my_table")
+            assert len(result.data) == 1
+            assert result.data[0][0] == 'b'
+
+        t.execute("INSERT INTO my_table VALUES ('a')")
+
+    _teardown(db, {})
+
+
 # # def test_all_combinations():
 # #     # ALL 8bit NUMBERS WITH 4 ONES (AND 4 ZEROS), NOT INCLUDING PALINDROMES
 # #     for sequence in SEQUENCE_COMBOS:
@@ -42,57 +89,55 @@ from pyLibrary.sql.sqlite import Sqlite, quote_value
 # #         _teardown(db, threads)
 #
 #
-# def _work(name, db, sigs, please_stop):
-#     try:
-#         sigs[0].begin.wait()
-#         with db.transaction() as t:
-#             sigs[0].done.go()
-#             sigs[1].begin.wait()
-#             t.execute("INSERT INTO my_table VALUES "+sql_iso(quote_value(name)))
-#             sigs[1].done.go()
-#
-#             sigs[2].begin.wait()
-#             result = t.query("SELECT * FROM my_table")
-#             assert len(result.data) == 1
-#             assert result.data[0][0] == name
-#             sigs[2].done.go()
-#
-#             sigs[3].begin.wait()
-#         sigs[3].done.go()
-#     finally:
-#         # RELEASE ALL SIGNALS, THIS IS ENDING BADLY
-#         for s in sigs:
-#             s.done.go()
-#
-#
-# def _setup():
-#     threads = Data()
-#     signals = Data()
-#
-#     db = Sqlite()
-#     db.query("CREATE TABLE my_table (value TEXT)")
-#
-#     for name in ["a", "b"]:
-#         signals[name] = [{"begin": Signal(), "done": Signal()} for _ in range(4)]
-#         threads[name] = Thread.run(name, _work, name, db, signals[name])
-#
-#     return db, threads, signals
-#
-#
-# def _teardown(db, threads):
-#     threads.a.join()
-#     threads.b.join()
-#
-#     result = db.query("SELECT * FROM my_table ORDER BY value")
-#     assert len(result.data) == 2
-#     assert result.data[0][0] == 'a'
-#     assert result.data[1][0] == 'b'
-#
-#
-# def _perform(c, i):
-#     c[i].begin.go()
-#     c[i].done.wait()
-#
+def _work(name, db, sigs, please_stop):
+    try:
+        sigs[0].begin.wait()
+        with db.transaction() as t:
+            sigs[0].done.go()
+            sigs[1].begin.wait()
+            t.execute("INSERT INTO my_table VALUES " + sql_iso(quote_value(name)))
+            sigs[1].done.go()
+
+            sigs[2].begin.wait()
+            result = t.query("SELECT * FROM my_table WHERE value=" + quote_value(name))
+            assert len(result.data) == 1
+            assert result.data[0][0] == name
+        sigs[2].done.go()
+    finally:
+        # RELEASE ALL SIGNALS, THIS IS ENDING BADLY
+        for s in sigs:
+            s.done.go()
+
+
+def _setup():
+    threads = Data()
+    signals = Data()
+
+    db = Sqlite()
+    db.query("CREATE TABLE my_table (value TEXT)")
+
+    for name in ["a", "b"]:
+        signals[name] = [{"begin": Signal(), "done": Signal()} for _ in range(4)]
+        threads[name] = Thread.run(name, _work, name, db, signals[name])
+
+    return db, threads, signals
+
+
+def _teardown(db, threads):
+    for t in threads.values():
+        t.join()
+        t.join()
+
+    result = db.query("SELECT * FROM my_table ORDER BY value")
+    assert len(result.data) == 2
+    assert result.data[0][0] == 'a'
+    assert result.data[1][0] == 'b'
+
+
+def _perform(c, i):
+    c[i].begin.go()
+    c[i].done.wait()
+
 #
 # SEQUENCE_COMBOS = [
 #     # ALL 8bit NUMBERS WITH 4 ONES (AND 4 ZEROS), NOT INCLUDING BINARY NOT OF THE SAME

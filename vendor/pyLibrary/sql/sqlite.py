@@ -289,7 +289,8 @@ class Sqlite(DB):
                     # WE WILL UNWRAP THE OUTER EXCEPTION TO GET THE CAUSE
                     err = Except(
                         type=ERROR,
-                        template="Bad call to Sqlite",
+                        template="Bad call to Sqlite3 while "+FORMAT_COMMAND,
+                        params={"command": e.params.current.command},
                         cause=e.cause,
                         trace=e.params.current.trace
                     )
