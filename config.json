@@ -61,15 +61,14 @@
     },
     "constants": {
         "tuid.service.DEBUG": false,
-        "pyLibrary.env.http.DEBUG": true,
+        "pyLibrary.env.http.DEBUG": false,
         "pyLibrary.env.http.default_headers": {
             "Referer": "https://github.com/mozilla/TUID",
             "User-Agent": "TUID Service"
         },
         "pyLibrary.sql.sqlite.DEBUG": false,
-        "pyLibrary.sql.sqlite.DEBUG_INSERT": false,
-        "pyLibrary.sql.sqlite.DEBUG_EXECUTE": false,
-        "mo_hg.hg_mozilla_org.DAEMON_HG_INTERVAL": 0
+        "mo_hg.hg_mozilla_org.DAEMON_HG_INTERVAL": 0,
+        "mo_hg.hg_branches.TUID_BRANCHES": ["mozilla-central", "try"]
     },
     "debug": {
         "trace": true

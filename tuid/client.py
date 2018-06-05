@@ -36,11 +36,11 @@ class TuidClient(object):
         self.db = Sqlite(filename=coalesce(db.filename, "tuid_client.sqlite"), kwargs=db)
 
         if not self.db.query("SELECT name FROM sqlite_master WHERE type='table';").data:
-            self._setup()
-        self.db.commit()
+            with self.db.transaction() as transaction:
+                self._setup(transaction)
 
-    def _setup(self):
-        self.db.execute("""
+    def _setup(self, transaction):
+        transaction.execute("""
         CREATE TABLE tuid (
             revision CHAR(12),
             file TEXT,
@@ -115,13 +115,13 @@ class TuidClient(object):
                         timeout=self.timeout
                     )
 
-                    self.db.execute(
-                        "INSERT INTO tuid (revision, file, tuids) VALUES " + sql_list(
-                            sql_iso(sql_list(map(quote_value, (revision, r.path, value2json(r.tuids)))))
-                            for r in new_response.data
+                    with self.db.transaction() as transaction:
+                        transaction.execute(
+                            "INSERT INTO tuid (revision, file, tuids) VALUES " + sql_list(
+                                sql_iso(sql_list(map(quote_value, (revision, r.path, value2json(r.tuids)))))
+                                for r in new_response.data
+                            )
                         )
-                    )
-                    self.db.commit()
 
                 found.update({r.path: r.tuids for r in new_response.data} if new_response else {})
                 return found

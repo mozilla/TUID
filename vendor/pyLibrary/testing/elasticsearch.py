@@ -45,7 +45,7 @@ def open_test_instance(name, settings):
         cluster = Cluster(settings)
         try:
             old_index = cluster.get_index(kwargs=settings)
-            old_index.delete()
+            cluster.delete_index(old_index.settings.index)
         except Exception as e:
             if "Can not find index" not in e:
                 Log.error("unexpected", cause=e)
@@ -60,10 +60,10 @@ class FakeES():
     @override
     def __init__(self, filename, host="fake", index="fake", kwargs=None):
         self.settings = kwargs
-        self.filename = kwargs.filename
+        self.filename = filename
         try:
             self.data = mo_json.json2value(File(self.filename).read())
-        except Exception:
+        except Exception as e:
             self.data = Data()
 
     def search(self, query):
@@ -79,7 +79,10 @@ class FakeES():
         """
         JUST SO WE MODEL A Queue
         """
-        records = {v["id"]: v["value"] for v in records}
+        records = {
+            v["id"]: v["value"] if "value" in v else mo_json.json2value(v['json'])
+            for v in records
+        }
 
         unwrap(self.data).update(records)
 

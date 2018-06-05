@@ -130,8 +130,7 @@ def daemon(please_stop):
                     work, sorted_timers = sorted_timers, []
 
                 if work:
-                    if DEBUG:
-                        Log.note(
+                    DEBUG and Log.note(
                             "done: {{timers}}.  Remaining {{pending}}",
                             timers=[t for t, s in work] if len(work) <= 5 else len(work),
                             pending=[t for t, s in sorted_timers] if len(sorted_timers) <= 5 else len(sorted_timers)
@@ -145,8 +144,7 @@ def daemon(please_stop):
     except Exception as e:
         Log.warning("unexpected timer shutdown", cause=e)
     finally:
-        if DEBUG:
-            Log.alert("TIMER SHUTDOWN")
+        DEBUG and Log.alert("TIMER SHUTDOWN")
         Till.enabled = False
         # TRIGGER ALL REMAINING TIMERS RIGHT NOW
         with Till.locker:

@@ -9,18 +9,17 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import json
-import os
 
 import pytest
 
-from mo_logs import Log
+from mo_logs import Log, Except
 from mo_times import Timer
 from pyLibrary.env import http
+from pyLibrary.sql import sql_list, sql_iso
+from pyLibrary.sql.sqlite import quote_value, Sqlite
 from tuid import sql
 from tuid.service import TUIDService
 from tuid.util import map_to_array
-from pyLibrary.sql import sql_list, sql_iso
-from pyLibrary.sql.sqlite import quote_value
 
 _service = None
 
@@ -45,30 +44,30 @@ def test_transactions(service):
 
     assert len(old) == len(new)
 
-    # This should cause a transaction failure
-    listed_inserts = [None] * 100
-    listed_inserts = [('test' + str(count), str(count)) for count,entry in enumerate(listed_inserts)]
-    listed_inserts.append('hello world')
-    excepted = True
+    # listed_inserts = [None] * 100
+    listed_inserts = [('test' + str(count), str(count)) for count, entry in enumerate(range(100))]
+    listed_inserts.append('hello world')  # This should cause a transaction failure
+
     try:
-        with service.conn.transaction():
+        with service.conn.transaction() as t:
             count = 0
             while count < len(listed_inserts):
                 tmp_inserts = listed_inserts[count:count + 50]
                 count += 50
-                service.conn.execute(
+                t.execute(
                     "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
                     sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
                 )
-            excepted = False
+        assert False  # SHOULD NOT GET HERE
     except Exception as e:
-        Log.note("Hit an exception: Expected: 11 values for 2 columns, Got: {{cause}}", cause=e)
+        e = Except.wrap(e)
+        assert "11 values for 2 columns" in e
 
     # Check that the transaction was undone
     latestTestMods = service.conn.get_one("SELECT revision FROM latestFileMod WHERE file=?", ('test1',))
 
     assert not latestTestMods
-    assert excepted
+
 
 def test_tryrepo_tuids(service):
     test_file = ["dom/base/nsWrapperCache.cpp", "testing/mochitest/baselinecoverage/browser_chrome/browser.ini"]
@@ -541,7 +540,7 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
                     assert tmap.tuid != tuids_test[count].tuid
 
 
-@pytest.mark.skipif(os.environ.get('TRAVIS'), reason="Too expensive on travis.")
+@pytest.mark.skip(reason="Never completes")
 def test_daemon(service):
     from mo_threads import Signal
     temp_signal = Signal()

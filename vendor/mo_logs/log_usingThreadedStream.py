@@ -16,7 +16,7 @@ from __future__ import unicode_literals
 import sys
 from time import time
 
-from mo_future import text_type
+from mo_future import text_type, PY2
 from mo_logs import Log
 from mo_logs.log_usingNothing import StructuredLogger
 from mo_logs.strings import expand_template
@@ -45,7 +45,7 @@ class StructuredLogger_usingThreadedStream(StructuredLogger):
         # WRITE TO STREAMS CAN BE *REALLY* SLOW, WE WILL USE A THREAD
         from mo_threads import Queue
 
-        if use_UTF8:
+        if use_UTF8 and PY2:
             def utf8_appender(value):
                 if isinstance(value, text_type):
                     value = value.encode('utf8')

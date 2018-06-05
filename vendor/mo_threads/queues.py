@@ -22,7 +22,7 @@ from datetime import datetime
 from time import time
 
 from mo_dots import coalesce, Null
-from mo_logs import Log
+from mo_logs import Log, Except
 from mo_threads.lock import Lock
 from mo_threads.signal import Signal
 from mo_threads.threads import THREAD_STOP, THREAD_TIMEOUT, Thread
@@ -143,8 +143,7 @@ class Queue(object):
         """
         wait_time = 5
 
-        if DEBUG and len(self.queue) > 1 * 1000 * 1000:
-            Log.warning("Queue {{name}} has over a million items")
+        (DEBUG and len(self.queue) > 1 * 1000 * 1000) and Log.warning("Queue {{name}} has over a million items")
 
         now = time()
         if timeout != None:
@@ -205,8 +204,7 @@ class Queue(object):
                     if self.please_stop:
                         break
                     return None
-        if DEBUG or not self.silent:
-            Log.note(self.name + " queue stopped")
+        (DEBUG or not self.silent) and Log.note(self.name + " queue stopped")
         return THREAD_STOP
 
     def pop_all(self):
@@ -266,12 +264,7 @@ class ThreadedQueue(Queue):
                            # BE CAREFUL!  THE THREAD MAKING THE CALL WILL NOT BE YOUR OWN!
                            # DEFAULT BEHAVIOUR: THIS WILL KEEP RETRYING WITH WARNINGS
     ):
-        if not Log:
-            _late_import()
-
         if period !=None and not isinstance(period, (int, float, long)):
-            if not Log:
-                _late_import()
             Log.error("Expecting a float for the period")
 
         batch_size = coalesce(batch_size, int(max_size / 2) if max_size else None, 900)
@@ -295,8 +288,8 @@ class ThreadedQueue(Queue):
             def push_to_queue():
                 queue.extend(_buffer)
                 del _buffer[:]
-                for f in _post_push_functions:
-                    f()
+                for ppf in _post_push_functions:
+                    ppf()
                 del _post_push_functions[:]
 
             while not please_stop:
@@ -321,7 +314,7 @@ class ThreadedQueue(Queue):
                         _buffer.append(item)
 
                 except Exception as e:
-                    e = _Except.wrap(e)
+                    e = Except.wrap(e)
                     if error_target:
                         try:
                             error_target(e, _buffer)
@@ -346,7 +339,7 @@ class ThreadedQueue(Queue):
                         next_push = Till(till=now + period)
 
                 except Exception as e:
-                    e = _Except.wrap(e)
+                    e = Except.wrap(e)
                     if error_target:
                         try:
                             error_target(e, _buffer)

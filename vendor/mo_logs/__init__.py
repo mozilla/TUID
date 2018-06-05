@@ -19,7 +19,7 @@ from datetime import datetime
 import sys
 
 from mo_dots import coalesce, listwrap, wrap, unwrap, unwraplist, set_default, FlatList
-from mo_future import text_type, PY3
+from mo_future import text_type, PY3, iteritems
 from mo_logs import constants
 from mo_logs.exceptions import Except, suppress_exception
 from mo_logs.strings import indent
@@ -250,7 +250,7 @@ class Log(object):
             cause = Except(exceptions.UNEXPECTED, text_type(cause), trace=exceptions._extract_traceback(0))
 
         trace = exceptions.extract_stack(1)
-        e = Except(exceptions.UNEXPECTED, template, params, cause, trace)
+        e = Except(type=exceptions.UNEXPECTED, template=template, params=params, cause=cause, trace=trace)
         Log.note(
             "{{error}}",
             error=e,
@@ -343,7 +343,7 @@ class Log(object):
         cause = unwraplist([Except.wrap(c) for c in listwrap(cause)])
         trace = exceptions.extract_stack(stack_depth + 1)
 
-        e = Except(exceptions.WARNING, template, params, cause, trace)
+        e = Except(type=exceptions.WARNING, template=template, params=params, cause=cause, trace=trace)
         Log.note(
             "{{error|unicode}}",
             error=e,
@@ -401,7 +401,7 @@ class Log(object):
         if add_to_trace:
             cause[0].trace.extend(trace[1:])
 
-        e = Except(exceptions.ERROR, template, params, causes, trace)
+        e = Except(type=exceptions.ERROR, template=template, params=params, cause=cause, trace=trace)
         raise_from_none(e)
 
     @classmethod
@@ -434,7 +434,7 @@ class Log(object):
         cause = unwraplist([Except.wrap(c) for c in listwrap(cause)])
         trace = exceptions.extract_stack(stack_depth + 1)
 
-        e = Except(exceptions.ERROR, template, params, cause, trace)
+        e = Except(type=exceptions.ERROR, template=template, params=params, cause=cause, trace=trace)
 
         error_mode = cls.error_mode
         with suppress_exception:
@@ -474,7 +474,7 @@ def write_profile(profile_settings, stats):
         "line": f[1],
         "method": f[2].lstrip("<").rstrip(">")
     }
-        for f, d, in acc.stats.iteritems()
+        for f, d, in iteritems(acc.stats)
     ]
     stats_file = File(profile_settings.filename, suffix=convert.datetime2string(datetime.now(), "_%Y%m%d_%H%M%S"))
     stats_file.write(convert.list2tab(stats))
