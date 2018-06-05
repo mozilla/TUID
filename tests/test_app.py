@@ -12,8 +12,8 @@ import os
 
 import pytest
 
-from mo_dots import wrap, Data
-from mo_future import text_type
+from mo_dots import wrap, Null
+from mo_future import text_type, PY2
 from mo_json import json2value
 from mo_logs.strings import utf82unicode
 from mo_threads import Process
@@ -27,7 +27,9 @@ def app():
     global app_process
 
     pythonpath = str("." + os.pathsep + "vendor")
-    if not app_process:
+    if PY2:
+        app_process = Null
+    elif not app_process:
         app_process = Process(
             "TUID app",
             ["python", "tuid/app.py"],
@@ -42,6 +44,7 @@ def app():
     app_process.join(raise_on_error=False)
 
 
+@pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_empty_query(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
     response = http.get(url)
@@ -58,6 +61,7 @@ def test_query_too_big(config, app):
     assert response.content == b"request too large"
 
 
+@pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_query_error(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
     response = http.get(url, json={"from": "files"})
@@ -66,6 +70,7 @@ def test_query_error(config, app):
     assert "expecting a simple where clause with following structure" in error.template
 
 
+@pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_single_file(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
     response = http.post_json(url, json={
