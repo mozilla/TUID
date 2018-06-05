@@ -16,7 +16,7 @@ from __future__ import unicode_literals
 import sys
 from collections import Mapping
 
-from mo_dots import Data, listwrap, unwraplist, set_default, Null
+from mo_dots import Data, listwrap, unwraplist, set_default, Null, coalesce
 from mo_future import text_type, PY3
 from mo_logs.strings import indent, expand_template
 
@@ -34,11 +34,11 @@ class Except(Exception):
     @staticmethod
     def new_instance(desc):
         return Except(
-            desc.type,
-            desc.template,
-            desc.params,
-            [Except.new_instance(c) for c in listwrap(desc.cause)],
-            desc.trace
+            type=desc.type,
+            template=desc.template,
+            params=desc.params,
+            cause=[Except.new_instance(c) for c in listwrap(desc.cause)],
+            trace=desc.trace
         )
 
     def __init__(self, type=ERROR, template=Null, params=Null, cause=Null, trace=Null, **kwargs):
@@ -70,14 +70,21 @@ class Except(Exception):
             e.cause = unwraplist([Except.wrap(c) for c in listwrap(e.cause)])
             return Except(**e)
         else:
-            if hasattr(e, "message") and e.message:
-                cause = Except(ERROR, text_type(e.message), trace=_extract_traceback(0))
+            tb = getattr(e, '__traceback__', None)
+            if tb is not None:
+                trace = _parse_traceback(tb)
             else:
-                cause = Except(ERROR, text_type(e), trace=_extract_traceback(0))
+                trace = _extract_traceback(0)
+
+            cause = Except.wrap(getattr(e, '__cause__', None))
+            if hasattr(e, "message") and e.message:
+                output = Except(type=ERROR, template=text_type(e.message), trace=trace, cause=cause)
+            else:
+                output = Except(type=ERROR, template=text_type(e), trace=trace, cause=cause)
 
             trace = extract_stack(stack_depth + 2)  # +2 = to remove the caller, and it's call to this' Except.wrap()
-            cause.trace.extend(trace)
-            return cause
+            output.trace.extend(trace)
+            return output
 
     @property
     def message(self):
@@ -170,7 +177,10 @@ def _extract_traceback(start):
     tb = sys.exc_info()[2]
     for i in range(start):
         tb = tb.tb_next
+    return _parse_traceback(tb)
 
+
+def _parse_traceback(tb):
     trace = []
     while tb is not None:
         f = tb.tb_frame

@@ -36,7 +36,7 @@ class Process(object):
         try:
             self.debug = debug or DEBUG
             self.service = service = subprocess.Popen(
-                params,
+                [str(p) for p in params],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

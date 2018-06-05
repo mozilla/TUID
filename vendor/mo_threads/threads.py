@@ -56,16 +56,14 @@ class AllThread(object):
 
     def join(self):
         exceptions = []
-        try:
-            for t in self.threads:
-                response = t.join()
-                if "exception" in response:
-                    exceptions.append(response["exception"])
-        except Exception as e:
-            Log.warning("Problem joining", e)
+        for t in self.threads:
+            try:
+                t.join()
+            except Exception as e:
+                exceptions.append(e)
 
         if exceptions:
-            Log.error("Problem in child threads", exceptions)
+            Log.error("Problem in child threads", cause=exceptions)
 
 
     def add(self, target, *args, **kwargs):

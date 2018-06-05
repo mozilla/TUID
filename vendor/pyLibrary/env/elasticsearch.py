@@ -33,6 +33,8 @@ from mo_times import Date, Timer, MINUTE
 from pyLibrary import convert
 from pyLibrary.env import http
 
+DEBUG_METADATA_UPDATE = True
+
 ES_STRUCT = ["object", "nested"]
 ES_NUMERIC_TYPES = ["long", "integer", "double", "float"]
 ES_PRIMITIVE_TYPES = ["string", "boolean", "integer", "date", "long", "double"]
@@ -535,9 +537,9 @@ class Cluster(object):
         self.settings = kwargs
         self.info = None
         self._metadata = Null
-        self.index_new_since = {}  # MAP FROM INDEX NAME TO TIME THE INDEX METADATA HAS CHANGED
+        self.index_last_updated = {}  # MAP FROM INDEX NAME TO TIME THE INDEX METADATA HAS CHANGED
         self.metadata_locker = Lock()
-        self.last_metadata = Date.now()
+        self.metatdata_last_updated = Date.now()
         self.debug = debug
         self._version = None
         self.path = kwargs.host + ":" + text_type(kwargs.port)
@@ -815,28 +817,34 @@ class Cluster(object):
     def get_metadata(self, force=False):
         if not self.settings.explore_metadata:
             Log.error("Metadata exploration has been disabled")
-        if not force and self._metadata and Date.now() < self.last_metadata + STALE_METADATA:
+        if not force and self._metadata and Date.now() < self.metatdata_last_updated + STALE_METADATA:
             return self._metadata
 
         old_indices = self._metadata.indices
         response = self.get("/_cluster/state", retry={"times": 3}, timeout=30, stream=False)
-        now = self.last_metadata = Date.now()
+        now = self.metatdata_last_updated = Date.now()
         with self.metadata_locker:
             self._metadata = wrap(response.metadata)
             for new_index_name, new_meta in self._metadata.indices.items():
                 old_index = old_indices[new_index_name]
                 if not old_index:
-                    self.index_new_since[new_index_name] = now
+                    if DEBUG_METADATA_UPDATE:
+                        Log.note("New index found {{index}} at {{time}}", index=new_index_name, time=now)
+                    self.index_last_updated[new_index_name] = now
                 else:
                     for type_name, new_about in new_meta.mappings.items():
                         old_about = old_index.mappings[type_name]
                         diff = diff_schema(new_about.properties, old_about.properties)
                         if diff:
-                            self.index_new_since[new_index_name] = now
+                            if DEBUG_METADATA_UPDATE:
+                                Log.note("More columns found in {{index}} at {{time}}", index=new_index_name, time=now)
+                            self.index_last_updated[new_index_name] = now
             for old_index_name, old_meta in old_indices.items():
                 new_index = self._metadata.indices[old_index_name]
                 if not new_index:
-                    self.index_new_since[old_index_name] = now
+                    if DEBUG_METADATA_UPDATE:
+                        Log.note("Old index lost: {{index}} at {{time}}", index=new_index_name, time=now)
+                    self.index_last_updated[old_index_name] = now
         self.info = wrap(self.get("/", stream=False))
         self._version = self.info.version.number
         return self._metadata
@@ -1209,6 +1217,9 @@ class Alias(Features):
                 query=query,
                 cause=e
             )
+
+    def refresh(self):
+        self.cluster.post("/" + self.settings.alias + "/_refresh")
 
 
 def parse_properties(parent_index_name, parent_name, esProperties):
