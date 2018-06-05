@@ -262,8 +262,7 @@ class MySQL(object):
             if param:
                 sql = expand_template(sql, quote_param(param))
             sql = self.preamble + outdent(sql)
-            if self.debug:
-                Log.note("Execute SQL:\n{{sql}}", sql=indent(sql))
+            self.debug and Log.note("Execute SQL:\n{{sql}}", sql=indent(sql))
 
             self.cursor.execute(sql)
             if row_tuples:
@@ -301,8 +300,7 @@ class MySQL(object):
             if param:
                 sql = expand_template(sql, quote_param(param))
             sql = self.preamble + outdent(sql)
-            if self.debug:
-                Log.note("Execute SQL:\n{{sql}}", sql=indent(sql))
+            self.debug and Log.note("Execute SQL:\n{{sql}}", sql=indent(sql))
 
             self.cursor.execute(sql)
             grid = [[utf8_to_unicode(c) for c in row] for row in self.cursor]
@@ -333,8 +331,7 @@ class MySQL(object):
             if param:
                 sql = expand_template(sql, quote_param(param))
             sql = self.preamble + outdent(sql)
-            if self.debug:
-                Log.note("Execute SQL:\n{{sql}}", sql=indent(sql))
+            self.debug and Log.note("Execute SQL:\n{{sql}}", sql=indent(sql))
             self.cursor.execute(sql)
 
             columns = tuple([utf8_to_unicode(d[0]) for d in self.cursor.description])
@@ -451,8 +448,7 @@ class MySQL(object):
             for b in backlog:
                 sql = self.preamble + b
                 try:
-                    if self.debug:
-                        Log.note("Execute SQL:\n{{sql|indent}}", sql=sql)
+                    self.debug and Log.note("Execute SQL:\n{{sql|indent}}", sql=sql)
                     self.cursor.execute(b)
                 except Exception as e:
                     Log.error("Can not execute sql:\n{{sql}}", sql=sql, cause=e)
@@ -463,8 +459,7 @@ class MySQL(object):
             for i, g in jx.groupby(backlog, size=MAX_BATCH_SIZE):
                 sql = self.preamble + ";\n".join(g)
                 try:
-                    if self.debug:
-                        Log.note("Execute block of SQL:\n{{sql|indent}}", sql=sql)
+                    self.debug and Log.note("Execute block of SQL:\n{{sql|indent}}", sql=sql)
                     self.cursor.execute(sql)
                     self.cursor.close()
                     self.cursor = self.db.cursor()
