@@ -72,16 +72,16 @@ class Signal(object):
             else:
                 self.waiting_threads.append(stopper)
 
-        (DEBUG and self._name) and Log.note("wait for go {{name|quote}}", name=self.name)
+        DEBUG and self._name and Log.note("wait for go {{name|quote}}", name=self.name)
         stopper.acquire()
-        (DEBUG and self._name) and Log.note("GOing! {{name|quote}}", name=self.name)
+        DEBUG and self._name and Log.note("GOing! {{name|quote}}", name=self.name)
         return True
 
     def go(self):
         """
         ACTIVATE SIGNAL (DOES NOTHING IF SIGNAL IS ALREADY ACTIVATED)
         """
-        (DEBUG and self._name) and Log.note("GO! {{name|quote}}", name=self.name)
+        DEBUG and self._name and Log.note("GO! {{name|quote}}", name=self.name)
 
         if self._go:
             return
@@ -91,12 +91,12 @@ class Signal(object):
                 return
             self._go = True
 
-        (DEBUG and self._name) and Log.note("internal GO! {{name|quote}}", name=self.name)
+        DEBUG and self._name and Log.note("internal GO! {{name|quote}}", name=self.name)
         jobs, self.job_queue = self.job_queue, None
         threads, self.waiting_threads = self.waiting_threads, None
 
         if threads:
-            (DEBUG and self._name) and Log.note("Release {{num}} threads", num=len(threads))
+            DEBUG and self._name and Log.note("Release {{num}} threads", num=len(threads))
             for t in threads:
                 t.release()
 
@@ -116,7 +116,7 @@ class Signal(object):
 
         with self.lock:
             if not self._go:
-                (DEBUG and self._name) and Log.note("Adding target to signal {{name|quote}}", name=self.name)
+                DEBUG and self._name and Log.note("Adding target to signal {{name|quote}}", name=self.name)
 
                 if not self.job_queue:
                     self.job_queue = [target]

@@ -109,20 +109,20 @@ class MainThread(object):
         join_errors = []
         children = copy(self.children)
         for c in reversed(children):
-            (DEBUG and c.name) and Log.note("Stopping thread {{name|quote}}", name=c.name)
+            DEBUG and c.name and Log.note("Stopping thread {{name|quote}}", name=c.name)
             try:
                 c.stop()
             except Exception as e:
                 join_errors.append(e)
 
         for c in children:
-            (DEBUG and c.name) and Log.note("Joining on thread {{name|quote}}", name=c.name)
+            DEBUG and c.name and Log.note("Joining on thread {{name|quote}}", name=c.name)
             try:
                 c.join()
             except Exception as e:
                 join_errors.append(e)
 
-            (DEBUG and c.name) and Log.note("Done join on thread {{name|quote}}", name=c.name)
+            DEBUG and c.name and Log.note("Done join on thread {{name|quote}}", name=c.name)
 
         if join_errors:
             Log.error("Problem while stopping {{name|quote}}", name=self.name, cause=unwraplist(join_errors))
@@ -233,7 +233,7 @@ class Thread(object):
 
     def stop(self):
         for c in copy(self.children):
-            (DEBUG and c.name) and Log.note("Stopping thread {{name|quote}}", name=c.name)
+            DEBUG and c.name and Log.note("Stopping thread {{name|quote}}", name=c.name)
             c.stop()
         self.please_stop.go()
 

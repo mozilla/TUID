@@ -502,7 +502,8 @@ class ElasticsearchMetadata(Namespace):
         if name == "meta.columns":
             return self.meta.columns.schema
         query_path = split_field(name)
-        return self.get_snowflake(query_path[0]).get_schema(join_field(query_path[1:]))
+        root, rest = query_path[0], join_field(query_path[1:])
+        return self.get_snowflake(root).get_schema(rest)
 
 
 class Snowflake(object):
