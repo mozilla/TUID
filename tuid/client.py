@@ -49,21 +49,23 @@ class TuidClient(object):
         )
         """)
 
-    def get_tuid(self, revision, file):
+    def get_tuid(self, branch, revision, file):
         """
+        :param branch: BRANCH TO FIND THE REVISION/FILE
         :param revision: THE REVISION NUNMBER
         :param file: THE FULL PATH TO A SINGLE FILE
         :return: A LIST OF TUIDS
         """
-        service_response = wrap(self.get_tuids(revision, [file]))
+        service_response = wrap(self.get_tuids(branch, revision, [file]))
         for f, t in service_response.items():
             return t
 
-    def get_tuids(self, revision, files):
+    def get_tuids(self, branch, revision, files):
         """
         GET TUIDS FROM ENDPOINT, AND STORE IN DB
-        :param revision:
-        :param files:
+        :param branch: BRANCH TO FIND THE REVISION/FILE
+        :param revision: THE REVISION NUNMBER
+        :param files: THE FULL PATHS TO THE FILES
         :return: MAP FROM FILENAME TO TUID LIST
         """
 
@@ -91,7 +93,8 @@ class TuidClient(object):
                         "from": "files",
                         "where": {"and": [
                             {"eq": {"revision": revision}},
-                            {"in": {"path": remaining}}
+                            {"in": {"path": remaining}},
+                            {"eq": {"branch": branch}}
                         ]},
                         "meta": {
                             "format": "list",
@@ -128,6 +131,6 @@ class TuidClient(object):
 
             except Exception as e:
                 if self.enabled:
-                    Log.warning("TUID service has problems.", cause=e)
-                self.enabled = False
+                    self.enabled = False
+                    Log.error("TUID service has problems.", cause=e)
                 return None

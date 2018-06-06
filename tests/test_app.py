@@ -19,6 +19,8 @@ from mo_logs.strings import utf82unicode
 from mo_threads import Process
 from pyLibrary.env import http
 
+from tuid.client import TuidClient
+
 app_process = None
 
 
@@ -52,7 +54,7 @@ def test_empty_query(config, app):
     assert response.content == b"expecting query"
 
 
-@pytest.mark.skip("can not send request on windows, I do not know why")
+@pytest.mark.skipif(os.name == 'nt', reason="can not send request on windows, I do not know why")
 def test_query_too_big(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
     name = "a"*10000000
@@ -77,7 +79,8 @@ def test_single_file(config, app):
         "from": "files",
         "where": {"and": [
             {"eq": {"revision": "29dcc9cb77c372c97681a47496488ec6c623915d"}},
-            {"in": {"path": ["gfx/thebes/gfxFontVariations.h"]}}
+            {"in": {"path": ["gfx/thebes/gfxFontVariations.h"]}},
+            {"eq": {"branch": "mozilla-central"}}
         ]}
     })
 
@@ -89,3 +92,22 @@ def test_single_file(config, app):
 
     assert len(tuids) == 41  # 41 lines expected
     assert len(set(tuids)) == 41  # tuids much be unique
+
+
+def test_client(config, app):
+    client = TuidClient(config.client)
+    client.get_tuid(
+        revision="29dcc9cb77c372c97681a47496488ec6c623915d",
+        file="gfx/thebes/gfxFontVariations.h",
+        branch="mozilla-central"
+    )
+
+
+def test_client_w_try(config, app):
+    client = TuidClient(config.client)
+    client.get_tuid(
+        revision="0f4946791ddb",
+        file="dom/base/nsWrapperCache.cpp",
+        branch="try"
+    )
+

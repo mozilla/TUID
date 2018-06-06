@@ -67,17 +67,17 @@ def tuid_endpoint(path):
             )
         request_body = flask.request.get_data().strip()
         query = json2value(utf82unicode(request_body))
-        repo = query['branch'] if 'branch' in query else 'mozilla-central'
 
         # ENSURE THE QUERY HAS THE CORRECT FORM
         if query['from'] != 'files':
             Log.error("Can only handle queries on the `files` table")
 
         ands = listwrap(query.where['and'])
-        if len(ands) != 2:
+        if len(ands) != 3:
             Log.error(
                 'expecting a simple where clause with following structure\n{{example|json}}',
                 example={"and": [
+                    {"eq": {"branch": "<BRANCH>"}},
                     {"eq": {"revision": "<REVISION>"}},
                     {"in": {"path": ["<path1>", "<path2>", "...", "<pathN>"]}}
                 ]}
@@ -88,6 +88,7 @@ def tuid_endpoint(path):
         for a in ands:
             rev = coalesce(rev, a.eq.revision)
             paths = unwraplist(coalesce(paths, a['in'].path, a.eq.path))
+            branch_name = coalesce(rev, a.eq.branch)
 
         paths = listwrap(paths)
         if len(paths) <= 0:
@@ -96,7 +97,7 @@ def tuid_endpoint(path):
         else:
             # RETURN TUIDS
             with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
-                response = service.get_tuids_from_files(revision=rev, files=paths, going_forward=True, repo=repo)
+                response = service.get_tuids_from_files(revision=rev, files=paths, going_forward=True, repo=branch_name)
 
         if query.meta.format == 'list':
             formatter = _stream_list

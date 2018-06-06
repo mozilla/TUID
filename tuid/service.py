@@ -230,7 +230,6 @@ class TUIDService:
         results = self.get_tuids(files, revision)
         return results
 
-
     def get_tuids_from_files(self, files, revision, going_forward=False, repo=None):
         """
         Gets the TUIDs for a set of files, at a given revision.
@@ -249,17 +248,13 @@ class TUIDService:
         :param revision: revision to get files at
         :return: list of (file, list(tuids)) tuples
         """
-        if repo is None:
-            repo = self.config.hg.branch
+        repo = coalesce(repo, self.config.hg.branch)
 
         if repo in ('try',):
             # We don't need to keep latest file revisions
             # and other related things for this condition.
             with self.conn.transaction() as transaction:
                 return self._get_tuids_from_files_try_branch(transaction, files, revision)
-        elif repo not in ('mozilla-central',):
-            Log.warning("The requested branch `{{repo}}` is unsupported", repo=repo)
-            return [(file, []) for file in files]
 
         result = []
         revision = revision[:12]
