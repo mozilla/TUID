@@ -94,6 +94,7 @@ def test_single_file(config, app):
     assert len(set(tuids)) == 41  # tuids much be unique
 
 
+@pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_client(config, app):
     client = TuidClient(config.client)
     client.get_tuid(
@@ -103,6 +104,7 @@ def test_client(config, app):
     )
 
 
+@pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_client_w_try(config, app):
     client = TuidClient(config.client)
     client.get_tuid(

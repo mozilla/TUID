@@ -85,10 +85,11 @@ def tuid_endpoint(path):
 
         rev = None
         paths = None
+        branch_name = None
         for a in ands:
             rev = coalesce(rev, a.eq.revision)
             paths = unwraplist(coalesce(paths, a['in'].path, a.eq.path))
-            branch_name = coalesce(rev, a.eq.branch)
+            branch_name = coalesce(branch_name, a.eq.branch)
 
         paths = listwrap(paths)
         if len(paths) <= 0:
