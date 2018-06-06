@@ -176,14 +176,9 @@ def _get_single_branch_from_hg(settings, description, dir):
                 detail.locale = _path[-1]
                 detail.name = "weave"
 
-            print("Printing branch list")
-            print(BRANCH_WHITELIST)
             if BRANCH_WHITELIST is not None:
                 found = False
                 for br in BRANCH_WHITELIST:
-                    print("here11")
-                    print(detail.name)
-                    print(br)
                     if br in str(detail.name):
                         found = True
                         break
