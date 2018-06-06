@@ -231,6 +231,31 @@ class TUIDService:
         return results
 
 
+    def _check_branch(self, revision, branch):
+        '''
+        Used to find out if the revision is in the given branch.
+
+        :param revision: Revision to check.
+        :param branch: Branch to check revision on.
+        :return: True/False - Found it/Didn't find it
+        '''
+
+        # Get a changelog
+        clog_url = 'https://hg.mozilla.org/' + branch + '/json-log/' + revision
+        try:
+            Log.note("Searching through changelog {{url}}", url=clog_url)
+            clog_obj = http.get_json(clog_url, retry=RETRY)
+            if isinstance(clog_obj, (text_type, str)):
+                Log.note(
+                    "Revision {{cset}} does not exist in the {{branch}} branch",
+                    cset=revision, branch=branch
+                )
+                return False
+        except Exception as e:
+            Log.note("Unexpected error getting changset-log for {{url}}: {{error}}", url=clog_url, error=e)
+            return False
+        return True
+
     def get_tuids_from_files(self, files, revision, going_forward=False, repo=None):
         """
         Gets the TUIDs for a set of files, at a given revision.
@@ -245,12 +270,25 @@ class TUIDService:
         This function assumes the newest file names are given, if they
         are not, then no TUIDs are returned for that file.
 
+        IMPORTANT:
+        If repo is set to None, the service will check if the revision is in
+        the correct branch (to prevent catastrophic failures down the line) - this
+        results in one extra changeset log call per request.
+        If repo is set to something other than None, then we assume that the caller has already
+        checked this and is giving a proper branch for the revision.
+
         :param files: list of files
         :param revision: revision to get files at
         :return: list of (file, list(tuids)) tuples
         """
+
         if repo is None:
             repo = self.config.hg.branch
+
+            check = self._check_branch(revision, repo)
+            if not check:
+                # Error was already output by _check_branch
+                return [(file, []) for file in files]
 
         if repo in ('try',):
             # We don't need to keep latest file revisions
