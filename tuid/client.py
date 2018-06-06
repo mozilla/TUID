@@ -96,6 +96,7 @@ class TuidClient(object):
                             {"in": {"path": remaining}},
                             {"eq": {"branch": branch}}
                         ]},
+                        "branch": branch,
                         "meta": {
                             "format": "list",
                             "request_time": Date.now()

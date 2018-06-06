@@ -16,8 +16,9 @@ from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_kwargs import override
 from mo_logs import Log
 from mo_threads import Till, Thread
-from mo_times.durations import SECOND
+from mo_times.durations import SECOND, DAY
 from pyLibrary.env import http
+from pyLibrary.meta import cache
 from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
@@ -230,6 +231,32 @@ class TUIDService:
         results = self.get_tuids(files, revision)
         return results
 
+    @cache(duration=DAY)
+    def _check_branch(self, revision, branch):
+        '''
+        Used to find out if the revision is in the given branch.
+
+        :param revision: Revision to check.
+        :param branch: Branch to check revision on.
+        :return: True/False - Found it/Didn't find it
+        '''
+
+        # Get a changelog
+        clog_url = 'https://hg.mozilla.org/' + branch + '/json-log/' + revision
+        try:
+            Log.note("Searching through changelog {{url}}", url=clog_url)
+            clog_obj = http.get_json(clog_url, retry=RETRY)
+            if isinstance(clog_obj, (text_type, str)):
+                Log.note(
+                    "Revision {{cset}} does not exist in the {{branch}} branch",
+                    cset=revision, branch=branch
+                )
+                return False
+        except Exception as e:
+            Log.note("Unexpected error getting changset-log for {{url}}: {{error}}", url=clog_url, error=e)
+            return False
+        return True
+
     def get_tuids_from_files(self, files, revision, going_forward=False, repo=None):
         """
         Gets the TUIDs for a set of files, at a given revision.
@@ -244,11 +271,23 @@ class TUIDService:
         This function assumes the newest file names are given, if they
         are not, then no TUIDs are returned for that file.
 
+        IMPORTANT:
+        If repo is set to None, the service will check if the revision is in
+        the correct branch (to prevent catastrophic failures down the line) - this
+        results in one extra changeset log call per request.
+        If repo is set to something other than None, then we assume that the caller has already
+        checked this and is giving a proper branch for the revision.
+
         :param files: list of files
         :param revision: revision to get files at
         :return: list of (file, list(tuids)) tuples
         """
-        repo = coalesce(repo, self.config.hg.branch)
+        if repo is None:
+            repo = self.config.hg.branch
+            check = self._check_branch(revision, repo)
+            if not check:
+                # Error was already output by _check_branch
+                return [(file, []) for file in files]
 
         if repo in ('try',):
             # We don't need to keep latest file revisions
@@ -680,15 +719,19 @@ class TUIDService:
                         still_looking = any([latest_csets[cs] for cs in latest_csets])
 
                         if not still_looking:
+                            # Found all frontiers, get out of the loop before
+                            # we add the diff to a frontier update list.
+                            found_last_frontier = True
                             break
 
                     # If there are still frontiers left to explore,
                     # add the files this node modifies to the processing list.
                     diffs_cache.append(cset_len12)
 
-                    # Used to prevent gathering diffs we don't need.
+                    # Used to prevent gathering diffs we don't need in files
+                    # which have already found their frontier.
                     for cset in diffs_to_frontier:
-                        if latest_csets[cset]:
+                        if latest_csets[cset]: # If false, we've found that frontier so we exclude that cset diff
                             diffs_to_frontier[cset].append(cset_len12)
 
                 if cset_len12 in latest_csets:
@@ -753,19 +796,22 @@ class TUIDService:
                             removed_files[old_name] = True
                         continue
 
+                    # File was added
                     if old_name == 'dev/null':
                         added_files[new_name] = True
 
-                    # At this point, file is in the database, and is
+                    # At this point, file is in the database, is
                     # asked to be processed, and we are still
                     # searching for the last frontier.
 
                     # If we are past the frontier for this file,
                     # or if we are at the frontier skip it.
                     if file_to_frontier[new_name] == '':
+                        # Previously found frontier, skip
                         continue
                     if file_to_frontier[new_name] == cset_len12:
                         file_to_frontier[new_name] = ''
+                        # Just found the frontier, skip
                         continue
 
                     # Skip diffs that change file names, this is the first
@@ -778,6 +824,9 @@ class TUIDService:
                         Log.warning("Should not have made it here, can't find a frontier for {{file}}", file=new_name)
                         continue
 
+                    # If the file is in the list to process, then
+                    # gather the needed diffs to apply in a reverse
+                    # chronological order.
                     if new_name in files_to_process:
                         files_to_process[new_name].append(cset_len12)
                     else:
@@ -795,10 +844,12 @@ class TUIDService:
             rev = file_n_rev[1]
 
             if latest_csets[rev]:
-                # If we were still looking by the end, get a new
+                # If we were still looking for the frontier by the end, get a new
                 # annotation for this file.
                 anns_to_get.append(file)
+
                 if going_forward:
+                    # If we are always going forward, update the frontier
                     latestFileMod_inserts[file] = (file, revision)
                 Log.note("Frontier update - can't find frontier {lost_frontier}: " +
                          "{{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",

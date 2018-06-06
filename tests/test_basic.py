@@ -540,6 +540,23 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
                     assert tmap.tuid != tuids_test[count].tuid
 
 
+def test_try_rev_then_mc(service):
+    try_revision = "f29e9ee9401c"
+    mc_revision = "04cc917f68c5"
+    test_file = ["browser/components/payments/test/browser/browser_host_name.js"]
+    file_length = 34
+
+    res1 = service.get_tuids_from_files(test_file, try_revision, going_forward=True)
+    assert len(res1[0][1]) == 0
+
+    res2 = service.get_tuids_from_files(test_file, mc_revision, going_forward=True)
+    assert len(res2[0][1]) == file_length
+
+    for tuid_map in res2[0][1]:
+        if tuid_map.tuid is None:
+            assert False
+
+
 @pytest.mark.skip(reason="Never completes")
 def test_daemon(service):
     from mo_threads import Signal
