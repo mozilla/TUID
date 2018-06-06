@@ -49,17 +49,17 @@ class TuidClient(object):
         )
         """)
 
-    def get_tuid(self, revision, file):
+    def get_tuid(self, revision, file, branch='mozilla-central'):
         """
         :param revision: THE REVISION NUNMBER
         :param file: THE FULL PATH TO A SINGLE FILE
         :return: A LIST OF TUIDS
         """
-        service_response = wrap(self.get_tuids(revision, [file]))
+        service_response = wrap(self.get_tuids(revision, [file], branch=branch))
         for f, t in service_response.items():
             return t
 
-    def get_tuids(self, revision, files):
+    def get_tuids(self, revision, files, branch='mozilla-central'):
         """
         GET TUIDS FROM ENDPOINT, AND STORE IN DB
         :param revision:
@@ -93,6 +93,7 @@ class TuidClient(object):
                             {"eq": {"revision": revision}},
                             {"in": {"path": remaining}}
                         ]},
+                        "branch": branch,
                         "meta": {
                             "format": "list",
                             "request_time": Date.now()
