@@ -1010,7 +1010,7 @@ class TUIDService:
         results = []
         while count < len(files):
             with self.conn.transaction() as transaction:
-                results.extend(self._get_tuids(transaction, files[count:count+chunk], revision, commit=commit, repo=repo))
+                results.extend(self._get_tuids(transaction, files[count:count+chunk:], revision, commit=commit, repo=repo))
                 count += chunk
         return results
 
