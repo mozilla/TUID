@@ -227,7 +227,8 @@ class Sqlite(DB):
                 # WE ARE CHEATING HERE: WE REACH INTO THE Signal MEMBERS AND REMOVE WHAT WE ADDED TO THE INTERNAL job_queue
                 with too_long.lock:
                     too_long.job_queue = None
-                Log.note("Transaction blockage cleared")
+                if too_long:
+                    Log.note("Transaction blockage cleared")
 
             if self.delayed_transactions:
                 for c in reversed(self.delayed_transactions):
