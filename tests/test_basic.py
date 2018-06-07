@@ -81,6 +81,7 @@ def test_tryrepo_tuids(service):
             assert len(tuids) == 3
     assert found_file
 
+
 def test_new_then_old(service):
     # delete database then run this test
     old = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838")
