@@ -214,7 +214,7 @@ class Sqlite(DB):
         # PUT delayed BACK ON THE QUEUE, IN THE ORDER FOUND, BUT WITH QUERIES FIRST
         if self.too_long is not None:
             with self.too_long.lock:
-                del self.too_long.job_queue[:]
+                self.too_long.job_queue = None
         self.too_long = None
 
         if self.delayed_transactions:
