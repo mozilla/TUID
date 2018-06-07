@@ -194,7 +194,7 @@ class Sqlite(DB):
         blocker = self.last_command_item
 
         Log.warning(
-            "Query for at\n{{blocked_trace|indent}}is blocked  at\n{{blocker_trace|indent}}this message brought to you by....",
+            "Query at\n{{blocked_trace|indent}}is blocked at\n{{blocker_trace|indent}}this message brought to you by....",
             blocker_trace=format_trace(blocker.trace),
             blocked_trace=format_trace(blocked.trace)
         )
