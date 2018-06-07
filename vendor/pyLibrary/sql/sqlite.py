@@ -220,16 +220,16 @@ class Sqlite(DB):
             # NESTED TRANSACTIONS NOT ALLOWED IN sqlite3
             self.db.execute(query)
 
-        # PUT delayed BACK ON THE QUEUE, IN THE ORDER FOUND, BUT WITH QUERIES FIRST
+        has_been_too_long = False
         with self.locker:
             if self.too_long is not None:
                 self.too_long, too_long = None, self.too_long
                 # WE ARE CHEATING HERE: WE REACH INTO THE Signal MEMBERS AND REMOVE WHAT WE ADDED TO THE INTERNAL job_queue
                 with too_long.lock:
+                    has_been_too_long = bool(too_long)
                     too_long.job_queue = None
-                if too_long:
-                    Log.note("Transaction blockage cleared")
 
+            # PUT delayed BACK ON THE QUEUE, IN THE ORDER FOUND, BUT WITH QUERIES FIRST
             if self.delayed_transactions:
                 for c in reversed(self.delayed_transactions):
                     self.queue.push(c)
@@ -238,6 +238,8 @@ class Sqlite(DB):
                 for c in reversed(self.delayed_queries):
                     self.queue.push(c)
                 del self.delayed_queries[:]
+        if has_been_too_long:
+            Log.note("Transaction blockage cleared")
 
     def _worker(self, please_stop):
         try:
