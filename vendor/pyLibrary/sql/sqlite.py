@@ -25,7 +25,7 @@ from mo_logs import Log
 from mo_logs.exceptions import Except, extract_stack, ERROR, format_trace
 from mo_logs.strings import quote
 from mo_math.stats import percentile
-from mo_threads import Queue, Signal, Thread, Lock, Till
+from mo_threads import Queue, Thread, Lock, Till
 from mo_times import Date, Duration
 from mo_times.timer import Timer
 from pyLibrary import convert
@@ -194,10 +194,8 @@ class Sqlite(DB):
         blocker = self.last_command_item
 
         Log.warning(
-            "Query for thread {{blocked_thread|quote}} at\n{{blocked_trace|indent}}is blocked by {{blocker_thread|quote}} at\n{{blocker_trace|indent}}this message brought to you by....",
-            blocker_thread=blocker.thread.name,
+            "Query for at\n{{blocked_trace|indent}}is blocked  at\n{{blocker_trace|indent}}this message brought to you by....",
             blocker_trace=format_trace(blocker.trace),
-            blocked_thread=blocked.thread.name,
             blocked_trace=format_trace(blocked.trace)
         )
 
@@ -216,7 +214,7 @@ class Sqlite(DB):
         # PUT delayed BACK ON THE QUEUE, IN THE ORDER FOUND, BUT WITH QUERIES FIRST
         if self.too_long is not None:
             with self.too_long.lock:
-                self.too_long.job_queue.clear()
+                del self.too_long.job_queue[:]
         self.too_long = None
 
         if self.delayed_transactions:
@@ -239,7 +237,7 @@ class Sqlite(DB):
         except Exception as e:
             e = Except.wrap(e)
             if not please_stop:
-                Log.warning("Problem with sql thread", cause=e)
+                Log.warning("Problem with sql", cause=e)
         finally:
             self.closed = True
             DEBUG and Log.note("Database is closed")
