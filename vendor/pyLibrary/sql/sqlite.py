@@ -17,7 +17,7 @@ import re
 import sys
 from collections import Mapping, namedtuple
 
-from mo_dots import Data, coalesce, unwraplist
+from mo_dots import Data, coalesce, unwraplist, Null
 from mo_files import File
 from mo_future import allocate_lock as _allocate_lock, text_type
 from mo_kwargs import override
@@ -135,8 +135,8 @@ class Sqlite(DB):
         signal = _allocate_lock()
         signal.acquire()
         result = Data()
-        trace = extract_stack(1) if self.get_trace else None
-        self.queue.add(CommandItem(command, result, signal, trace, None))
+        trace = extract_stack(1) if self.get_trace else Null
+        self.queue.add(CommandItem(command, result, signal, trace, Null))
         signal.acquire()
         if result.exception:
             Log.error("Problem with Sqlite call", cause=result.exception)
@@ -151,7 +151,7 @@ class Sqlite(DB):
         self.closed = True
         signal = _allocate_lock()
         signal.acquire()
-        self.queue.add((COMMIT, None, signal, None))
+        self.queue.add(CommandItem(COMMIT, Null, signal, Null, Null))
         signal.acquire()
         self.worker.please_stop.go()
         return
@@ -189,14 +189,20 @@ class Sqlite(DB):
 
         self.db.create_function("REGEXP", 2, regexp)
 
-    def show_warning(self):
-        blocked = (self.delayed_queries+self.delayed_transactions)[0]
+    def show_transactions_blocked_warning(self):
         blocker = self.last_command_item
+        blocked = (self.delayed_queries+self.delayed_transactions)[0]
 
         Log.warning(
-            "Query at\n{{blocked_trace|indent}}is blocked at\n{{blocker_trace|indent}}this message brought to you by....",
+            "Query on thread {{blocked_thread|quote}} at\n"
+            "{{blocked_trace|indent}}"
+            "is blocked by {{blocker_thread|quote}} at\n"
+            "{{blocker_trace|indent}}"
+            "this message brought to you by....",
             blocker_trace=format_trace(blocker.trace),
-            blocked_trace=format_trace(blocked.trace)
+            blocked_trace=format_trace(blocked.trace),
+            blocker_thread=blocker.transaction.thread.name,
+            blocked_thread=blocked.transaction.thread.name
         )
 
     def _close_transaction(self, command_item):
@@ -213,9 +219,11 @@ class Sqlite(DB):
 
         # PUT delayed BACK ON THE QUEUE, IN THE ORDER FOUND, BUT WITH QUERIES FIRST
         if self.too_long is not None:
-            with self.too_long.lock:
-                self.too_long.job_queue = None
-        self.too_long = None
+            self.too_long, too_long = None, self.too_long
+            # WE ARE CHEATING HERE: WE REACH INTO THE Signal MEMBERS AND REMOVE WHAT WE ADDED TO THE INTERNAL job_queue
+            with too_long.lock:
+                too_long.job_queue = None
+            Log.note("Transaction blockage cleared")
 
         if self.delayed_transactions:
             for c in reversed(self.delayed_transactions):
@@ -252,14 +260,14 @@ class Sqlite(DB):
                 if self.transaction_stack:
                     if self.too_long is None:
                         self.too_long = Till(seconds=TOO_LONG_TO_HOLD_TRANSACTION)
-                        self.too_long.on_go(self.show_warning)
+                        self.too_long.on_go(self.show_transactions_blocked_warning)
                     self.delayed_queries.append(command_item)
                     return
             elif self.transaction_stack and self.transaction_stack[-1] not in [transaction, transaction.parent]:
                 # THIS TRANSACTION IS NOT THE CURRENT TRANSACTION, DELAY IT
                 if self.too_long is None:
                     self.too_long = Till(seconds=TOO_LONG_TO_HOLD_TRANSACTION)
-                    self.too_long.on_go(self.show_warning)
+                    self.too_long.on_go(self.show_transactions_blocked_warning)
                 self.delayed_transactions.append(command_item)
                 return
             else:
