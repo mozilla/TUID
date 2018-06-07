@@ -1076,11 +1076,18 @@ class TUIDService:
             errored = False
             if isinstance(annotated_object, (text_type, str)):
                 errored = True
-                Log.warning("{{file}} does not exist in the revision {{cset}}", cset=revision, file=file)
+                Log.warning(
+                    "{{file}} does not exist in the revision={{cset}} branch={{branch_name}}",
+                    branch_name=repo,
+                    cset=revision,
+                    file=file
+                )
             elif annotated_object is None:
                 Log.warning(
-                    "Unexpected error getting annotation for: {{file}} in the revision {{cset}}",
-                    cset=revision, file=file
+                    "Unexpected error getting annotation for: {{file}} in the revision={{cset}} branch={{branch_name}}",
+                    branch_name=repo,
+                    cset=revision,
+                    file=file
                 )
                 errored = True
             elif 'annotate' not in annotated_object:
