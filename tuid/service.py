@@ -15,7 +15,7 @@ from mo_future import text_type
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_kwargs import override
 from mo_logs import Log
-from mo_threads import Till, Thread
+from mo_threads import Till, Thread, Lock
 from mo_times.durations import SECOND, DAY
 from pyLibrary.env import http
 from pyLibrary.meta import cache
@@ -50,6 +50,7 @@ class TUIDService:
             if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
 
+            self.locker = Lock()
             self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
         except Exception as e:
             Log.error("can not setup service", cause=e)
@@ -59,10 +60,11 @@ class TUIDService:
         """
         :return: next tuid
         """
-        try:
-            return self.next_tuid
-        finally:
-            self.next_tuid += 1
+        with self.locker:
+            try:
+                return self.next_tuid
+            finally:
+                self.next_tuid += 1
 
 
     def init_db(self):
@@ -1000,7 +1002,6 @@ class TUIDService:
                 " VALUES " +
                 sql_list(sql_iso(sql_list(map(quote_value, (self.tuid(), i[0], i[1], i[2])))) for i in tmp_qf_list)
             )
-
 
     def get_tuids(self, files, revision, commit=True, chunk=50, repo=None):
         if repo is None:
