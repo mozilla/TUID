@@ -17,7 +17,7 @@ import re
 import sys
 from collections import Mapping, namedtuple
 
-from mo_dots import Data, coalesce, unwraplist
+from mo_dots import Data, coalesce, unwraplist, Null
 from mo_files import File
 from mo_future import allocate_lock as _allocate_lock, text_type
 from mo_kwargs import override
@@ -25,7 +25,7 @@ from mo_logs import Log
 from mo_logs.exceptions import Except, extract_stack, ERROR, format_trace
 from mo_logs.strings import quote
 from mo_math.stats import percentile
-from mo_threads import Queue, Signal, Thread, Lock, Till
+from mo_threads import Queue, Thread, Lock, Till
 from mo_times import Date, Duration
 from mo_times.timer import Timer
 from pyLibrary import convert
@@ -40,6 +40,7 @@ TOO_LONG_TO_HOLD_TRANSACTION = 10
 sqlite3 = None
 _load_extension_warning_sent = False
 _upgraded = False
+known_databases = {Null: None}
 
 
 class Sqlite(DB):
@@ -63,6 +64,8 @@ class Sqlite(DB):
 
         self.settings = kwargs
         self.filename = File(filename).abspath
+        if known_databases.get(self.filename):
+            Log.error("Not allowed to createmore than one Sqlite instance for {{file}}", file=self.filename)
 
         # SETUP DATABASE
         DEBUG and Log.note("Sqlite version {{version}}", version=sqlite3.sqlite_version)
@@ -151,7 +154,7 @@ class Sqlite(DB):
         self.closed = True
         signal = _allocate_lock()
         signal.acquire()
-        self.queue.add((COMMIT, None, signal, None))
+        self.queue.add(CommandItem(COMMIT, None, signal, None, None))
         signal.acquire()
         self.worker.please_stop.go()
         return
@@ -189,16 +192,20 @@ class Sqlite(DB):
 
         self.db.create_function("REGEXP", 2, regexp)
 
-    def show_warning(self):
-        blocked = (self.delayed_queries+self.delayed_transactions)[0]
+    def show_transactions_blocked_warning(self):
         blocker = self.last_command_item
+        blocked = (self.delayed_queries+self.delayed_transactions)[0]
 
         Log.warning(
-            "Query for thread {{blocked_thread|quote}} at\n{{blocked_trace|indent}}is blocked by {{blocker_thread|quote}} at\n{{blocker_trace|indent}}this message brought to you by....",
-            blocker_thread=blocker.thread.name,
+            "Query on thread {{blocked_thread|quote}} at\n"
+            "{{blocked_trace|indent}}"
+            "is blocked by {{blocker_thread|quote}} at\n"
+            "{{blocker_trace|indent}}"
+            "this message brought to you by....",
             blocker_trace=format_trace(blocker.trace),
-            blocked_thread=blocked.thread.name,
-            blocked_trace=format_trace(blocked.trace)
+            blocked_trace=format_trace(blocked.trace),
+            blocker_thread=blocker.transaction.thread.name if blocker.transaction is not None else None,
+            blocked_thread=blocked.transaction.thread.name if blocked.transaction is not None else None
         )
 
     def _close_transaction(self, command_item):
@@ -213,20 +220,26 @@ class Sqlite(DB):
             # NESTED TRANSACTIONS NOT ALLOWED IN sqlite3
             self.db.execute(query)
 
-        # PUT delayed BACK ON THE QUEUE, IN THE ORDER FOUND, BUT WITH QUERIES FIRST
-        if self.too_long is not None:
-            with self.too_long.lock:
-                self.too_long.job_queue.clear()
-        self.too_long = None
+        has_been_too_long = False
+        with self.locker:
+            if self.too_long is not None:
+                self.too_long, too_long = None, self.too_long
+                # WE ARE CHEATING HERE: WE REACH INTO THE Signal MEMBERS AND REMOVE WHAT WE ADDED TO THE INTERNAL job_queue
+                with too_long.lock:
+                    has_been_too_long = bool(too_long)
+                    too_long.job_queue = None
 
-        if self.delayed_transactions:
-            for c in reversed(self.delayed_transactions):
-                self.queue.push(c)
-            del self.delayed_transactions[:]
-        if self.delayed_queries:
-            for c in reversed(self.delayed_queries):
-                self.queue.push(c)
-            del self.delayed_queries[:]
+            # PUT delayed BACK ON THE QUEUE, IN THE ORDER FOUND, BUT WITH QUERIES FIRST
+            if self.delayed_transactions:
+                for c in reversed(self.delayed_transactions):
+                    self.queue.push(c)
+                del self.delayed_transactions[:]
+            if self.delayed_queries:
+                for c in reversed(self.delayed_queries):
+                    self.queue.push(c)
+                del self.delayed_queries[:]
+        if has_been_too_long:
+            Log.note("Transaction blockage cleared")
 
     def _worker(self, please_stop):
         try:
@@ -239,7 +252,7 @@ class Sqlite(DB):
         except Exception as e:
             e = Except.wrap(e)
             if not please_stop:
-                Log.warning("Problem with sql thread", cause=e)
+                Log.warning("Problem with sql", cause=e)
         finally:
             self.closed = True
             DEBUG and Log.note("Database is closed")
@@ -252,17 +265,19 @@ class Sqlite(DB):
             if transaction is None:
                 # THIS IS A TRANSACTIONLESS QUERY, DELAY IT IF THERE IS A CURRENT TRANSACTION
                 if self.transaction_stack:
-                    if self.too_long is None:
-                        self.too_long = Till(seconds=TOO_LONG_TO_HOLD_TRANSACTION)
-                        self.too_long.on_go(self.show_warning)
-                    self.delayed_queries.append(command_item)
+                    with self.locker:
+                        if self.too_long is None:
+                            self.too_long = Till(seconds=TOO_LONG_TO_HOLD_TRANSACTION)
+                            self.too_long.on_go(self.show_transactions_blocked_warning)
+                        self.delayed_queries.append(command_item)
                     return
             elif self.transaction_stack and self.transaction_stack[-1] not in [transaction, transaction.parent]:
                 # THIS TRANSACTION IS NOT THE CURRENT TRANSACTION, DELAY IT
-                if self.too_long is None:
-                    self.too_long = Till(seconds=TOO_LONG_TO_HOLD_TRANSACTION)
-                    self.too_long.on_go(self.show_warning)
-                self.delayed_transactions.append(command_item)
+                with self.locker:
+                    if self.too_long is None:
+                        self.too_long = Till(seconds=TOO_LONG_TO_HOLD_TRANSACTION)
+                        self.too_long.on_go(self.show_transactions_blocked_warning)
+                    self.delayed_transactions.append(command_item)
                 return
             else:
                 # ENSURE THE CURRENT TRANSACTION IS UP TO DATE FOR THIS query

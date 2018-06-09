@@ -169,7 +169,7 @@ if __name__ in ("__main__",):
         Log.start(config.debug)
 
         service = TUIDService(config.tuid)
-        Log.note("Started TUID Service.")
+        Log.note("Started TUID Service")
     except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
         try:
             Log.error("Serious problem with TUID service construction!  Shutdown!", cause=e)
@@ -179,7 +179,7 @@ if __name__ in ("__main__",):
     if config.flask:
         if config.flask.port and config.args.process_num:
             config.flask.port += config.args.process_num
-        Log.note("Running Service.")
+        Log.note("Running Flask...")
         flask_app.run(**config.flask)
 
 

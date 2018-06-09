@@ -1132,7 +1132,7 @@ class TUIDService:
                         transaction, new_files, revision, annotated_files, annotations_to_get, commit=commit, repo=repo
                     )
                 )
-                count += chunk
+            count += chunk
 
         # Help for memory
         gc.collect()
@@ -1166,16 +1166,16 @@ class TUIDService:
                 errored = True
                 Log.warning(
                     "{{file}} does not exist in the revision={{cset}} branch={{branch_name}}",
-                    branch_name = repo,
-                    cset = revision,
-                    file = file
+                    branch_name=repo,
+                    cset=revision,
+                    file=file
                 )
             elif annotated_object is None:
                 Log.warning(
                     "Unexpected error getting annotation for: {{file}} in the revision={{cset}} branch={{branch_name}}",
-                    branch_name = repo,
-                    cset = revision,
-                    file = file
+                    branch_name=repo,
+                    cset=revision,
+                    file=file
                 )
                 errored = True
             elif 'annotate' not in annotated_object:
