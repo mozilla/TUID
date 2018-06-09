@@ -879,42 +879,42 @@ class TUIDService:
         total = len(frontier_list)
         tmp_results = {}
 
-        with self.conn.transaction() as transaction:
-            for count, file_n_rev in enumerate(frontier_list):
-                file = file_n_rev[0]
-                rev = file_n_rev[1]
+        for count, file_n_rev in enumerate(frontier_list):
+            file = file_n_rev[0]
+            rev = file_n_rev[1]
 
-                if latest_csets[rev]:
-                    # If we were still looking for the frontier by the end, get a new
-                    # annotation for this file.
-                    anns_to_get.append(file)
+            if latest_csets[rev]:
+                # If we were still looking for the frontier by the end, get a new
+                # annotation for this file.
+                anns_to_get.append(file)
 
-                    if going_forward:
-                        # If we are always going forward, update the frontier
-                        latestFileMod_inserts[file] = (file, revision)
-                    Log.note("Frontier update - can't find frontier {lost_frontier}: " +
-                             "{{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
-                             count=count, total=total, file=file, rev=revision, percent=count / total,
-                             lost_frontier=rev
-                    )
-                    continue
+                if going_forward:
+                    # If we are always going forward, update the frontier
+                    latestFileMod_inserts[file] = (file, revision)
+                Log.note("Frontier update - can't find frontier {lost_frontier}: " +
+                         "{{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
+                         count=count, total=total, file=file, rev=revision, percent=count / total,
+                         lost_frontier=rev
+                )
+                continue
 
-                # If the file was modified, get it's newest
-                # annotation and update the file.
-                proc_rev = rev
-                proc = False
-                if file in files_to_process:
-                    proc = True
-                    proc_rev = revision
+            # If the file was modified, get it's newest
+            # annotation and update the file.
+            proc_rev = rev
+            proc = False
+            if file in files_to_process:
+                proc = True
+                proc_rev = revision
 
-                modified = True
-                tmp_res = None
+            modified = True
+            tmp_res = None
 
-                if proc and file not in removed_files:
-                    # Process this file using the diffs found
+            if proc and file not in removed_files:
+                # Process this file using the diffs found
 
-                    # Reverse the list, we always find the newest diff first
-                    csets_to_proc = files_to_process[file][::-1]
+                # Reverse the list, we always find the newest diff first
+                csets_to_proc = files_to_process[file][::-1]
+                with self.conn.transaction() as transaction:
                     old_ann = self.destringify_tuids(self._get_annotation(transaction, rev, file))
 
                     # Apply all the diffs
@@ -922,69 +922,71 @@ class TUIDService:
                     for i in csets_to_proc:
                         tmp_res = self._apply_diff(transaction, tmp_res, parsed_diffs[i], i, file)
 
-                    ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
-                    Log.note("Frontier update - modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ", count=count,
-                                                    total=total, file=file, rev=proc_rev, percent=count / total)
-                elif file not in removed_files:
+                ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
+                Log.note("Frontier update - modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ", count=count,
+                                                total=total, file=file, rev=proc_rev, percent=count / total)
+            elif file not in removed_files:
+                with self.conn.transaction() as transaction:
                     old_ann = self._get_annotation(transaction, rev, file)
-                    if old_ann is None or (old_ann == '' and file in added_files):
-                        # File is new (likely from an error), or re-added - we need to create
-                        # a new initial entry for this file.
-                        tmp_res = self.get_tuids(file, proc_rev, commit=False)[0][1]
-                        Log.note(
-                            "Frontier update - readded: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
-                            count=count, total=total, file=file,
-                            rev=proc_rev, percent=count / total
-                        )
-                    else:
-                        # File was not modified since last
-                        # known revision
-                        tmp_res = self.destringify_tuids(old_ann) if old_ann != '' else []
-                        ann_inserts.append((revision, file, old_ann[0]))
-                        modified = False
-                        Log.note(
-                            "Frontier update - not modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
-                            count=count, total=total, file=file,
-                            rev=proc_rev, percent=count / total
-                        )
-                else:
-                    # File was removed
-                    ann_inserts.append((revision, file, ''))
-                    tmp_res = None
+                if old_ann is None or (old_ann == '' and file in added_files):
+                    # File is new (likely from an error), or re-added - we need to create
+                    # a new initial entry for this file.
+                    anns_to_get.append(file)
                     Log.note(
-                        "Frontier update - removed: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
+                        "Frontier update - readded: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
                         count=count, total=total, file=file,
                         rev=proc_rev, percent=count / total
                     )
-
-                if tmp_res:
-                    tmp_results[file] = tmp_res
-                    if proc_rev != revision and not modified:
-                        # If the file hasn't changed up to this revision,
-                        # reinsert it with the same previous annotate.
-                        with self.conn.transaction() as transaction:
-                            if not self._get_annotation(transaction, revision, file):
-                                annotate = self.destringify_tuids(self._get_annotation(transaction, rev, file))
-                                ann_inserts.append((revision, file, self.stringify_tuids(annotate)))
                 else:
-                    Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=proc_rev)
-                    tmp_results[file] = []
+                    # File was not modified since last
+                    # known revision
+                    tmp_res = self.destringify_tuids(old_ann) if old_ann != '' else []
+                    ann_inserts.append((revision, file, old_ann[0]))
+                    modified = False
+                    Log.note(
+                        "Frontier update - not modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
+                        count=count, total=total, file=file,
+                        rev=proc_rev, percent=count / total
+                    )
+            else:
+                # File was removed
+                ann_inserts.append((revision, file, ''))
+                tmp_res = None
+                Log.note(
+                    "Frontier update - removed: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
+                    count=count, total=total, file=file,
+                    rev=proc_rev, percent=count / total
+                )
 
-                # If we have found all frontiers, update to the
-                # latest revision. Otherwise, the requested
-                # revision is too far away (can't be sure
-                # if it's past). Unless we are told that we are
-                # going forward.
-                latest_rev = revision
-                latestFileMod_inserts[file] = (file, latest_rev)
+            if tmp_res:
+                tmp_results[file] = tmp_res
+                if proc_rev != revision and not modified:
+                    # If the file hasn't changed up to this revision,
+                    # reinsert it with the same previous annotate.
+                    with self.conn.transaction() as transaction:
+                        if not self._get_annotation(transaction, revision, file):
+                            annotate = self.destringify_tuids(self._get_annotation(transaction, rev, file))
+                            ann_inserts.append((revision, file, self.stringify_tuids(annotate)))
+            else:
+                Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=proc_rev)
+                tmp_results[file] = []
 
-            Log.note("Updating DB tables `latestFileMod` and `annotations`...")
+            # If we have found all frontiers, update to the
+            # latest revision. Otherwise, the requested
+            # revision is too far away (can't be sure
+            # if it's past). Unless we are told that we are
+            # going forward.
+            latest_rev = revision
+            latestFileMod_inserts[file] = (file, latest_rev)
 
-            # No need to double-check if latesteFileMods has been updated before,
-            # we perform an insert or replace any way.
-            if len(latestFileMod_inserts) > 0:
-                count = 0
-                listed_inserts = [latestFileMod_inserts[i] for i in latestFileMod_inserts]
+        Log.note("Updating DB tables `latestFileMod` and `annotations`...")
+
+        # No need to double-check if latesteFileMods has been updated before,
+        # we perform an insert or replace any way.
+        if len(latestFileMod_inserts) > 0:
+            count = 0
+            listed_inserts = [latestFileMod_inserts[i] for i in latestFileMod_inserts]
+            with self.conn.transaction() as transaction:
                 while count < len(listed_inserts):
                     tmp_inserts = listed_inserts[count:count + SQL_BATCH_SIZE]
                     count += SQL_BATCH_SIZE
@@ -993,10 +995,11 @@ class TUIDService:
                         sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
                     )
 
-            anns_added_by_other_thread = {}
-            if len(ann_inserts) > 0:
-                count = 0
-                ann_inserts = list(set(ann_inserts))
+        anns_added_by_other_thread = {}
+        if len(ann_inserts) > 0:
+            count = 0
+            ann_inserts = list(set(ann_inserts))
+            with self.conn.transaction() as transaction:
                 while count < len(ann_inserts):
                     tmp_inserts = ann_inserts[count:count + SQL_ANN_BATCH_SIZE]
 
