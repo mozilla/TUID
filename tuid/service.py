@@ -1065,18 +1065,76 @@ class TUIDService:
 
 
     def get_tuids(self, files, revision, commit=True, chunk=50, repo=None):
+        '''
+        Wrapper for `_get_tuids` to limit the number of annotation calls to hg
+        and separate the calls from DB transactions. Also used to simplify `_get_tuids`.
+
+        :param files:
+        :param revision:
+        :param commit:
+        :param chunk:
+        :param repo:
+        :return:
+        '''
+        results = []
+        # For a single file, there is no need
+        # to put it in an array when given.
+        if not isinstance(files, list):
+            files = [files]
         if repo is None:
             repo = self.config.hg.branch
 
         count = 0
-        results = []
         while count < len(files):
+            new_files = files[count:count+chunk]
+
+            revision = revision[:12]
+            for count, file in enumerate(new_files):
+                new_files[count] = file.lstrip('/')
+
+            annotations_to_get = []
+            for file in new_files:
+                with self.conn.transaction() as transaction:
+                    already_ann = self._get_annotation(transaction, revision, file)
+                if already_ann:
+                    results.append((file, self.destringify_tuids(already_ann)))
+                elif already_ann[0] == '':
+                    results.append((file, []))
+                else:
+                    annotations_to_get.append(file)
+
+            if not annotations_to_get:
+                return results
+
+            # Get all the annotations in parallel
+            num_files = len(annotations_to_get)
+            annotated_files = [None] * num_files
+            threads = [None] * num_files
+
+            # Get all the annotations in parallel
+            annotated_files = [None] * len(annotations_to_get)
+            threads = [
+                Thread.run(str(i), self._get_hg_annotate, revision, annotations_to_get[i], annotated_files, i, repo)
+                for i, a in enumerate(annotations_to_get)
+            ]
+            for t in threads:
+                t.join()
+
+            del threads
+
             with self.conn.transaction() as transaction:
-                results.extend(self._get_tuids(transaction, files[count:count+chunk], revision, commit=commit, repo=repo))
+                results.extend(
+                    self._get_tuids(
+                        transaction, new_files, revision, annotated_files, annotations_to_get, commit=commit, repo=repo
+                    )
+                )
                 count += chunk
+
+        # Help for memory
+        gc.collect()
         return results
 
-    def _get_tuids(self, transaction, files, revision, commit=True, repo=None):
+    def _get_tuids(self, transaction, files, revision, annotated_files, annotations_to_get, commit=True, repo=None):
         '''
         Returns (TUID, line) tuples for a given file at a given revision.
 
@@ -1091,43 +1149,7 @@ class TUIDService:
         :param commit: True to commit new TUIDs else False
         :return: List of TuidMap objects
         '''
-
-        # For a single file, there is no need
-        # to put it in an array when given.
-        if not isinstance(files, list):
-            files = [files]
-
-        revision = revision[:12]
-        for count, file in enumerate(files):
-            files[count] = file.lstrip('/')
-
         results = []
-        annotations_to_get = []
-        for file in files:
-            already_ann = self._get_annotation(transaction, revision, file)
-            if already_ann:
-                results.append((file, self.destringify_tuids(already_ann)))
-            elif already_ann[0] == '':
-                results.append((file, []))
-            else:
-                annotations_to_get.append(file)
-
-        if not annotations_to_get:
-            return results
-
-        # Get all the annotations in parallel
-        num_files = len(annotations_to_get)
-        annotated_files = [None] * num_files
-        threads = [None] * num_files
-
-        # Get all the annotations in parallel
-        annotated_files = [None] * len(annotations_to_get)
-        threads = [
-            Thread.run(str(i), self._get_hg_annotate, revision, annotations_to_get[i], annotated_files, i, repo)
-            for i, a in enumerate(annotations_to_get)
-        ]
-        for t in threads:
-            t.join()
 
         for fcount, annotated_object in enumerate(annotated_files):
             existing_tuids = {}
@@ -1221,12 +1243,6 @@ class TUIDService:
             )
 
             results.append((file, tuids))
-
-        # Try to prevent some memory leaking
-        # with these calls.
-        del threads
-        del annotated_files
-        gc.collect()
 
         return results
 
