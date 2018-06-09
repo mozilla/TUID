@@ -165,6 +165,7 @@ def test_tuids_on_changed_file(service):
     # assertAlmostEqual PERFORMS A STRUCURAL COMPARISION
     assert same_lines == old_lines
 
+
 def test_removed_lines(service):
     # THE FILE HAS FOUR LINES REMOVED
     # https://hg.mozilla.org/integration/mozilla-inbound/rev/c8dece9996b7
