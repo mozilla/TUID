@@ -614,6 +614,15 @@ class TUIDService:
 
         with self.conn.transaction() as transaction:
             for file in files_to_update:
+                if file not in curr_annots_dict:
+                    Log.note(
+                        "WARNING: Missing annotation entry in mozilla-central branch revision {{cset}} for {{file}}",
+                        file=file, cset=mc_revision
+                    )
+                    # Try getting it from the try revision
+                    anns_to_get.append(file)
+                    continue
+
                 if file in added_files:
                     Log.note("Try revision run - added: {{file}}", file=file)
                     anns_to_get.append(file)
@@ -637,14 +646,6 @@ class TUIDService:
                 else:
                     # Nothing changed with the file, use it's current annotation
                     Log.note("Try revision run - not modified: {{file}}", file=file)
-                    if file not in curr_annots_dict:
-                        Log.note(
-                            "WARNING: Missing annotation entry in mozilla-central branch revision {{cset}} for {{file}}",
-                            file=file, cset=mc_revision
-                        )
-                        # Try getting it from the try revision
-                        anns_to_get.append(file)
-                        continue
                     ann_inserts.append((revision, file, self.stringify_tuids(curr_annots_dict[file])))
                     tmp_results[file] = curr_annots_dict[file]
 
