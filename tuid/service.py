@@ -638,8 +638,8 @@ class TUIDService:
                     # Nothing changed with the file, use it's current annotation
                     Log.note("Try revision run - not modified: {{file}}", file=file)
                     if file not in curr_annots_dict:
-                        Log.warning(
-                            "Missing annotation entry in mozilla-central branch revision {{cset}} for {{file}}",
+                        Log.note(
+                            "WARNING: Missing annotation entry in mozilla-central branch revision {{cset}} for {{file}}",
                             file=file, cset=mc_revision
                         )
                         # Try getting it from the try revision
