@@ -310,8 +310,7 @@ class TUIDService:
         if repo in ('try',):
             # We don't need to keep latest file revisions
             # and other related things for this condition.
-            with self.conn.transaction() as transaction:
-                return self._get_tuids_from_files_try_branch(transaction, files, revision)
+            return self._get_tuids_from_files_try_branch(files, revision)
 
         result = []
         revision = revision[:12]
@@ -483,7 +482,7 @@ class TUIDService:
         return new_ann
 
 
-    def _get_tuids_from_files_try_branch(self, transaction, files, revision):
+    def _get_tuids_from_files_try_branch(self, files, revision):
         '''
         Gets files from a try revision. It abuses the idea that try pushes
         will come from various, but stable points (if people make many
