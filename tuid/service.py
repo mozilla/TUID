@@ -643,6 +643,8 @@ class TUIDService:
                             "Missing annotation entry in mozilla-central branch revision {{cset}} for {{file}}",
                             file=file, cset=mc_revision
                         )
+                        # Try getting it from the try revision
+                        anns_to_get.append(file)
                         continue
                     ann_inserts.append((revision, file, self.stringify_tuids(curr_annots_dict[file])))
                     tmp_results[file] = curr_annots_dict[file]
@@ -1117,11 +1119,6 @@ class TUIDService:
 
             if not annotations_to_get:
                 return results
-
-            # Get all the annotations in parallel
-            num_files = len(annotations_to_get)
-            annotated_files = [None] * num_files
-            threads = [None] * num_files
 
             # Get all the annotations in parallel
             annotated_files = [None] * len(annotations_to_get)
