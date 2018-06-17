@@ -91,36 +91,22 @@ def test_multithread_service(service):
 
     # Call service on multiple threads at once
     tuided_files = [None] * num_tests
-    try:
-        threads = [
-            Thread.run(str(i), service.mthread_testing_get_tuids_from_files, test_file, revision, tuided_files, i)
-            for i, a in enumerate(tuided_files)
-        ]
-        timed_out = False
-        timer = Timer("Check that all threads die.")
-        with timer:
-            for t in threads:
-                while t.is_alive() and not timed_out:
-                    if not timed_out:
-                        (Till(seconds=10)).wait()
-                    if timer.duration.seconds > timeout_seconds:
-                        timed_out = True
-        assert not timed_out
-
-        for t in threads:
-            t.join()
-    except:
-        # There should be no errors
-        assert False
+    threads = [
+        Thread.run(str(i), service.mthread_testing_get_tuids_from_files, test_file, revision, tuided_files, i)
+        for i, a in enumerate(tuided_files)
+    ]
+    too_long = Till(seconds=timeout_seconds)
+    for t in threads:
+        t.join(till=too_long)
+    assert not too_long
 
     # All returned results should be the same.
-    for count, res1 in enumerate(tuided_files):
-        for res2 in tuided_files[count+1:]: # Don't compare it to itself
-            assert len(res1[0][1]) == len(res2[0][1])
-
-            for tuid_count, mapping in enumerate(res1[0][1]):
-                if mapping.tuid != res2[0][1][tuid_count].tuid:
-                    assert False
+    expected_filename, expected_tuids = tuided_files[0][0]
+    for result in tuided_files[1:]:
+        assert len(result) == len(test_file)  # get_tuid returns a list of (file, tuids) tuples
+        filename, tuids = result[0]
+        assert filename == expected_filename
+        assert set(tuids) == set(expected_tuids)
 
     # Check that we can get the same result after these
     # calls.

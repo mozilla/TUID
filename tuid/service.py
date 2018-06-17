@@ -10,6 +10,7 @@ from __future__ import unicode_literals
 
 import gc
 
+from jx_python import jx
 from mo_dots import Null, coalesce, wrap
 from mo_future import text_type
 from mo_hg.hg_mozilla_org import HgMozillaOrg
@@ -139,9 +140,9 @@ class TUIDService:
         return [(rev[:12], file_name, '')]
 
 
-    def _get_annotation(self, transaction, rev, file):
+    def _get_annotation(self, rev, file, transaction=None):
         # Returns an annotation if it exists
-        return transaction.get_one(GET_ANNOTATION_QUERY, (rev, file))
+        return coalesce(transaction, self.conn).get_one(GET_ANNOTATION_QUERY, (rev, file))
 
 
     def _get_one_tuid(self, transaction, cset, path, line):
@@ -149,11 +150,10 @@ class TUIDService:
         return transaction.get_one("select 1 from temporal where revision=? and file=? and line=?",
                                  (cset, path, int(line)))
 
-
-    def _get_latest_revision(self, transaction, file):
+    def _get_latest_revision(self, file):
         # Returns the latest revision that we
         # have information on the requested file.
-        return transaction.get_one(GET_LATEST_MODIFICATION, (file,))
+        return self.conn.get_one(GET_LATEST_MODIFICATION, (file,))
 
 
     def stringify_tuids(self, tuid_list):
@@ -270,10 +270,7 @@ class TUIDService:
         :param please_stop:
         :return:
         """
-        Log.note("Thread {{pos}} is running.", pos=res_position)
         results[res_position] = self.get_tuids_from_files(files, revision, going_forward=going_forward, repo=repo)
-        Log.note("Thread {{pos}} is ending.", pos=res_position)
-        return
 
     def get_tuids_from_files(self, files, revision, going_forward=False, repo=None):
         """
@@ -322,54 +319,53 @@ class TUIDService:
         latestFileMod_inserts = {}
         new_files = []
 
-        with self.conn.transaction() as transaction:
-            log_existing_files = []
-            for count, file in enumerate(files):
-                # Go through all requested files and
-                # either update their frontier or add
-                # them to the DB through an initial annotation.
+        log_existing_files = []
+        for count, file in enumerate(files):
+            # Go through all requested files and
+            # either update their frontier or add
+            # them to the DB through an initial annotation.
 
+            if DEBUG:
+                Log.note(" {{percent|percent(decimal=0)}}|{{file}}", file=file, percent=count / total)
+
+            latest_rev = self._get_latest_revision(file)
+
+            # Check if the file has already been collected at
+            # this revision and get the result if so
+            already_ann = self._get_annotation(revision, file)
+            if already_ann:
+                result.append((file,self.destringify_tuids(already_ann)))
+                if going_forward:
+                    latestFileMod_inserts[file] = (file, revision)
+                log_existing_files.append('exists|' + file)
+                continue
+            elif already_ann[0] == '':
+                result.append((file,[]))
+                if going_forward:
+                    latestFileMod_inserts[file] = (file, revision)
+                log_existing_files.append('removed|' + file)
+                continue
+
+            if (latest_rev and latest_rev[0] != revision):
+                # File has a frontier, let's update it
                 if DEBUG:
-                    Log.note(" {{percent|percent(decimal=0)}}|{{file}}", file=file, percent=count / total)
-
-                latest_rev = self._get_latest_revision(transaction, file)
-
-                # Check if the file has already been collected at
-                # this revision and get the result if so
-                already_ann = self._get_annotation(transaction, revision, file)
-                if already_ann:
-                    result.append((file,self.destringify_tuids(already_ann)))
-                    if going_forward:
-                        latestFileMod_inserts[file] = (file, revision)
-                    log_existing_files.append('exists|' + file)
-                    continue
-                elif already_ann[0] == '':
-                    result.append((file,[]))
-                    if going_forward:
-                        latestFileMod_inserts[file] = (file, revision)
-                    log_existing_files.append('removed|' + file)
-                    continue
-
-                if (latest_rev and latest_rev[0] != revision):
-                    # File has a frontier, let's update it
-                    if DEBUG:
-                        Log.note("Will update frontier for file {{file}}.", file=file)
-                    frontier_update_list.append((file, latest_rev[0]))
-                elif latest_rev == revision:
-                    tmp_res = self.destringify_tuids(self._get_annotation(transaction, latest_rev[0], file))
-                    result.append((file, tmp_res))
-                    Log.note(
-                        "Frontier update - already exists in DB with state `exists`: " +
-                        "{{rev}}|{{file}} ",
-                        file=file, rev=revision
-                    )
-                else:
-                    Log.note(
-                        "Frontier update - adding: " +
-                        "{{rev}}|{{file}} ",
-                        file=file, rev=revision
-                    )
-                    new_files.append(file)
+                    Log.note("Will update frontier for file {{file}}.", file=file)
+                frontier_update_list.append((file, latest_rev[0]))
+            elif latest_rev == revision:
+                tmp_res = self.destringify_tuids(self._get_annotation(latest_rev[0], file))
+                result.append((file, tmp_res))
+                Log.note(
+                    "Frontier update - already exists in DB with state `exists`: " +
+                    "{{rev}}|{{file}} ",
+                    file=file, rev=revision
+                )
+            else:
+                Log.note(
+                    "Frontier update - adding: " +
+                    "{{rev}}|{{file}} ",
+                    file=file, rev=revision
+                )
+                new_files.append(file)
 
             if DEBUG:
                 Log.note(
@@ -380,9 +376,9 @@ class TUIDService:
             else:
                 Log.note(
                     "Frontier update - already exist in DB for {{rev}}: " +
-                    "{{count}}/{{total}} | {{percent}}",
+                    "{{count}}/{{total}} | {{percent|percent}}",
                     count=str(len(log_existing_files)), total=str(len(files)),
-                    rev=revision, percent=str(len(log_existing_files)/len(files))
+                    rev=revision, percent=len(log_existing_files)/len(files)
                 )
 
             if len(new_files) > 0:
@@ -403,19 +399,15 @@ class TUIDService:
 
             Log.note("Finished updating frontiers. Updating DB table `latestFileMod`...")
             if len(latestFileMod_inserts) > 0:
-                count = 0
-                listed_inserts = [latestFileMod_inserts[i] for i in latestFileMod_inserts]
-                while count < len(listed_inserts):
-                    inserts_list = listed_inserts[count:count + SQL_BATCH_SIZE]
-                    count += SQL_BATCH_SIZE
-                    #try:
-                    transaction.execute(
-                        "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                        sql_list(
-                            sql_iso(sql_list(map(quote_value, i)))
-                            for i in inserts_list
+                with self.conn.transation() as transaction:
+                    for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
+                        transaction.execute(
+                            "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+                            sql_list(
+                                sql_iso(sql_list(map(quote_value, i)))
+                                for i in inserts_list
+                            )
                         )
-                    )
 
         # If we have files that need to have their frontier updated, do that now
         if len(frontier_update_list) > 0:
@@ -502,19 +494,18 @@ class TUIDService:
         log_existing_files = []
         files_to_update = []
 
-        with self.conn.transaction() as transaction:
-            for file in files:
-                already_ann = self._get_annotation(transaction, revision, file)
-                if already_ann:
-                    result.append((file, self.destringify_tuids(already_ann)))
-                    log_existing_files.append('exists|' + file)
-                    continue
-                elif already_ann[0] == '':
-                    result.append((file, []))
-                    log_existing_files.append('removed|' + file)
-                    continue
-                else:
-                    files_to_update.append(file)
+        for file in files:
+            already_ann = self._get_annotation(revision, file)
+            if already_ann:
+                result.append((file, self.destringify_tuids(already_ann)))
+                log_existing_files.append('exists|' + file)
+                continue
+            elif already_ann[0] == '':
+                result.append((file, []))
+                log_existing_files.append('removed|' + file)
+                continue
+            else:
+                files_to_update.append(file)
 
         if len(log_existing_files) > 0:
             Log.note("Try revision run - existing entries: {{count}}/{{total}} | {{percent}}",
@@ -657,7 +648,7 @@ class TUIDService:
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
                     for t in tmp_inserts:
-                        tmp_ann = self._get_annotation(transaction, t[0], t[1])
+                        tmp_ann = self._get_annotation(t[0], t[1])
                         if not tmp_ann:
                             recomputed_inserts.append(t)
                         else:
@@ -917,7 +908,7 @@ class TUIDService:
                 # Reverse the list, we always find the newest diff first
                 csets_to_proc = files_to_process[file][::-1]
                 with self.conn.transaction() as transaction:
-                    old_ann = self.destringify_tuids(self._get_annotation(transaction, rev, file))
+                    old_ann = self.destringify_tuids(self._get_annotation(rev, file))
 
                     # Apply all the diffs
                     tmp_res = old_ann
@@ -928,8 +919,7 @@ class TUIDService:
                 Log.note("Frontier update - modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ", count=count,
                                                 total=total, file=file, rev=proc_rev, percent=count / total)
             elif file not in removed_files:
-                with self.conn.transaction() as transaction:
-                    old_ann = self._get_annotation(transaction, rev, file)
+                old_ann = self._get_annotation(rev, file)
                 if old_ann is None or (old_ann == '' and file in added_files):
                     # File is new (likely from an error), or re-added - we need to create
                     # a new initial entry for this file.
@@ -965,10 +955,9 @@ class TUIDService:
                 if proc_rev != revision and not modified:
                     # If the file hasn't changed up to this revision,
                     # reinsert it with the same previous annotate.
-                    with self.conn.transaction() as transaction:
-                        if not self._get_annotation(transaction, revision, file):
-                            annotate = self.destringify_tuids(self._get_annotation(transaction, rev, file))
-                            ann_inserts.append((revision, file, self.stringify_tuids(annotate)))
+                    if not self._get_annotation(revision, file):
+                        annotate = self.destringify_tuids(self._get_annotation(rev, file))
+                        ann_inserts.append((revision, file, self.stringify_tuids(annotate)))
             else:
                 Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=proc_rev)
                 tmp_results[file] = []
@@ -1007,12 +996,12 @@ class TUIDService:
 
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
-                    for t in tmp_inserts:
-                        tmp_ann = self._get_annotation(transaction, t[0], t[1])
+                    for rev, file in tmp_inserts:
+                        tmp_ann = self._get_annotation(rev, file)
                         if not tmp_ann:
-                            recomputed_inserts.append(t)
+                            recomputed_inserts.append((rev, file))
                         else:
-                            anns_added_by_other_thread[t[1]] = self.destringify_tuids(tmp_ann)
+                            anns_added_by_other_thread[file] = self.destringify_tuids(tmp_ann)
 
                     count += SQL_ANN_BATCH_SIZE
                     try:
@@ -1098,8 +1087,7 @@ class TUIDService:
 
             annotations_to_get = []
             for file in new_files:
-                with self.conn.transaction() as transaction:
-                    already_ann = self._get_annotation(transaction, revision, file)
+                already_ann = self._get_annotation(revision, file)
                 if already_ann:
                     results.append((file, self.destringify_tuids(already_ann)))
                 elif already_ann[0] == '':
@@ -1239,7 +1227,7 @@ class TUIDService:
 
             # Make sure we are not adding the same thing another thread
             # added.
-            tmp_ann = self._get_annotation(transaction, revision, file)
+            tmp_ann = self._get_annotation(revision, file, transaction)
             if tmp_ann:
                 results.append((file, self.destringify_tuids(tmp_ann)))
                 continue
