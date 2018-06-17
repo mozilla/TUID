@@ -56,7 +56,7 @@ def test_empty_query(config, app):
 
 @pytest.mark.skipif(os.name == 'nt', reason="can not send request on windows, I do not know why")
 def test_query_too_big(config, app):
-    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
+    url = "http://localhost:" + text_type(config.flask.port) + "/tuid/"
     name = "a"*10000000
     response = http.get(url, json={"from": name})
     assert response.status_code == 400
