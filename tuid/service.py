@@ -914,7 +914,7 @@ class TUIDService:
 
                 if proc and file not in removed_files:
                     # Process this file using the diffs found
-                    tmp_ann = self._get_annotation(rev, file)
+                    tmp_ann = self._get_annotation(rev, file, transaction)
                     if tmp_ann is None or tmp_ann == '':
                         Log.warning(
                             "{{file}} has frontier but can't find old annotation for it in {{rev}}, " +
@@ -935,7 +935,7 @@ class TUIDService:
                         Log.note("Frontier update - modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ", count=count,
                                                         total=total, file=file, rev=proc_rev, percent=count / total)
                 elif file not in removed_files:
-                    old_ann = self._get_annotation(rev, file)
+                    old_ann = self._get_annotation(rev, file, transaction)
                     if old_ann is None or (old_ann == '' and file in added_files):
                         # File is new (likely from an error), or re-added - we need to create
                         # a new initial entry for this file.
@@ -971,7 +971,7 @@ class TUIDService:
                     if proc_rev != revision and not modified:
                         # If the file hasn't changed up to this revision,
                         # reinsert it with the same previous annotate.
-                        if not self._get_annotation(revision, file):
+                        if not self._get_annotation(revision, file, transaction):
                             annotate = self.destringify_tuids(self._get_annotation(rev, file))
                             ann_inserts.append((revision, file, self.stringify_tuids(annotate)))
                 else:
@@ -1010,12 +1010,12 @@ class TUIDService:
 
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
-                    for t in tmp_inserts:
-                        tmp_ann = self._get_annotation(t[0], t[1])
+                    for rev, filename, string_tuids in tmp_inserts:
+                        tmp_ann = self._get_annotation(rev, filename)
                         if not tmp_ann:
-                            recomputed_inserts.append(t)
+                            recomputed_inserts.append((rev, filename, string_tuids))
                         else:
-                            anns_added_by_other_thread[t[1]] = self.destringify_tuids(tmp_ann)
+                            anns_added_by_other_thread[filename] = self.destringify_tuids(tmp_ann)
 
                     count += SQL_ANN_BATCH_SIZE
                     try:
