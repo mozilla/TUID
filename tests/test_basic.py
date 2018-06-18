@@ -282,13 +282,13 @@ def test_many_files_one_revision(service):
     test_file = test_file_init + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    old, _ = service.get_tuids_from_files(test_file,first_front, testing=True)
+    old, _ = service.get_tuids_from_files(test_file,first_front, disable_thread=True)
     print("old:")
     for el in old:
         print(el[0])
         print("     "+el[0]+":"+str(len(el[1])))
 
-    new, _ = service.get_tuids_from_files(test_file,test_rev, testing=True)
+    new, _ = service.get_tuids_from_files(test_file,test_rev, disable_thread=True)
     print("new:")
     for el in new:
         print("     "+el[0]+":"+str(len(el[1])))
@@ -314,7 +314,7 @@ def test_one_addition_many_files(service):
     test_file = test_file_change + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    tuid_response, _ = service.get_tuids_from_files(test_file,test_rev, testing=True)
+    tuid_response, _ = service.get_tuids_from_files(test_file,test_rev, disable_thread=True)
     print("new:")
     for filename, tuids in tuid_response:
         print("     "+filename+":"+str(len(tuids)))
@@ -473,13 +473,13 @@ def test_one_http_call_required(service):
     # SETUP
     proc_files = files[-10:] + [k for k in changed_files] # Useful in testing
     Log.note("Number of files to process: {{flen}}", flen=len(files))
-    first_f_n_tuids, _ = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "d63ed14ed622", testing=True)
+    first_f_n_tuids, _ = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "d63ed14ed622", disable_thread=True)
 
     # THIS NEXT CALL SHOULD BE FAST, DESPITE THE LACK OF LOCAL CACHE
     start = http.request_count
     timer = Timer("get next revision")
     with timer:
-        f_n_tuids, _ = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "14dc6342ec50", testing=True)
+        f_n_tuids, _ = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "14dc6342ec50", disable_thread=True)
     num_http_calls = http.request_count - start
 
     #assert num_http_calls <= 2
@@ -539,9 +539,9 @@ def test_out_of_order_get_tuids_from_files(service):
     test_file = ["dom/base/nsWrapperCache.cpp"]
     check_lines = [41]
 
-    result1, _ = service.get_tuids_from_files(test_file, rev_initial, testing=True)
-    result2, _ = service.get_tuids_from_files(test_file, rev_latest, testing=True)
-    test_result, _ = service.get_tuids_from_files(test_file, rev_middle, testing=True)
+    result1, _ = service.get_tuids_from_files(test_file, rev_initial, disable_thread=True)
+    result2, _ = service.get_tuids_from_files(test_file, rev_latest, disable_thread=True)
+    test_result, _ = service.get_tuids_from_files(test_file, rev_middle, disable_thread=True)
 
     # Check that test_result's tuids at line 41 is different from
     # result 2.
@@ -567,10 +567,10 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
     test_file = ["dom/base/nsWrapperCache.cpp"]
     check_lines = [41]
 
-    result1, _ = service.get_tuids_from_files(test_file, rev_initial, going_forward=True, testing=True)
-    result2, _ = service.get_tuids_from_files(test_file, rev_latest, going_forward=True, testing=True)
-    test_result, _ = service.get_tuids_from_files(test_file, rev_middle, going_forward=True, testing=True)
-    result2, _ = service.get_tuids_from_files(test_file, rev_latest2, going_forward=True, testing=True)
+    result1, _ = service.get_tuids_from_files(test_file, rev_initial, going_forward=True, disable_thread=True)
+    result2, _ = service.get_tuids_from_files(test_file, rev_latest, going_forward=True, disable_thread=True)
+    test_result, _ = service.get_tuids_from_files(test_file, rev_middle, going_forward=True, disable_thread=True)
+    result2, _ = service.get_tuids_from_files(test_file, rev_latest2, going_forward=True, disable_thread=True)
 
     # Check that test_result's tuids at line 41 is different from
     # result 2.
@@ -631,10 +631,10 @@ def test_try_rev_then_mc(service):
     test_file = ["browser/components/payments/test/browser/browser_host_name.js"]
     file_length = 34
 
-    res1, _ = service.get_tuids_from_files(test_file, try_revision, going_forward=True, testing=True)
+    res1, _ = service.get_tuids_from_files(test_file, try_revision, going_forward=True, disable_thread=True)
     assert len(res1[0][1]) == 0
 
-    res2, _ = service.get_tuids_from_files(test_file, mc_revision, going_forward=True, testing=True)
+    res2, _ = service.get_tuids_from_files(test_file, mc_revision, going_forward=True, disable_thread=True)
     assert len(res2[0][1]) == file_length
 
     for tuid_map in res2[0][1]:

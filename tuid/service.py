@@ -275,7 +275,7 @@ class TUIDService:
         return
 
     def get_tuids_from_files(self, files, revision, going_forward=False,
-                             repo=None, files_to_process_thresh=5, testing=False):
+                             repo=None, files_to_process_thresh=5, disable_thread=False):
         """
         Gets the TUIDs for a set of files, at a given revision.
         list(tuids) is an array of tuids, one tuid for each line, in order, and `null` if no tuid assigned
@@ -442,7 +442,7 @@ class TUIDService:
 
         # If there are too many files to process, start a thread to do
         # that work and return completed as False.
-        if (len(new_files) + len(frontier_update_list) > files_to_process_thresh) and not testing:
+        if (len(new_files) + len(frontier_update_list) > files_to_process_thresh) and not disable_thread:
             completed = False
             Thread.run(
                 'get_tuids_from_files-workoverflow',
