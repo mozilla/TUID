@@ -972,7 +972,7 @@ class TUIDService:
                         # If the file hasn't changed up to this revision,
                         # reinsert it with the same previous annotate.
                         if not self._get_annotation(revision, file, transaction):
-                            annotate = self.destringify_tuids(self._get_annotation(rev, file))
+                            annotate = self.destringify_tuids(self._get_annotation(rev, file, transaction))
                             ann_inserts.append((revision, file, self.stringify_tuids(annotate)))
                 else:
                     Log.note("Error occured for file {{file}} in revision {{revision}}", file=file, revision=proc_rev)
@@ -1011,7 +1011,7 @@ class TUIDService:
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
                     for rev, filename, string_tuids in tmp_inserts:
-                        tmp_ann = self._get_annotation(rev, filename)
+                        tmp_ann = self._get_annotation(rev, filename, transaction)
                         if not tmp_ann:
                             recomputed_inserts.append((rev, filename, string_tuids))
                         else:
