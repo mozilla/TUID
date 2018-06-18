@@ -70,6 +70,7 @@ def test_transactions(service):
     assert not latestTestMods
 
 
+@pytest.mark.skipif(True, reason="Try repo results are disabled.")
 def test_tryrepo_tuids(service):
     test_file = ["dom/base/nsWrapperCache.cpp", "testing/mochitest/baselinecoverage/browser_chrome/browser.ini"]
     test_revision = "0f4946791ddb"
@@ -585,6 +586,7 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
                     assert tmap.tuid != tuids_test[count].tuid
 
 
+@pytest.mark.skipif(True, reason="Try repo results are disabled.")
 def test_try_rev_then_mc(service):
     try_revision = "f29e9ee9401c"
     mc_revision = "04cc917f68c5"

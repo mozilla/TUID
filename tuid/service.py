@@ -309,7 +309,9 @@ class TUIDService:
         if repo in ('try',):
             # We don't need to keep latest file revisions
             # and other related things for this condition.
-            return self._get_tuids_from_files_try_branch(files, revision)
+            return [(file, []) for file in files]
+            # Disable the 'try' repo calls
+            #return self._get_tuids_from_files_try_branch(files, revision)
 
         result = []
         revision = revision[:12]
