@@ -212,12 +212,12 @@ class Sqlite(DB):
         query, result, signal, trace, transaction = command_item
 
         transaction.end_of_life = True
-        DEBUG and Log.note(FORMAT_COMMAND, command=query)
         with self.locker:
             self.available_transactions.remove(transaction)
             del self.transaction_stack[-1]
         if not self.transaction_stack:
             # NESTED TRANSACTIONS NOT ALLOWED IN sqlite3
+            DEBUG and Log.note(FORMAT_COMMAND, command=query)
             self.db.execute(query)
 
         has_been_too_long = False
@@ -283,6 +283,7 @@ class Sqlite(DB):
                 # ENSURE THE CURRENT TRANSACTION IS UP TO DATE FOR THIS query
                 if not self.transaction_stack:
                     # sqlite3 ALLOWS ONLY ONE TRANSACTION AT A TIME
+                    DEBUG and Log.note(FORMAT_COMMAND, command=BEGIN)
                     self.db.execute(BEGIN)
                     self.transaction_stack.append(transaction)
                 elif transaction != self.transaction_stack[-1]:
