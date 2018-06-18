@@ -282,13 +282,13 @@ def test_many_files_one_revision(service):
     test_file = test_file_init + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    old = service.get_tuids_from_files(test_file,first_front)
+    old, _ = service.get_tuids_from_files(test_file,first_front, testing=True)
     print("old:")
     for el in old:
         print(el[0])
         print("     "+el[0]+":"+str(len(el[1])))
 
-    new = service.get_tuids_from_files(test_file,test_rev)
+    new, _ = service.get_tuids_from_files(test_file,test_rev, testing=True)
     print("new:")
     for el in new:
         print("     "+el[0]+":"+str(len(el[1])))
@@ -296,7 +296,9 @@ def test_many_files_one_revision(service):
 
 def test_one_addition_many_files(service):
     # Get current annotation
-    _, curr_tuids = service.get_tuids_from_files(["widget/cocoa/nsCocoaWindow.mm"], '159e1105bdc7')[0]
+    result, _ = service.get_tuids_from_files(["widget/cocoa/nsCocoaWindow.mm"], '159e1105bdc7')
+
+    _, curr_tuids = result[0]
     curr_tuid_array = map_to_array(curr_tuids)
 
     # remove line 2148, add eleven lines
@@ -312,7 +314,7 @@ def test_one_addition_many_files(service):
     test_file = test_file_change + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    tuid_response = service.get_tuids_from_files(test_file,test_rev)
+    tuid_response, _ = service.get_tuids_from_files(test_file,test_rev, testing=True)
     print("new:")
     for filename, tuids in tuid_response:
         print("     "+filename+":"+str(len(tuids)))
@@ -471,13 +473,13 @@ def test_one_http_call_required(service):
     # SETUP
     proc_files = files[-10:] + [k for k in changed_files] # Useful in testing
     Log.note("Number of files to process: {{flen}}", flen=len(files))
-    first_f_n_tuids = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "d63ed14ed622")
+    first_f_n_tuids, _ = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "d63ed14ed622", testing=True)
 
     # THIS NEXT CALL SHOULD BE FAST, DESPITE THE LACK OF LOCAL CACHE
     start = http.request_count
     timer = Timer("get next revision")
     with timer:
-        f_n_tuids = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "14dc6342ec50")
+        f_n_tuids, _ = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "14dc6342ec50", testing=True)
     num_http_calls = http.request_count - start
 
     #assert num_http_calls <= 2
@@ -537,9 +539,9 @@ def test_out_of_order_get_tuids_from_files(service):
     test_file = ["dom/base/nsWrapperCache.cpp"]
     check_lines = [41]
 
-    result1 = service.get_tuids_from_files(test_file, rev_initial)
-    result2 = service.get_tuids_from_files(test_file, rev_latest)
-    test_result = service.get_tuids_from_files(test_file, rev_middle)
+    result1, _ = service.get_tuids_from_files(test_file, rev_initial, testing=True)
+    result2, _ = service.get_tuids_from_files(test_file, rev_latest, testing=True)
+    test_result, _ = service.get_tuids_from_files(test_file, rev_middle, testing=True)
 
     # Check that test_result's tuids at line 41 is different from
     # result 2.
@@ -565,10 +567,10 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
     test_file = ["dom/base/nsWrapperCache.cpp"]
     check_lines = [41]
 
-    result1 = service.get_tuids_from_files(test_file, rev_initial, going_forward=True)
-    result2 = service.get_tuids_from_files(test_file, rev_latest, going_forward=True)
-    test_result = service.get_tuids_from_files(test_file, rev_middle, going_forward=True)
-    result2 = service.get_tuids_from_files(test_file, rev_latest2, going_forward=True)
+    result1, _ = service.get_tuids_from_files(test_file, rev_initial, going_forward=True, testing=True)
+    result2, _ = service.get_tuids_from_files(test_file, rev_latest, going_forward=True, testing=True)
+    test_result, _ = service.get_tuids_from_files(test_file, rev_middle, going_forward=True, testing=True)
+    result2, _ = service.get_tuids_from_files(test_file, rev_latest2, going_forward=True, testing=True)
 
     # Check that test_result's tuids at line 41 is different from
     # result 2.
@@ -586,6 +588,42 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
                     assert tmap.tuid != tuids_test[count].tuid
 
 
+def test_threaded_service_call(service):
+    # Will fail on second runs using the same dataset as it's
+    # checking threading capabilities.
+    timeout_seconds = 1
+    mc_revision = "04cc917f68c5"
+    test_file = [
+        "browser/components/payments/test/browser/browser_host_name.js",
+        "/browser/components/extensions/test/browser/browser_ext_omnibox.js",
+        "/browser/components/extensions/test/browser/browser_ext_pageAction_popup_resize.js",
+        "/browser/components/extensions/test/browser/browser_ext_popup_background.js",
+        "/browser/components/extensions/test/browser/browser_ext_popup_corners.js",
+        "/toolkit/components/reader/test/browser_readerMode_with_anchor.js",
+    ]
+
+    with service.conn.transaction() as t:
+        for file in test_file:
+            t.execute(
+                "DELETE FROM annotations WHERE file=" + quote_value(file.lstrip('/')) +
+                " AND revision=" + quote_value(mc_revision)
+            )
+
+    res, completed = service.get_tuids_from_files(test_file, mc_revision, going_forward=True)
+    assert not completed
+    assert all([len(tuids) == 0 for file, tuids in res])
+
+    while not completed:
+        # Wait a bit to let them process
+        Till(seconds=timeout_seconds).wait()
+
+        # Try getting them again
+        res, completed = service.get_tuids_from_files(test_file, mc_revision, going_forward=True)
+
+    assert completed
+    assert all([len(tuids) > 0 for file, tuids in res])
+
+
 @pytest.mark.skipif(True, reason="Try repo results are disabled.")
 def test_try_rev_then_mc(service):
     try_revision = "f29e9ee9401c"
@@ -593,10 +631,10 @@ def test_try_rev_then_mc(service):
     test_file = ["browser/components/payments/test/browser/browser_host_name.js"]
     file_length = 34
 
-    res1 = service.get_tuids_from_files(test_file, try_revision, going_forward=True)
+    res1, _ = service.get_tuids_from_files(test_file, try_revision, going_forward=True, testing=True)
     assert len(res1[0][1]) == 0
 
-    res2 = service.get_tuids_from_files(test_file, mc_revision, going_forward=True)
+    res2, _ = service.get_tuids_from_files(test_file, mc_revision, going_forward=True, testing=True)
     assert len(res2[0][1]) == file_length
 
     for tuid_map in res2[0][1]:

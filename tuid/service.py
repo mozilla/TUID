@@ -270,11 +270,12 @@ class TUIDService:
         :return:
         """
         Log.note("Thread {{pos}} is running.", pos=res_position)
-        results[res_position] = self.get_tuids_from_files(files, revision, going_forward=going_forward, repo=repo)
+        results[res_position], _ = self.get_tuids_from_files(files, revision, going_forward=going_forward, repo=repo)
         Log.note("Thread {{pos}} is ending.", pos=res_position)
         return
 
-    def get_tuids_from_files(self, files, revision, going_forward=False, repo=None):
+    def get_tuids_from_files(self, files, revision, going_forward=False,
+                             repo=None, files_to_process_thresh=5, testing=False):
         """
         Gets the TUIDs for a set of files, at a given revision.
         list(tuids) is an array of tuids, one tuid for each line, in order, and `null` if no tuid assigned
@@ -299,17 +300,19 @@ class TUIDService:
         :param revision: revision to get files at
         :return: list of (file, list(tuids)) tuples
         """
+        completed = True
+
         if repo is None:
             repo = self.config.hg.branch
             check = self._check_branch(revision, repo)
             if not check:
                 # Error was already output by _check_branch
-                return [(file, []) for file in files]
+                return [(file, []) for file in files], completed
 
         if repo in ('try',):
             # We don't need to keep latest file revisions
             # and other related things for this condition.
-            return [(file, []) for file in files]
+            return [(file, []) for file in files], completed
             # Disable the 'try' repo calls
             #return self._get_tuids_from_files_try_branch(files, revision)
 
@@ -384,23 +387,6 @@ class TUIDService:
                     rev=revision, percent=len(log_existing_files)/len(files)
             )
 
-        if len(new_files) > 0:
-            # File has never been seen before, get it's initial
-            # annotation to work from in the future.
-            tmp_res = self.get_tuids(new_files, revision, commit=False)
-            if tmp_res:
-                result.extend(tmp_res)
-            else:
-                Log.note("Error occured for files " + str(new_files) + " in revision " + revision)
-
-            # If this file has not been seen before,
-            # add it to the latest modifications, else
-            # it's already in there so update its past
-            # revisions.
-            for file in new_files:
-                latestFileMod_inserts[file] = (file, revision)
-
-        Log.note("Finished updating frontiers. Updating DB table `latestFileMod`...")
         if len(latestFileMod_inserts) > 0:
             with self.conn.transaction() as transaction:
                 for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
@@ -412,12 +398,60 @@ class TUIDService:
                         )
                     )
 
-        # If we have files that need to have their frontier updated, do that now
-        if len(frontier_update_list) > 0:
-            tmp = self._update_file_frontiers(frontier_update_list, revision, going_forward=going_forward)
-            result.extend(tmp)
+        def update_tuids_in_thread(new_files, frontier_update_list, revision, please_stop=None):
+            # Processes the new files and files which need their frontier updated
+            # outside of the main thread as this can take a long time.
+            result = []
 
-        return result
+            latestFileMod_inserts = {}
+            if len(new_files) > 0:
+                # File has never been seen before, get it's initial
+                # annotation to work from in the future.
+                tmp_res = self.get_tuids(new_files, revision, commit=False)
+                if tmp_res:
+                    result.extend(tmp_res)
+                else:
+                    Log.note("Error occured for files " + str(new_files) + " in revision " + revision)
+
+                # If this file has not been seen before,
+                # add it to the latest modifications, else
+                # it's already in there so update its past
+                # revisions.
+                for file in new_files:
+                    latestFileMod_inserts[file] = (file, revision)
+
+            Log.note("Finished updating frontiers. Updating DB table `latestFileMod`...")
+            if len(latestFileMod_inserts) > 0:
+                with self.conn.transaction() as transaction:
+                    for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
+                        transaction.execute(
+                            "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+                            sql_list(
+                                sql_iso(sql_list(map(quote_value, i)))
+                                for i in inserts_list
+                            )
+                        )
+
+            # If we have files that need to have their frontier updated, do that now
+            if len(frontier_update_list) > 0:
+                tmp = self._update_file_frontiers(frontier_update_list, revision, going_forward=going_forward)
+                result.extend(tmp)
+
+            Log.note("Completed work overflow for revision {{cset}}", cset=revision)
+            return result
+
+        # If there are too many files to process, start a thread to do
+        # that work and return completed as False.
+        if (len(new_files) + len(frontier_update_list) > files_to_process_thresh) and not testing:
+            completed = False
+            Thread.run(
+                'get_tuids_from_files-workoverflow',
+                update_tuids_in_thread, new_files,frontier_update_list, revision
+            )
+        else:
+            result.extend(update_tuids_in_thread(new_files, frontier_update_list, revision))
+
+        return result, completed
 
 
     def _apply_diff(self, transaction, annotation, diff, cset, file):

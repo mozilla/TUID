@@ -92,13 +92,25 @@ def tuid_endpoint(path):
             branch_name = coalesce(branch_name, a.eq.branch)
 
         paths = listwrap(paths)
+        completed = False
+        no_paths_given = False
+
         if len(paths) <= 0:
             Log.warning("Can't find file paths found in request: {{request}}", request=request_body)
             response = [("Error in app.py - no paths found", [])]
+            no_paths_given = True
         else:
             # RETURN TUIDS
             with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
-                response = service.get_tuids_from_files(revision=rev, files=paths, going_forward=True, repo=branch_name)
+                response, completed = service.get_tuids_from_files(
+                    revision=rev, files=paths, going_forward=True, repo=branch_name
+                )
+
+            if not completed:
+                Log.note(
+                    "Request for {{num}} files is incomplete for revision {{rev}}.",
+                    num=str(len(paths)), rev=rev
+                )
 
         if query.meta.format == 'list':
             formatter = _stream_list
@@ -107,7 +119,7 @@ def tuid_endpoint(path):
 
         return Response(
             formatter(response),
-            status=200,
+            status=200 if completed or no_paths_given else 202,
             headers={
                 "Content-Type": "application/json"
             }
