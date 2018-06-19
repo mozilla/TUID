@@ -61,6 +61,7 @@
     },
     "constants": {
         "tuid.service.DEBUG": false,
+        "tuid.service.ENABLE_TRY": true,
         "pyLibrary.env.http.DEBUG": false,
         "pyLibrary.env.http.default_headers": {
             "Referer": "https://github.com/mozilla/TUID",

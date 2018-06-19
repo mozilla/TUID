@@ -29,6 +29,8 @@ DEBUG = False
 RETRY = {"times": 3, "sleep": 5}
 SQL_ANN_BATCH_SIZE = 5
 SQL_BATCH_SIZE = 500
+FILES_TO_PROCESS_THRESH = 5
+ENABLE_TRY = False
 DAEMON_WAIT_AT_NEWEST = 30 * SECOND # Time to wait at the newest revision before polling again.
 
 GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE file=? and revision=? and line=?"
@@ -274,8 +276,14 @@ class TUIDService:
         Log.note("Thread {{pos}} is ending.", pos=res_position)
         return
 
-    def get_tuids_from_files(self, files, revision, going_forward=False,
-                             repo=None, files_to_process_thresh=5, disable_thread=False):
+    def get_tuids_from_files(
+            self,
+            files,
+            revision,
+            going_forward=False,
+            repo=None,
+            use_thread=True
+        ):
         """
         Gets the TUIDs for a set of files, at a given revision.
         list(tuids) is an array of tuids, one tuid for each line, in order, and `null` if no tuid assigned
@@ -299,12 +307,8 @@ class TUIDService:
         :param files: list of files
         :param revision: revision to get files at
         :param repo: Branch to get files from (mozilla-central, or try)
-        :param files_to_process_thresh: If the number of files needed to process as new additions or
-                                        file frontier updates based on `files` is higher than this value,
-                                        a new thread is spawned to take care of the work. It can be queried
-                                        later. Disabled with `disable_thread`.
         :param disable_thread: Disables the thread that spawns if the number of files to process exceeds the
-                               threshold set by `files_to_process_thresh`.
+                               threshold set by FILES_TO_PROCESS_THRESH.
         :param going_forward: When set to true, the frontiers always get updated to the given revision
                               even if we can't find a file's frontier. Otherwise, if a frontier is too far,
                               the latest revision will not be updated.
@@ -323,9 +327,11 @@ class TUIDService:
         if repo in ('try',):
             # We don't need to keep latest file revisions
             # and other related things for this condition.
+
+            # Enable the 'try' repo calls with ENABLE_TRY
+            if ENABLE_TRY:
+                return self._get_tuids_from_files_try_branch(files, revision), completed
             return [(file, []) for file in files], completed
-            # Disable the 'try' repo calls
-            #return self._get_tuids_from_files_try_branch(files, revision)
 
         result = []
         revision = revision[:12]
@@ -453,11 +459,16 @@ class TUIDService:
 
         # If there are too many files to process, start a thread to do
         # that work and return completed as False.
-        if (len(new_files) + len(frontier_update_list) > files_to_process_thresh) and not disable_thread:
+        threaded = False
+        if use_thread:
+            if (len(new_files) + len(frontier_update_list) > FILES_TO_PROCESS_THRESH):
+                threaded = True
+
+        if threaded:
             completed = False
             Thread.run(
                 'get_tuids_from_files-workoverflow',
-                update_tuids_in_thread, new_files,frontier_update_list, revision
+                update_tuids_in_thread, new_files, frontier_update_list, revision
             )
         else:
             result.extend(update_tuids_in_thread(new_files, frontier_update_list, revision))

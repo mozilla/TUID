@@ -70,7 +70,6 @@ def test_transactions(service):
     assert not latestTestMods
 
 
-@pytest.mark.skipif(True, reason="Try repo results are disabled.")
 def test_tryrepo_tuids(service):
     test_file = ["dom/base/nsWrapperCache.cpp", "testing/mochitest/baselinecoverage/browser_chrome/browser.ini"]
     test_revision = "0f4946791ddb"
@@ -282,13 +281,13 @@ def test_many_files_one_revision(service):
     test_file = test_file_init + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    old, _ = service.get_tuids_from_files(test_file,first_front, disable_thread=True)
+    old, _ = service.get_tuids_from_files(test_file,first_front, use_thread=False)
     print("old:")
     for el in old:
         print(el[0])
         print("     "+el[0]+":"+str(len(el[1])))
 
-    new, _ = service.get_tuids_from_files(test_file,test_rev, disable_thread=True)
+    new, _ = service.get_tuids_from_files(test_file,test_rev, use_thread=False)
     print("new:")
     for el in new:
         print("     "+el[0]+":"+str(len(el[1])))
@@ -314,7 +313,7 @@ def test_one_addition_many_files(service):
     test_file = test_file_change + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    tuid_response, _ = service.get_tuids_from_files(test_file,test_rev, disable_thread=True)
+    tuid_response, _ = service.get_tuids_from_files(test_file,test_rev, use_thread=False)
     print("new:")
     for filename, tuids in tuid_response:
         print("     "+filename+":"+str(len(tuids)))
@@ -473,13 +472,13 @@ def test_one_http_call_required(service):
     # SETUP
     proc_files = files[-10:] + [k for k in changed_files] # Useful in testing
     Log.note("Number of files to process: {{flen}}", flen=len(files))
-    first_f_n_tuids, _ = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "d63ed14ed622", disable_thread=True)
+    first_f_n_tuids, _ = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "d63ed14ed622", use_thread=False)
 
     # THIS NEXT CALL SHOULD BE FAST, DESPITE THE LACK OF LOCAL CACHE
     start = http.request_count
     timer = Timer("get next revision")
     with timer:
-        f_n_tuids, _ = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "14dc6342ec50", disable_thread=True)
+        f_n_tuids, _ = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "14dc6342ec50", use_thread=False)
     num_http_calls = http.request_count - start
 
     #assert num_http_calls <= 2
@@ -539,9 +538,9 @@ def test_out_of_order_get_tuids_from_files(service):
     test_file = ["dom/base/nsWrapperCache.cpp"]
     check_lines = [41]
 
-    result1, _ = service.get_tuids_from_files(test_file, rev_initial, disable_thread=True)
-    result2, _ = service.get_tuids_from_files(test_file, rev_latest, disable_thread=True)
-    test_result, _ = service.get_tuids_from_files(test_file, rev_middle, disable_thread=True)
+    result1, _ = service.get_tuids_from_files(test_file, rev_initial, use_thread=False)
+    result2, _ = service.get_tuids_from_files(test_file, rev_latest, use_thread=False)
+    test_result, _ = service.get_tuids_from_files(test_file, rev_middle, use_thread=False)
 
     # Check that test_result's tuids at line 41 is different from
     # result 2.
@@ -567,10 +566,10 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
     test_file = ["dom/base/nsWrapperCache.cpp"]
     check_lines = [41]
 
-    result1, _ = service.get_tuids_from_files(test_file, rev_initial, going_forward=True, disable_thread=True)
-    result2, _ = service.get_tuids_from_files(test_file, rev_latest, going_forward=True, disable_thread=True)
-    test_result, _ = service.get_tuids_from_files(test_file, rev_middle, going_forward=True, disable_thread=True)
-    result2, _ = service.get_tuids_from_files(test_file, rev_latest2, going_forward=True, disable_thread=True)
+    result1, _ = service.get_tuids_from_files(test_file, rev_initial, going_forward=True, use_thread=False)
+    result2, _ = service.get_tuids_from_files(test_file, rev_latest, going_forward=True, use_thread=False)
+    test_result, _ = service.get_tuids_from_files(test_file, rev_middle, going_forward=True, use_thread=False)
+    result2, _ = service.get_tuids_from_files(test_file, rev_latest2, going_forward=True, use_thread=False)
 
     # Check that test_result's tuids at line 41 is different from
     # result 2.
@@ -624,17 +623,16 @@ def test_threaded_service_call(service):
     assert all([len(tuids) > 0 for file, tuids in res])
 
 
-@pytest.mark.skipif(True, reason="Try repo results are disabled.")
 def test_try_rev_then_mc(service):
     try_revision = "f29e9ee9401c"
     mc_revision = "04cc917f68c5"
     test_file = ["browser/components/payments/test/browser/browser_host_name.js"]
     file_length = 34
 
-    res1, _ = service.get_tuids_from_files(test_file, try_revision, going_forward=True, disable_thread=True)
+    res1, _ = service.get_tuids_from_files(test_file, try_revision, going_forward=True, use_thread=False)
     assert len(res1[0][1]) == 0
 
-    res2, _ = service.get_tuids_from_files(test_file, mc_revision, going_forward=True, disable_thread=True)
+    res2, _ = service.get_tuids_from_files(test_file, mc_revision, going_forward=True, use_thread=False)
     assert len(res2[0][1]) == file_length
 
     for tuid_map in res2[0][1]:
