@@ -80,10 +80,10 @@ def test_transactions2(service):
             "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
             sql_list(sql_iso(sql_list(map(quote_value, i))) for i in inserting)
         )
-        # Query for that change with transaction-less query
+        # Query for one change
         query_res1 = t.execute("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_1',))
 
-        # Query for it with transactional query
+        # Query for the other change
         query_res2 = t.execute("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_2',))
 
     assert query_res1[0] == '1'
