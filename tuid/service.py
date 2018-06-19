@@ -298,7 +298,18 @@ class TUIDService:
 
         :param files: list of files
         :param revision: revision to get files at
-        :return: list of (file, list(tuids)) tuples
+        :param repo: Branch to get files from (mozilla-central, or try)
+        :param files_to_process_thresh: If the number of files needed to process as new additions or
+                                        file frontier updates based on `files` is higher than this value,
+                                        a new thread is spawned to take care of the work. It can be queried
+                                        later. Disabled with `disable_thread`.
+        :param disable_thread: Disables the thread that spawns if the number of files to process exceeds the
+                               threshold set by `files_to_process_thresh`.
+        :param going_forward: When set to true, the frontiers always get updated to the given revision
+                              even if we can't find a file's frontier. Otherwise, if a frontier is too far,
+                              the latest revision will not be updated.
+        :return: The following tuple which contains:
+                    ([list of (file, list(tuids)) tuples], True/False if completed or not)
         """
         completed = True
 
