@@ -39,9 +39,8 @@ def service(config, new_db):
 
 def test_transactions(service):
     # This should pass
-    with service.conn.transaction():
-        old = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838", commit=False)
-        new = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62", commit=False)
+    old = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838", commit=False)
+    new = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62", commit=False)
 
     assert len(old) == len(new)
 

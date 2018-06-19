@@ -713,7 +713,7 @@ class TUIDService:
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
                     for t in tmp_inserts:
-                        tmp_ann = self._get_annotation(t[0], t[1])
+                        tmp_ann = self._get_annotation(t[0], t[1], transaction=transaction)
                         if not tmp_ann:
                             recomputed_inserts.append(t)
                         else:
