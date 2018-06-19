@@ -11,7 +11,6 @@ from __future__ import division
 from __future__ import unicode_literals
 
 from mo_logs import Log
-from pyLibrary.sql import sqlite
 from pyLibrary.sql.sqlite import quote_value, Sqlite
 
 DEBUG = False

@@ -9,12 +9,12 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import os
-
 import pytest
 
 from mo_logs import Log, constants, startup
 
 config = None
+
 
 def pytest_addoption(parser):
     parser.addoption(

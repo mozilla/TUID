@@ -12,13 +12,13 @@ import json
 
 import pytest
 
-from mo_threads import Thread, Till
+from mo_dots import Null
 from mo_logs import Log, Except
+from mo_threads import Thread, Till
 from mo_times import Timer
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, sql_iso
-from pyLibrary.sql.sqlite import quote_value, Sqlite
-from tuid import sql
+from pyLibrary.sql.sqlite import quote_value
 from tuid.service import TUIDService
 from tuid.util import map_to_array
 
@@ -28,10 +28,10 @@ _service = None
 def service(config, new_db):
     global _service
     if new_db == 'yes':
-        return TUIDService(conn=sql.Sql(":memory:"), kwargs=config.tuid)
+        return TUIDService(database=Null, kwargs=config.tuid)
     elif new_db == 'no':
         if _service is None:
-            _service = TUIDService(conn=sql.Sql("resources/test.db"), kwargs=config.tuid)
+            _service = TUIDService(kwargs=config.tuid)
         return _service
     else:
         Log.error("expecting 'yes' or 'no'")

@@ -65,13 +65,17 @@ class Sqlite(DB):
         self.settings = kwargs
         self.filename = File(filename).abspath
         if known_databases.get(self.filename):
-            Log.error("Not allowed to createmore than one Sqlite instance for {{file}}", file=self.filename)
+            Log.error("Not allowed to create more than one Sqlite instance for {{file}}", file=self.filename)
 
         # SETUP DATABASE
         DEBUG and Log.note("Sqlite version {{version}}", version=sqlite3.sqlite_version)
         try:
             if db == None:
-                self.db = sqlite3.connect(coalesce(self.filename, ':memory:'), check_same_thread=False, isolation_level=None)
+                self.db = sqlite3.connect(
+                    database=coalesce(self.filename, ":memory:"),
+                    check_same_thread=False,
+                    isolation_level=None
+                )
             else:
                 self.db = db
         except Exception as e:
@@ -197,9 +201,9 @@ class Sqlite(DB):
         blocked = (self.delayed_queries+self.delayed_transactions)[0]
 
         Log.warning(
-            "Query on thread {{blocked_thread|quote}} at\n"
+            "Query on thread {{blocked_thread|json}} at\n"
             "{{blocked_trace|indent}}"
-            "is blocked by {{blocker_thread|quote}} at\n"
+            "is blocked by {{blocker_thread|json}} at\n"
             "{{blocker_trace|indent}}"
             "this message brought to you by....",
             blocker_trace=format_trace(blocker.trace),

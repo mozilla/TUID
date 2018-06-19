@@ -46,6 +46,7 @@ def app():
     app_process.join(raise_on_error=False)
 
 
+@pytest.mark.first_run
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_empty_query(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
@@ -54,6 +55,7 @@ def test_empty_query(config, app):
     assert response.content == b"expecting query"
 
 
+@pytest.mark.first_run
 @pytest.mark.skipif(os.name == 'nt', reason="can not send request on windows, I do not know why")
 def test_query_too_big(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid/"
@@ -63,6 +65,7 @@ def test_query_too_big(config, app):
     assert response.content == b"request too large"
 
 
+@pytest.mark.first_run
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_query_error(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
@@ -72,6 +75,7 @@ def test_query_error(config, app):
     assert "expecting a simple where clause with following structure" in error.template
 
 
+@pytest.mark.first_run
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_single_file(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
@@ -94,6 +98,7 @@ def test_single_file(config, app):
     assert len(set(tuids)) == 41  # tuids much be unique
 
 
+@pytest.mark.first_run
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_client(config, app):
     client = TuidClient(config.client)
@@ -104,6 +109,7 @@ def test_client(config, app):
     )
 
 
+@pytest.mark.first_run
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_client_w_try(config, app):
     client = TuidClient(config.client)
