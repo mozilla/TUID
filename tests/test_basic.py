@@ -75,7 +75,7 @@ def test_tryrepo_tuids(service):
     test_revision = "0f4946791ddb"
 
     found_file = False
-    result = service.get_tuids_from_files(test_file, test_revision, repo='try')
+    result, _ = service.get_tuids_from_files(test_file, test_revision, repo='try')
     for file, tuids in result:
         if file == 'testing/mochitest/baselinecoverage/browser_chrome/browser.ini':
             found_file = True
