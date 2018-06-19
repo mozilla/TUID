@@ -81,8 +81,12 @@ def test_transactions2(service):
             sql_list(sql_iso(sql_list(map(quote_value, i))) for i in inserting)
         )
 
-        # Query for one change
-        query_res1 = service.conn.get("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_1',))
+        try:
+            # Query for one change
+            query_res1 = service.conn.get("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_1',))
+            assert False
+        except Exception as e:
+            assert "Not allowed" in e
 
         # Query for the other change
         query_res2 = t.get("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_2',))

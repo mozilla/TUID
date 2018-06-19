@@ -16,6 +16,7 @@ import os
 import re
 import sys
 from collections import Mapping, namedtuple
+from copy import copy
 
 from mo_dots import Data, coalesce, unwraplist, Null
 from mo_files import File
@@ -143,13 +144,15 @@ class Sqlite(DB):
         signal.acquire()
         result = Data()
         trace = extract_stack(1) if self.get_trace else None
+
+        if self.get_trace:
+            current_thread = Thread.current()
+            for c in copy(self.queue):
+                if c.transaction and c.transaction.thread is current_thread:
+                    Log.error("you can not query outside a transaction you have open already")
+
         self.queue.add(CommandItem(command, result, signal, trace, None))
         signal.acquire()
-
-        current_thread = Thread.current()
-        for c in self.queue:
-            if c.transaction and c.transaction.thread is current_thread:
-                Log.error("you can not query outside a transaction you have open already")
 
         if result.exception:
             Log.error("Problem with Sqlite call", cause=result.exception)

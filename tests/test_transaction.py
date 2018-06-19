@@ -34,10 +34,13 @@ def test_transactionqueries():
 
     with db.transaction() as t:
         t.execute("INSERT INTO my_table (value) VALUES ('a')")
-        result1 = db.query("SELECT * FROM my_table")
+        try:
+            result1 = db.query("SELECT * FROM my_table")
+            assert False
+        except Exception as e:
+            assert "Not allowed" in e
         result2 = t.query("SELECT * FROM my_table")
 
-    assert result1[0][0] == 'a'
     assert result2.data[0][0] == 'a'
 
     _teardown(db, {})
