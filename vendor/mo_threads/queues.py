@@ -73,10 +73,6 @@ class Queue(object):
         if not self.silent:
             Log.note("queue iterator is done")
 
-    def __copy__(self):
-        with self.lock:
-            return list(self.queue)
-
     def add(self, value, timeout=None):
         with self.lock:
             if value is THREAD_STOP:

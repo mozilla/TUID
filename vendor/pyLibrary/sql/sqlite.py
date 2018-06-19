@@ -16,7 +16,6 @@ import os
 import re
 import sys
 from collections import Mapping, namedtuple
-from copy import copy
 
 from mo_dots import Data, coalesce, unwraplist, Null
 from mo_files import File
@@ -36,6 +35,7 @@ DEBUG = False
 TRACE = True
 
 FORMAT_COMMAND = "Running command\n{{command|limit(100)|indent}}"
+DOUBLE_TRANSACTION_ERROR = "You can not query outside a transaction you have open already"
 TOO_LONG_TO_HOLD_TRANSACTION = 10
 
 sqlite3 = None
@@ -84,7 +84,7 @@ class Sqlite(DB):
         load_functions and self._load_functions()
 
         self.locker = Lock()
-        self.available_transactions = []
+        self.available_transactions = []  # LIST OF ALL THE TRANSACTIONS BEING MANAGED
         self.queue = Queue("sql commands")   # HOLD (command, result, signal, stacktrace) TUPLES
 
         self.get_trace = coalesce(get_trace, TRACE)
@@ -147,9 +147,10 @@ class Sqlite(DB):
 
         if self.get_trace:
             current_thread = Thread.current()
-            for c in copy(self.queue):
-                if c.transaction and c.transaction.thread is current_thread:
-                    Log.error("you can not query outside a transaction you have open already")
+            with self.locker:
+                for t in self.available_transactions:
+                    if t.thread is current_thread:
+                        Log.error(DOUBLE_TRANSACTION_ERROR)
 
         self.queue.add(CommandItem(command, result, signal, trace, None))
         signal.acquire()

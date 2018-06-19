@@ -11,7 +11,7 @@ from __future__ import unicode_literals
 from mo_dots import Data
 from mo_threads import Signal, Thread
 from pyLibrary.sql import sqlite, sql_iso
-from pyLibrary.sql.sqlite import Sqlite, quote_value
+from pyLibrary.sql.sqlite import Sqlite, quote_value, DOUBLE_TRANSACTION_ERROR
 
 sqlite.DEBUG = True
 
@@ -38,7 +38,7 @@ def test_transactionqueries():
             result1 = db.query("SELECT * FROM my_table")
             assert False
         except Exception as e:
-            assert "Not allowed" in e
+            assert DOUBLE_TRANSACTION_ERROR in e
         result2 = t.query("SELECT * FROM my_table")
 
     assert result2.data[0][0] == 'a'

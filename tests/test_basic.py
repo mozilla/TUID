@@ -18,7 +18,7 @@ from mo_threads import Thread, Till
 from mo_times import Timer
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, sql_iso
-from pyLibrary.sql.sqlite import quote_value
+from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR
 from tuid.service import TUIDService
 from tuid.util import map_to_array
 
@@ -86,7 +86,7 @@ def test_transactions2(service):
             query_res1 = service.conn.get("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_1',))
             assert False
         except Exception as e:
-            assert "Not allowed" in e
+            assert DOUBLE_TRANSACTION_ERROR in e
 
         # Query for the other change
         query_res2 = t.get("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_2',))
