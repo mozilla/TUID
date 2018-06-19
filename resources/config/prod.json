@@ -49,7 +49,7 @@
             "Referer": "https://github.com/mozilla/TUID",
             "User-Agent": "TUID Service"
         },
-        "pyLibrary.sql.sqlite.DEBUG": true,
+        "pyLibrary.sql.sqlite.DEBUG": false,
         "pyLibrary.sql.sqlite.TOO_LONG_TO_HOLD_TRANSACTION": 30,
         "mo_hg.hg_mozilla_org.DAEMON_HG_INTERVAL": 0,
         "mo_hg.hg_branches.BRANCH_WHITELIST": ["mozilla-central", "try"]

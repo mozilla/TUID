@@ -16,6 +16,7 @@ from mo_future import text_type
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_kwargs import override
 from mo_logs import Log
+from mo_math.randoms import Random
 from mo_threads import Till, Thread, Lock
 from mo_times.durations import SECOND, DAY
 from pyLibrary.env import http
@@ -467,7 +468,7 @@ class TUIDService:
         if threaded:
             completed = False
             Thread.run(
-                'get_tuids_from_files-workoverflow',
+                'get_tuids_from_files'+Random.base64(9),
                 update_tuids_in_thread, new_files, frontier_update_list, revision
             )
         else:
@@ -952,7 +953,7 @@ class TUIDService:
                     if going_forward:
                         # If we are always going forward, update the frontier
                         latestFileMod_inserts[file] = (file, revision)
-                    Log.note("Frontier update - can't find frontier {lost_frontier}: " +
+                    Log.note("Frontier update - can't find frontier {{lost_frontier}}: " +
                              "{{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
                              count=count, total=total, file=file, rev=revision, percent=count / total,
                              lost_frontier=rev
