@@ -91,7 +91,6 @@ def test_transactions2(service):
         # Query for the other change
         query_res2 = t.get("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_2',))
 
-    assert query_res1[0][0] == '1'
     assert query_res2[0][0] == '2'
 
 

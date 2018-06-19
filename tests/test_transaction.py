@@ -43,8 +43,6 @@ def test_transactionqueries():
 
     assert result2.data[0][0] == 'a'
 
-    _teardown(db, {})
-
 
 def test_two_commands():
     db, threads, signals = _setup()
