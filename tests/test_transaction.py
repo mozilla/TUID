@@ -28,6 +28,21 @@ def test_interleaved_transactions():
     _teardown(db, threads)
 
 
+def test_transactionqueries():
+    db = Sqlite()
+    db.query("CREATE TABLE my_table (value TEXT)")
+
+    with db.transaction() as t:
+        t.execute("INSERT INTO my_table (value) VALUES ('a')")
+        result1 = db.query("SELECT * FROM my_table")
+        result2 = t.query("SELECT * FROM my_table")
+
+    assert result1[0][0] == 'a'
+    assert result2.data[0][0] == 'a'
+
+    _teardown(db, {})
+
+
 def test_two_commands():
     db, threads, signals = _setup()
     a, b = signals.a, signals.b

@@ -70,7 +70,7 @@ def test_transactions(service):
     assert not latestTestMods
 
 
-@pytest.mark.skipif(True, reason="Broken transaction test.")
+#@pytest.mark.skipif(True, reason="Broken transaction test.")
 def test_transactions2(service):
     inserting = [('testing_transaction2_1', '1'), ('testing_transaction2_2', '2')]
 
@@ -80,14 +80,15 @@ def test_transactions2(service):
             "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
             sql_list(sql_iso(sql_list(map(quote_value, i))) for i in inserting)
         )
+
         # Query for one change
-        query_res1 = t.execute("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_1',))
+        query_res1 = service.conn.get("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_1',))
 
         # Query for the other change
-        query_res2 = t.execute("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_2',))
+        query_res2 = t.get("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_2',))
 
-    assert query_res1[0] == '1'
-    assert query_res2[0] == '2'
+    assert query_res1[0][0] == '1'
+    assert query_res2[0][0] == '2'
 
 
 def test_tryrepo_tuids(service):

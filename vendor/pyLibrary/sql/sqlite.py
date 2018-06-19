@@ -145,6 +145,12 @@ class Sqlite(DB):
         trace = extract_stack(1) if self.get_trace else None
         self.queue.add(CommandItem(command, result, signal, trace, None))
         signal.acquire()
+
+        current_thread = Thread.current()
+        for c in self.queue:
+            if c.transaction and c.transaction.thread is current_thread:
+                Log.error("you can not query outside a transaction you have open already")
+
         if result.exception:
             Log.error("Problem with Sqlite call", cause=result.exception)
         return result
