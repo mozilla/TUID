@@ -70,6 +70,26 @@ def test_transactions(service):
     assert not latestTestMods
 
 
+@pytest.mark.skipif(True, reason="Broken transaction test.")
+def test_transactions2(service):
+    inserting = [('testing_transaction2_1', '1'), ('testing_transaction2_2', '2')]
+
+    with service.conn.transaction() as t:
+        # Make a change
+        t.execute(
+            "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+            sql_list(sql_iso(sql_list(map(quote_value, i))) for i in inserting)
+        )
+        # Query for that change with transaction-less query
+        query_res1 = t.execute("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_1',))
+
+        # Query for it with transactional query
+        query_res2 = t.execute("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_2',))
+
+    assert query_res1[0] == '1'
+    assert query_res2[0] == '2'
+
+
 def test_tryrepo_tuids(service):
     test_file = ["dom/base/nsWrapperCache.cpp", "testing/mochitest/baselinecoverage/browser_chrome/browser.ini"]
     test_revision = "0f4946791ddb"
@@ -587,6 +607,7 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
                     assert tmap.tuid != tuids_test[count].tuid
 
 
+@pytest.mark.first_run
 def test_threaded_service_call(service):
     # Will fail on second runs using the same dataset as it's
     # checking threading capabilities.
@@ -600,13 +621,6 @@ def test_threaded_service_call(service):
         "/browser/components/extensions/test/browser/browser_ext_popup_corners.js",
         "/toolkit/components/reader/test/browser_readerMode_with_anchor.js",
     ]
-
-    with service.conn.transaction() as t:
-        for file in test_file:
-            t.execute(
-                "DELETE FROM annotations WHERE file=" + quote_value(file.lstrip('/')) +
-                " AND revision=" + quote_value(mc_revision)
-            )
 
     res, completed = service.get_tuids_from_files(test_file, mc_revision, going_forward=True)
     assert not completed
