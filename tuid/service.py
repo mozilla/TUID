@@ -1273,10 +1273,18 @@ class TUIDService:
             # object that are not in the DB.
             if len(annotated_lines) > 0:
                 # If we are using get_tuids within another transaction
-                self._update_file_changesets(transaction, annotated_lines)
+                try:
+                    self._update_file_changesets(transaction, annotated_lines)
+                except Exception as e:
+                    # Something broke for this file, ignore it and go to the
+                    # next one.
+                    Log.note("Failed to insert new tuids because of: {{cause}}", cause=e)
+                    continue
+
 
             # Get the TUIDs for each line (can probably be optimized with a join)
             tuids = tmp_tuids
+            errored = False
             for line_num in range(1, len(line_origins) + 1):
                 if line_num in existing_tuids:
                     tuids.append(TuidMap(existing_tuids[line_num], line_num))
@@ -1291,7 +1299,12 @@ class TUIDService:
                     else:
                         tuids.append(MISSING)
                 except Exception as e:
-                    Log.note("Unexpected error searching {{cause}}", cause=e)
+                    Log.note("Unexpected error searching for tuids {{cause}}", cause=e)
+                    errored = True
+                    break
+            if errored:
+                # Error searching for tuids, go to next file
+                continue
 
             # Make sure we are not adding the same thing another thread
             # added.
