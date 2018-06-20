@@ -143,11 +143,10 @@ def _stream_table(files):
 
 
 def _stream_list(files):
-    sep = b'{"format":"list", "data":['
+    yield b'{"format":"list", "data":['
     for f, pairs in files:
-        yield sep
         yield value2json({"path": f, "tuids": map_to_array(pairs)}).encode('utf8')
-        sep = b","
+        yield b","
     yield b']}'
 
 
