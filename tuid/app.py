@@ -17,7 +17,7 @@ from flask import Flask, Response
 
 from mo_dots import listwrap, coalesce, unwraplist
 from mo_json import value2json, json2value
-from mo_logs import Log, constants, startup
+from mo_logs import Log, constants, startup, Except
 from mo_logs.strings import utf82unicode, unicode2utf8
 from mo_times import Timer, Date
 from pyLibrary.env.flask_wrappers import cors_wrapper
@@ -90,15 +90,10 @@ def tuid_endpoint(path):
             rev = coalesce(rev, a.eq.revision)
             paths = unwraplist(coalesce(paths, a['in'].path, a.eq.path))
             branch_name = coalesce(branch_name, a.eq.branch)
-
         paths = listwrap(paths)
-        completed = False
-        no_paths_given = False
 
-        if len(paths) <= 0:
-            Log.warning("Can't find file paths found in request: {{request}}", request=request_body)
-            response = [("Error in app.py - no paths found", [])]
-            no_paths_given = True
+        if len(paths) == 0:
+            response, completed = [], True
         else:
             # RETURN TUIDS
             with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
@@ -119,7 +114,7 @@ def tuid_endpoint(path):
 
         return Response(
             formatter(response),
-            status=200 if completed or no_paths_given else 202,
+            status=200 if completed else 202,
             headers={
                 "Content-Type": "application/json"
             }

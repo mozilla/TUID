@@ -77,6 +77,22 @@ def test_query_error(config, app):
 
 @pytest.mark.first_run
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
+def test_zero_files(config, app):
+    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
+    response = http.post_json(url, json={
+        "from": "files",
+        "where": {"and": [
+            {"eq": {"revision": "29dcc9cb77c372c97681a47496488ec6c623915d"}},
+            {"in": {"path": []}},
+            {"eq": {"branch": "mozilla-central"}}
+        ]}
+    })
+
+    assert len(response.data) == 0
+
+
+@pytest.mark.first_run
+@pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_single_file(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
     response = http.post_json(url, json={
