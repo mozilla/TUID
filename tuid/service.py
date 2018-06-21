@@ -167,9 +167,13 @@ class TUIDService:
 
     def destringify_tuids(self, tuids_string):
         # Builds up TuidMap list from annotation cache entry.
+
+        ## TEMPORARY FIX
+        if type(tuids_string) != tuple: # Make sure we have a tuple here
+            tuids_string = (tuids_string,)
+
         lines = str(tuids_string[0]).splitlines()
         line_origins = []
-        entry = None
         try:
             for line in lines:
                 entry = line.split(',')
@@ -177,7 +181,7 @@ class TUIDService:
                     TuidMap(int(entry[0].replace("'", "")), int(entry[1].replace("'", "")))
                 )
         except Exception as e:
-            Log.warning("Invalid entry in tuids list: " + str(tuids_string))
+            Log.warning("Invalid entry in tuids list: " + str(lines))
             return None
         return line_origins
 
@@ -534,8 +538,7 @@ class TUIDService:
 
         if len(list_to_insert) > 0:
             count = 0
-            while count < len(list_to_insert):
-                inserts_list = list_to_insert[count:count + SQL_BATCH_SIZE]
+            for _, inserts_list in jx.groupby(list_to_insert, size=SQL_BATCH_SIZE):
                 count += SQL_BATCH_SIZE
                 transaction.execute(
                     "INSERT INTO temporal (tuid, revision, file, line)" +
@@ -716,11 +719,8 @@ class TUIDService:
             # added by another thread.
             anns_added_by_other_thread = {}
             if len(ann_inserts) > 0:
-                count = 0
                 ann_inserts = list(set(ann_inserts))
-                while count < len(ann_inserts):
-                    tmp_inserts = ann_inserts[count:count + SQL_ANN_BATCH_SIZE]
-
+                for _, tmp_inserts in jx.groupby(ann_inserts, size=SQL_ANN_BATCH_SIZE):
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
                     for t in tmp_inserts:
@@ -730,7 +730,6 @@ class TUIDService:
                         else:
                             anns_added_by_other_thread[t[1]] = self.destringify_tuids(tmp_ann)
 
-                    count += SQL_ANN_BATCH_SIZE
                     try:
                         transaction.execute(
                             "INSERT INTO annotations (revision, file, annotation) VALUES " +
@@ -1061,23 +1060,16 @@ class TUIDService:
             # No need to double-check if latesteFileMods has been updated before,
             # we perform an insert or replace any way.
             if len(latestFileMod_inserts) > 0:
-                count = 0
-                listed_inserts = [latestFileMod_inserts[i] for i in latestFileMod_inserts]
-                while count < len(listed_inserts):
-                    tmp_inserts = listed_inserts[count:count + SQL_BATCH_SIZE]
-                    count += SQL_BATCH_SIZE
+                for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
                     transaction.execute(
                         "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                        sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
+                        sql_list(sql_iso(sql_list(map(quote_value, i))) for i in inserts_list)
                     )
 
             anns_added_by_other_thread = {}
             if len(ann_inserts) > 0:
-                count = 0
                 ann_inserts = list(set(ann_inserts))
-                while count < len(ann_inserts):
-                    tmp_inserts = ann_inserts[count:count + SQL_ANN_BATCH_SIZE]
-
+                for _, tmp_inserts in jx.groupby(ann_inserts, size=SQL_ANN_BATCH_SIZE):
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
                     for rev, filename, string_tuids in tmp_inserts:
@@ -1087,10 +1079,13 @@ class TUIDService:
                         else:
                             anns_added_by_other_thread[filename] = self.destringify_tuids(tmp_ann)
 
-                    count += SQL_ANN_BATCH_SIZE
+                    if len(recomputed_inserts) <= 0:
+                        continue
+
                     try:
                         for rev, filename, tuids_ann in recomputed_inserts:
-                            for tuid_map in tuids_ann:
+                            tmp_ann = self.destringify_tuids(tuids_ann)
+                            for tuid_map in tmp_ann:
                                 if tuid_map is None or tuid_map.tuid is None or tuid_map.line is None:
                                     Log.warning(
                                         "None value encountered in annotation insertion in {{rev}} for {{file}}: {{tuids}}" ,
@@ -1139,9 +1134,7 @@ class TUIDService:
         :return: None
         '''
         count = 0
-        while count < len(qf_list):
-            tmp_qf_list = qf_list[count:count+SQL_BATCH_SIZE]
-            count += SQL_BATCH_SIZE
+        for _, tmp_qf_list in jx.groupby(qf_list, size=SQL_BATCH_SIZE):
             transaction.execute(
                 "INSERT INTO temporal (tuid, revision, file, line)" +
                 " VALUES " +
@@ -1168,10 +1161,7 @@ class TUIDService:
         if repo is None:
             repo = self.config.hg.branch
 
-        count = 0
-        while count < len(files):
-            new_files = files[count:count+chunk:]
-
+        for _, new_files in jx.groupby(files, size=chunk):
             revision = revision[:12]
             for count, file in enumerate(new_files):
                 new_files[count] = file.lstrip('/')
@@ -1188,7 +1178,6 @@ class TUIDService:
 
             if not annotations_to_get:
                 # Get next set
-                count += chunk
                 continue
 
             # Get all the annotations in parallel
@@ -1208,7 +1197,6 @@ class TUIDService:
                         transaction, new_files, revision, annotated_files, annotations_to_get, commit=commit, repo=repo
                     )
                 )
-            count += chunk
 
         # Help for memory
         gc.collect()
