@@ -759,8 +759,13 @@ class TUIDService:
         return result
 
 
-    def _update_file_frontiers(self, frontier_list, revision, max_csets_proc=30,
-                               going_forward=False):
+    def _update_file_frontiers(
+            self,
+            frontier_list,
+            revision,
+            max_csets_proc=30,
+            going_forward=False
+        ):
         '''
         Update the frontier for all given files, up to the given revision.
 
@@ -1210,7 +1215,7 @@ class TUIDService:
                     annotations_to_get.append(file)
 
             if not annotations_to_get:
-                # No new annotationds to get, so get next set
+                # No new annotations to get, so get next set
                 continue
 
             # Get all the annotations in parallel and
@@ -1236,7 +1241,7 @@ class TUIDService:
             with self.conn.transaction() as transaction:
                 results.extend(
                     self._get_tuids(
-                        transaction, new_files, revision, annotated_files, annotations_to_get, commit=commit, repo=repo
+                        transaction, annotations_to_get, revision, annotated_files, commit=commit, repo=repo
                     )
                 )
 
@@ -1244,7 +1249,15 @@ class TUIDService:
         gc.collect()
         return results
 
-    def _get_tuids(self, transaction, files, revision, annotated_files, annotations_to_get, commit=True, repo=None):
+    def _get_tuids(
+            self,
+            transaction,
+            files,
+            revision,
+            annotated_files,
+            commit=True,
+            repo=None
+        ):
         '''
         Returns (TUID, line) tuples for a given file at a given revision.
 
@@ -1254,17 +1267,17 @@ class TUIDService:
         diff information that was inserted into the DB to return TUIDs. This way
         we don't have to deal with child, parents, dates, etc..
 
-        :param files: list of files to get
+        :param files: list of files to process
         :param revision: revision at which to get the file
+        :param annotated_files: annotations for each file
         :param commit: True to commit new TUIDs else False
+        :param repo: The branch to get tuids from
         :return: List of TuidMap objects
         '''
         results = []
 
         for fcount, annotated_object in enumerate(annotated_files):
-            existing_tuids = {}
-            tmp_tuids = []
-            file = annotations_to_get[fcount]
+            file = files[fcount]
 
             # If it's not defined at this revision, we need to add it in
             errored = False
@@ -1333,15 +1346,16 @@ class TUIDService:
 
 
             # Get the TUIDs for each line (can probably be optimized with a join)
-            tuids = tmp_tuids
+            tuids = []
             errored = False
-            for line_num in range(1, len(line_origins) + 1):
+            for line_ind, line_origin in enumerate(line_origins):
+                line_num = line_ind + 1
                 if line_num in existing_tuids:
                     tuids.append(TuidMap(existing_tuids[line_num], line_num))
                     continue
                 try:
-                    tuid_tmp = transaction.get_one(GET_TUID_QUERY,
-                                                 line_origins[line_num - 1])
+                    tuid_tmp = transaction.get_one(GET_TUID_QUERY, line_origins[line_ind])
+
                     # Return dummy line if we can't find the TUID for this entry
                     # (likely because of an error from insertion).
                     if tuid_tmp:
@@ -1363,13 +1377,6 @@ class TUIDService:
                 results.append((file, self.destringify_tuids(tmp_ann)))
                 continue
 
-            for tuid_map in tmp_ann:
-                if tuid_map is None or tuid_map.tuid is None or tuid_map.line is None:
-                    Log.warning(
-                        "None value encountered in annotation insertion in {{rev}} for {{file}}: {{tuids}}",
-                        rev=revision, file=file, tuids=str(tuid_map)
-                    )
-
             transaction.execute(
                 "INSERT INTO annotations (revision, file, annotation) VALUES (?,?,?)",
                 (
@@ -1378,7 +1385,6 @@ class TUIDService:
                     self.stringify_tuids(tuids)
                 )
             )
-
             results.append((file, tuids))
 
         return results
