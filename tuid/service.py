@@ -417,46 +417,49 @@ class TUIDService:
                     )
 
         def update_tuids_in_thread(new_files, frontier_update_list, revision, please_stop=None):
-            # Processes the new files and files which need their frontier updated
-            # outside of the main thread as this can take a long time.
-            result = []
+            try:
+                # Processes the new files and files which need their frontier updated
+                # outside of the main thread as this can take a long time.
+                result = []
 
-            latestFileMod_inserts = {}
-            if len(new_files) > 0:
-                # File has never been seen before, get it's initial
-                # annotation to work from in the future.
-                tmp_res = self.get_tuids(new_files, revision, commit=False)
-                if tmp_res:
-                    result.extend(tmp_res)
-                else:
-                    Log.note("Error occured for files " + str(new_files) + " in revision " + revision)
+                latestFileMod_inserts = {}
+                if len(new_files) > 0:
+                    # File has never been seen before, get it's initial
+                    # annotation to work from in the future.
+                    tmp_res = self.get_tuids(new_files, revision, commit=False)
+                    if tmp_res:
+                        result.extend(tmp_res)
+                    else:
+                        Log.note("Error occured for files " + str(new_files) + " in revision " + revision)
 
-                # If this file has not been seen before,
-                # add it to the latest modifications, else
-                # it's already in there so update its past
-                # revisions.
-                for file in new_files:
-                    latestFileMod_inserts[file] = (file, revision)
+                    # If this file has not been seen before,
+                    # add it to the latest modifications, else
+                    # it's already in there so update its past
+                    # revisions.
+                    for file in new_files:
+                        latestFileMod_inserts[file] = (file, revision)
 
-            Log.note("Finished updating frontiers. Updating DB table `latestFileMod`...")
-            if len(latestFileMod_inserts) > 0:
-                with self.conn.transaction() as transaction:
-                    for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
-                        transaction.execute(
-                            "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                            sql_list(
-                                sql_iso(sql_list(map(quote_value, i)))
-                                for i in inserts_list
+                Log.note("Finished updating frontiers. Updating DB table `latestFileMod`...")
+                if len(latestFileMod_inserts) > 0:
+                    with self.conn.transaction() as transaction:
+                        for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
+                            transaction.execute(
+                                "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+                                sql_list(
+                                    sql_iso(sql_list(map(quote_value, i)))
+                                    for i in inserts_list
+                                )
                             )
-                        )
 
-            # If we have files that need to have their frontier updated, do that now
-            if len(frontier_update_list) > 0:
-                tmp = self._update_file_frontiers(frontier_update_list, revision, going_forward=going_forward)
-                result.extend(tmp)
+                # If we have files that need to have their frontier updated, do that now
+                if len(frontier_update_list) > 0:
+                    tmp = self._update_file_frontiers(frontier_update_list, revision, going_forward=going_forward)
+                    result.extend(tmp)
 
-            Log.note("Completed work overflow for revision {{cset}}", cset=revision)
-            return result
+                Log.note("Completed work overflow for revision {{cset}}", cset=revision)
+                return result
+            except Exception as e:
+                Log.warning("Thread dead becasue of problem", cause=e)
 
         # If there are too many files to process, start a thread to do
         # that work and return completed as False.
