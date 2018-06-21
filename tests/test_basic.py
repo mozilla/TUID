@@ -348,7 +348,7 @@ def test_one_addition_many_files(service):
         for new_tuid, curr_tuid in zip(new_tuid_array, expected_tuid_array):
             if curr_tuid == -1:
                 continue
-            assert(new_tuid, curr_tuid)
+            assert new_tuid == curr_tuid
 
 
 def test_one_http_call_required(service):

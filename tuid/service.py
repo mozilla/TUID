@@ -723,12 +723,12 @@ class TUIDService:
                 for _, tmp_inserts in jx.groupby(ann_inserts, size=SQL_ANN_BATCH_SIZE):
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
-                    for t in tmp_inserts:
-                        tmp_ann = self._get_annotation(t[0], t[1], transaction=transaction)
+                    for rev, filename, tuids in tmp_inserts:
+                        tmp_ann = self._get_annotation(rev, filename, transaction=transaction)
                         if not tmp_ann:
-                            recomputed_inserts.append(t)
+                            recomputed_inserts.append((rev, filename, tuids))
                         else:
-                            anns_added_by_other_thread[t[1]] = self.destringify_tuids(tmp_ann)
+                            anns_added_by_other_thread[filename] = self.destringify_tuids(tmp_ann)
 
                     try:
                         transaction.execute(
@@ -1001,8 +1001,14 @@ class TUIDService:
                             tmp_res = self._apply_diff(transaction, tmp_res, parsed_diffs[i], i, file)
 
                         ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
-                        Log.note("Frontier update - modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ", count=count,
-                                                        total=total, file=file, rev=proc_rev, percent=count / total)
+                        Log.note(
+                            "Frontier update - modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
+                            count=count,
+                            total=total,
+                            file=file,
+                            rev=proc_rev,
+                            percent=count / total
+                        )
                 elif file not in removed_files:
                     old_ann = self._get_annotation(rev, file, transaction)
                     if old_ann is None or (old_ann == '' and file in added_files):
