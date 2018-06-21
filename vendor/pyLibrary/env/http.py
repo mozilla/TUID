@@ -161,7 +161,7 @@ def request(method, url, zip=None, retry=None, **kwargs):
 
                 del kwargs['retry']
                 del kwargs['zip']
-                return session.request(method=method, url=url, **kwargs)
+                return session.request(method=method, url=str(url), **kwargs)
             except Exception as e:
                 errors.append(Except.wrap(e))
 

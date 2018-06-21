@@ -14,6 +14,7 @@ from jx_python import jx
 from mo_dots import Null, coalesce, wrap
 from mo_future import text_type
 from mo_hg.hg_mozilla_org import HgMozillaOrg
+from mo_files.url import URL
 from mo_kwargs import override
 from mo_logs import Log
 from mo_math.randoms import Random
@@ -35,10 +36,10 @@ ENABLE_TRY = False
 DAEMON_WAIT_AT_NEWEST = 30 * SECOND # Time to wait at the newest revision before polling again.
 
 GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE file=? and revision=? and line=?"
-
 GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and file=?"
-
 GET_LATEST_MODIFICATION = "SELECT revision FROM latestFileMod WHERE file=?"
+
+HG_URL = URL('https://hg.mozilla.org/')
 
 
 class TUIDService:
@@ -198,7 +199,7 @@ class TUIDService:
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num, repo, please_stop=None):
-        url = 'https://hg.mozilla.org/' + repo + '/json-annotate/' + cset + "/" + file
+        url = HG_URL / repo / "json-annotate" / cset / file
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
 
@@ -230,7 +231,7 @@ class TUIDService:
         :return: list of (file, list(tuids)) tuples
         """
         result = []
-        URL_TO_FILES = 'https://hg.mozilla.org/' + self.config.hg.branch + '/json-info/' + revision
+        URL_TO_FILES = HG_URL / self.config.hg.branch / 'json-info' / revision
         try:
             mozobject = http.get_json(url=URL_TO_FILES, retry=RETRY)
         except Exception as e:
@@ -253,7 +254,7 @@ class TUIDService:
         '''
 
         # Get a changelog
-        clog_url = 'https://hg.mozilla.org/' + branch + '/json-log/' + revision
+        clog_url = HG_URL / branch / 'json-log' / revision
         try:
             Log.note("Searching through changelog {{url}}", url=clog_url)
             clog_obj = http.get_json(clog_url, retry=RETRY)
@@ -593,7 +594,7 @@ class TUIDService:
         curr_rev = revision
         mc_revision = ''
         while not found_mc_patch:
-            jsonrev_url = 'https://hg.mozilla.org/' + repo + '/json-rev/' + curr_rev
+            jsonrev_url = HG_URL / repo / 'json-rev' / curr_rev
             try:
                 Log.note("Searching through changelog {{url}}", url=jsonrev_url)
                 clog_obj = http.get_json(jsonrev_url, retry=RETRY)
@@ -799,10 +800,10 @@ class TUIDService:
 
         tmp = [cset for cset in latest_csets]
         Log.note("Searching for frontier(s): {{frontier}} ", frontier=str(tmp))
-        Log.note("HG URL: {{url}}", url='https://hg.mozilla.org/' + self.config.hg.branch + '/rev/' + tmp[0])
+        Log.note("HG URL: {{url}}", url=HG_URL / self.config.hg.branch / 'rev' / tmp[0])
         while not found_last_frontier:
             # Get a changelog
-            clog_url = 'https://hg.mozilla.org/' + self.config.hg.branch + '/json-log/' + final_rev
+            clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
             try:
                 Log.note("Searching through changelog {{url}}", url=clog_url)
                 clog_obj = http.get_json(clog_url, retry=RETRY)
@@ -1297,7 +1298,7 @@ class TUIDService:
                 except Exception as e:
                     # Something broke for this file, ignore it and go to the
                     # next one.
-                    Log.note("Failed to insert new tuids because of: {{cause}}", cause=e)
+                    Log.note("Failed to insert new tuids", cause=e)
                     continue
 
 
@@ -1391,10 +1392,10 @@ class TUIDService:
                 final_rev = ''
                 found_last_frontier = False
                 Log.note("Searching for frontier: {{frontier}} ", frontier=frontier)
-                Log.note("HG URL: {{url}}", url='https://hg.mozilla.org/' + self.config.hg.branch + '/rev/' + frontier)
+                Log.note("HG URL: {{url}}", url=HG_URL / self.config.hg.branch / 'rev' / frontier)
                 while not found_last_frontier:
                     # Get a changelog
-                    clog_url = 'https://hg.mozilla.org/' + self.config.hg.branch + '/json-log/' + final_rev
+                    clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
                     try:
                         clog_obj = http.get_json(clog_url, retry=RETRY)
                     except Exception as e:

@@ -279,7 +279,7 @@ class Thread(object):
                 for c in children:
                     try:
                         if DEBUG:
-                            sys.stdout.write(b"Stopping thread " + str(c.name) + b"\n")
+                            sys.stdout.write(str("Stopping thread " + c.name + "\n"))
                         c.stop()
                     except Exception as e:
                         Log.warning("Problem stopping thread {{thread}}", thread=c.name, cause=e)
@@ -287,13 +287,13 @@ class Thread(object):
                 for c in children:
                     try:
                         if DEBUG:
-                            sys.stdout.write(b"Joining on thread " + str(c.name) + b"\n")
+                            sys.stdout.write(str("Joining on thread " + c.name + "\n"))
                         c.join()
                     except Exception as e:
                         Log.warning("Problem joining thread {{thread}}", thread=c.name, cause=e)
                     finally:
                         if DEBUG:
-                            sys.stdout.write(b"Joined on thread " + str(c.name) + b"\n")
+                            sys.stdout.write(str("Joined on thread " + c.name + "\n"))
 
                 self.stopped.go()
                 DEBUG and Log.note("thread {{name|quote}} stopping", name=self.name)
