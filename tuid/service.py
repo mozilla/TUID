@@ -168,9 +168,16 @@ class TUIDService:
         # Builds up TuidMap list from annotation cache entry.
         lines = str(tuids_string[0]).splitlines()
         line_origins = []
-        for line in lines:
-            entry = line.split(',')
-            line_origins.append(TuidMap(int(entry[0].replace("'", "")), int(entry[1].replace("'", ""))))
+        entry = None
+        try:
+            for line in lines:
+                entry = line.split(',')
+                line_origins.append(
+                    TuidMap(int(entry[0].replace("'", "")), int(entry[1].replace("'", "")))
+                )
+        except Exception as e:
+            Log.warning("Invalid entry in tuids list: " + str(entry))
+            return None
         return line_origins
 
 
@@ -977,7 +984,7 @@ class TUIDService:
                 if proc and file not in removed_files:
                     # Process this file using the diffs found
                     tmp_ann = self._get_annotation(rev, file, transaction)
-                    if tmp_ann is None or tmp_ann == '':
+                    if tmp_ann is None or tmp_ann == '' or self.destringify_tuids(tmp_ann) is None:
                         Log.warning(
                             "{{file}} has frontier but can't find old annotation for it in {{rev}}, " +
                             "restarting it's frontier.",
