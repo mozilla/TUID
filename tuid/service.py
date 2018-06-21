@@ -1186,7 +1186,9 @@ class TUIDService:
                     annotations_to_get.append(file)
 
             if not annotations_to_get:
-                return results
+                # Get next set
+                count += chunk
+                continue
 
             # Get all the annotations in parallel
             annotated_files = [None] * len(annotations_to_get)
