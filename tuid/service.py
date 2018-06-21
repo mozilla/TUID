@@ -176,7 +176,7 @@ class TUIDService:
                     TuidMap(int(entry[0].replace("'", "")), int(entry[1].replace("'", "")))
                 )
         except Exception as e:
-            Log.warning("Invalid entry in tuids list: " + str(entry))
+            Log.warning("Invalid entry in tuids list: " + str(tuids_string))
             return None
         return line_origins
 
