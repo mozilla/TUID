@@ -113,6 +113,26 @@ def test_single_file(config, app):
     assert len(tuids) == 41  # 41 lines expected
     assert len(set(tuids)) == 41  # tuids much be unique
 
+@pytest.mark.first_run
+@pytest.mark.skipif(PY2, reason="interprocess communication problem")
+def test_single_file_list(config, app):
+    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
+    response = http.post_json(url, json={
+        "meta": {"format": "list"},
+        "from": "files",
+        "where": {"and": [
+            {"eq": {"revision": "29dcc9cb77c372c97681a47496488ec6c623915d"}},
+            {"in": {"path": ["gfx/thebes/gfxFontVariations.h"]}},
+            {"eq": {"branch": "mozilla-central"}}
+        ]}
+    })
+
+    list_response = response.data
+    tuids = list_response[0].tuids
+
+    assert len(tuids) == 41  # 41 lines expected
+    assert len(set(tuids)) == 41  # tuids much be unique
+
 
 @pytest.mark.first_run
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
