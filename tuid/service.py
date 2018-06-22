@@ -487,6 +487,7 @@ class TUIDService:
 
         if threaded:
             completed = False
+            Log.note("Incomplete response given")
             Thread.run(
                 'get_tuids_from_files (' + Random.base64(9) + ")",
                 update_tuids_in_thread, new_files, frontier_update_list, revision
