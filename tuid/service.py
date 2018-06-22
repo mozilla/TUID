@@ -28,6 +28,7 @@ from tuid import sql
 from tuid.util import MISSING, TuidMap
 
 DEBUG = False
+VERIFY_TUIDS = True
 RETRY = {"times": 3, "sleep": 5}
 SQL_ANN_BATCH_SIZE = 5
 SQL_BATCH_SIZE = 500
@@ -135,17 +136,25 @@ class TUIDService:
 
     def insert_annotate_dummy(self, transaction, rev, file_name, commit=True):
         # Inserts annotation dummy: (rev, file, '')
+
         if not self._dummy_annotate_exists(transaction, file_name, rev):
-            transaction.execute(
-                "INSERT INTO annotations (revision, file, annotation) VALUES (?, ?, ?)",
-                (rev[:12], file_name, ''))
-            # if commit:
-            #     self.conn.commit()
-        return [(rev[:12], file_name, '')]
+            self.insert_annotations(transaction, [(rev[:12], file_name, '')])
+
+
+    def insert_annotations(self, transaction, data):
+        if VERIFY_TUIDS:
+            for _, _, tuids_string in data:
+                self.destringify_tuids(tuids_string)
+
+        transaction.execute(
+            "INSERT INTO annotations (revision, file, annotation) VALUES " +
+            sql_list(sql_iso(sql_list(map(quote_value, row))) for row in data)
+        )
+
 
     def _get_annotation(self, rev, file, transaction=None):
         # Returns an annotation if it exists
-        return coalesce(transaction, self.conn).get_one(GET_ANNOTATION_QUERY, (rev, file))
+        return coalesce(transaction, self.conn).get_one(GET_ANNOTATION_QUERY, (rev, file))[0]
 
 
     def _get_one_tuid(self, transaction, cset, path, line):
@@ -168,22 +177,19 @@ class TUIDService:
     def destringify_tuids(self, tuids_string):
         # Builds up TuidMap list from annotation cache entry.
 
-        ## TEMPORARY FIX
-        if type(tuids_string) != tuple: # Make sure we have a tuple here
-            tuids_string = (tuids_string,)
-
-        lines = str(tuids_string[0]).splitlines()
-        line_origins = []
         try:
+            lines = tuids_string.splitlines()
+            line_origins = []
             for line in lines:
-                entry = line.split(',')
+                if not line:
+                    continue
+                tuid, linenum = line.split(',')
                 line_origins.append(
-                    TuidMap(int(entry[0].replace("'", "")), int(entry[1].replace("'", "")))
+                    TuidMap(int(tuid), int(linenum))
                 )
+            return line_origins
         except Exception as e:
-            Log.warning("Invalid entry in tuids list: " + str(lines))
-            return None
-        return line_origins
+            Log.error("Invalid entry in tuids list:\n{{list}}", list=tuids_string, cause=e)
 
 
     # Gets a diff from a particular revision from https://hg.mozilla.org/
@@ -375,7 +381,7 @@ class TUIDService:
                     latestFileMod_inserts[file] = (file, revision)
                 log_existing_files.append('exists|' + file)
                 continue
-            elif already_ann[0] == '':
+            elif already_ann == '':
                 result.append((file,[]))
                 if going_forward:
                     latestFileMod_inserts[file] = (file, revision)
@@ -731,10 +737,7 @@ class TUIDService:
                             anns_added_by_other_thread[filename] = self.destringify_tuids(tmp_ann)
 
                     try:
-                        transaction.execute(
-                            "INSERT INTO annotations (revision, file, annotation) VALUES " +
-                            sql_list(sql_iso(sql_list(map(quote_value, i))) for i in recomputed_inserts)
-                        )
+                        self.insert_annotations(transaction, recomputed_inserts)
                     except Exception as e:
                         Log.note("Error inserting into annotations table: {{inserting}}", inserting=recomputed_inserts)
                         Log.error("Error found: {{cause}}", cause=e)
@@ -1024,7 +1027,7 @@ class TUIDService:
                         # File was not modified since last
                         # known revision
                         tmp_res = self.destringify_tuids(old_ann) if old_ann != '' else []
-                        ann_inserts.append((revision, file, old_ann[0]))
+                        ann_inserts.append((revision, file, old_ann))
                         modified = False
                         Log.note(
                             "Frontier update - not modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
@@ -1097,13 +1100,9 @@ class TUIDService:
                                         "None value encountered in annotation insertion in {{rev}} for {{file}}: {{tuids}}" ,
                                         rev=rev, file=filename, tuids=str(tuid_map)
                                     )
-                        transaction.execute(
-                            "INSERT INTO annotations (revision, file, annotation) VALUES " +
-                            sql_list(sql_iso(sql_list(map(quote_value, i))) for i in recomputed_inserts)
-                        )
+                        self.insert_annotations(transaction, recomputed_inserts)
                     except Exception as e:
-                        Log.note("Error inserting into annotations table: {{inserting}}", inserting=recomputed_inserts)
-                        Log.error("Error found: {{cause}}", cause=e)
+                        Log.error("Error inserting into annotations table: {{inserting}}", inserting=recomputed_inserts, cause=e)
 
         if len(anns_to_get) > 0:
             result.extend(self.get_tuids(anns_to_get, revision, commit=False))
@@ -1177,7 +1176,7 @@ class TUIDService:
                 already_ann = self._get_annotation(revision, file)
                 if already_ann:
                     results.append((file, self.destringify_tuids(already_ann)))
-                elif already_ann[0] == '':
+                elif already_ann == '':
                     results.append((file, []))
                 else:
                     annotations_to_get.append(file)
@@ -1334,13 +1333,13 @@ class TUIDService:
                         rev=revision, file=file, tuids=str(tuid_map)
                     )
 
-            transaction.execute(
-                "INSERT INTO annotations (revision, file, annotation) VALUES (?,?,?)",
-                (
+            self.insert_annotations(
+                transaction,
+                [(
                     revision,
                     file,
                     self.stringify_tuids(tuids)
-                )
+                )]
             )
 
             results.append((file, tuids))
