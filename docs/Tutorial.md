@@ -1,5 +1,5 @@
 
-# Using TUID is Code Coverage
+# Using TUIDs for Code Coverage
 
 TUID is an acronym for Temporally Unique Identifiers. 
 
