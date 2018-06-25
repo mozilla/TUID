@@ -23,6 +23,8 @@ from tuid import service
 from tuid.client import TuidClient
 
 # REQUIRED TO PREVENT constants FROM COMPLAINING
+from tuid.service import HG_URL
+
 _ = service
 _ = hg_mozilla_org
 
@@ -78,7 +80,7 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
             queue.commit()
             continue
 
-        clog_url = 'https://hg.mozilla.org/mozilla-central/json-log/' + revision[:12]
+        clog_url = HG_URL / 'mozilla-central' / 'json-log' / revision[:12]
         clog_obj = http.get_json(clog_url, retry=RETRY)
         if isinstance(clog_obj, (text_type, str)):
             Log.warning(
