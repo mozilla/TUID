@@ -164,10 +164,10 @@ class TUIDService:
             (cset, path, int(line))
         )
 
-    def _get_latest_revision(self, file):
+    def _get_latest_revision(self, file, transaction):
         # Returns the latest revision that we
         # have information on the requested file.
-        return self.conn.get_one(GET_LATEST_MODIFICATION, (file,))
+        return coalesce(transaction, self.conn).get_one(GET_LATEST_MODIFICATION, (file,))
 
 
     def stringify_tuids(self, tuid_list):
@@ -384,7 +384,8 @@ class TUIDService:
             if DEBUG:
                 Log.note(" {{percent|percent(decimal=0)}}|{{file}}", file=file, percent=count / total)
 
-            latest_rev = self._get_latest_revision(file)
+            with self.conn.transaction() as t:
+                latest_rev = self._get_latest_revision(file, transaction=t)
 
             # Check if the file has already been collected at
             # this revision and get the result if so
