@@ -159,8 +159,10 @@ class TUIDService:
 
     def _get_one_tuid(self, transaction, cset, path, line):
         # Returns a single TUID if it exists
-        return transaction.get_one("select 1 from temporal where revision=? and file=? and line=?",
-                                 (cset, path, int(line)))
+        return transaction.get_one(
+            "select tuid from temporal where revision=? and file=? and line=?",
+            (cset, path, int(line))
+        )
 
     def _get_latest_revision(self, file):
         # Returns the latest revision that we
@@ -193,6 +195,13 @@ class TUIDService:
 
     # Gets a diff from a particular revision from https://hg.mozilla.org/
     def _get_hg_diff(self, cset, repo=None):
+        def check_merge(description):
+            if description.startswith("merge "):
+                return True
+            elif description.startswith("Merge "):
+                return True
+            return False
+
         if repo is None:
             repo = self.config.hg.branch
         tmp = self.hg_cache.get_revision(
@@ -203,7 +212,12 @@ class TUIDService:
             None, False, True
         )
         output = tmp['changeset']['moves']
-        return output
+        output2 = {}
+        output2['diffs'] = output
+
+        merge_description = tmp['changeset']['description']
+        output2['merge'] = check_merge(merge_description)
+        return output2
 
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
@@ -300,7 +314,8 @@ class TUIDService:
             revision,
             going_forward=False,
             repo=None,
-            use_thread=True
+            use_thread=True,
+            max_csets_proc=30
         ):
         """
         Gets the TUIDs for a set of files, at a given revision.
@@ -419,7 +434,7 @@ class TUIDService:
                 "Frontier update - already exist in DB for {{rev}}: " +
                     "{{count}}/{{total}} | {{percent|percent}}",
                 count=str(len(log_existing_files)), total=str(len(files)),
-                    rev=revision, percent=len(log_existing_files)/len(files)
+                rev=revision, percent=len(log_existing_files)/len(files)
             )
 
         if len(latestFileMod_inserts) > 0:
@@ -433,7 +448,12 @@ class TUIDService:
                         )
                     )
 
-        def update_tuids_in_thread(new_files, frontier_update_list, revision, please_stop=None):
+        def update_tuids_in_thread(
+                new_files,
+                frontier_update_list,
+                revision,
+                please_stop=None
+            ):
             try:
                 # Processes the new files and files which need their frontier updated
                 # outside of the main thread as this can take a long time.
@@ -470,7 +490,12 @@ class TUIDService:
 
                 # If we have files that need to have their frontier updated, do that now
                 if len(frontier_update_list) > 0:
-                    tmp = self._update_file_frontiers(frontier_update_list, revision, going_forward=going_forward)
+                    tmp = self._update_file_frontiers(
+                        frontier_update_list,
+                        revision,
+                        going_forward=going_forward,
+                        max_csets_proc=max_csets_proc
+                    )
                     result.extend(tmp)
 
                 Log.note("Completed work overflow for revision {{cset}}", cset=revision)
@@ -493,7 +518,9 @@ class TUIDService:
                 update_tuids_in_thread, new_files, frontier_update_list, revision
             )
         else:
-            result.extend(update_tuids_in_thread(new_files, frontier_update_list, revision))
+            result.extend(
+                update_tuids_in_thread(new_files, frontier_update_list, revision)
+            )
 
         return result, completed
 
@@ -512,7 +539,10 @@ class TUIDService:
         :param file: name of file diff is applied to
         :return:
         '''
-        # Add all added lines into the DB.
+        # Ignore merges, they have duplicate entries.
+        if diff['merge']:
+            return annotation
+
         list_to_insert = []
         new_ann = [x for x in annotation]
         new_ann.sort(key=lambda x: x.line)
@@ -524,7 +554,7 @@ class TUIDService:
         def remove_one(start, lines):
             return lines[:start-1] + [TuidMap(tmap.tuid, int(tmap.line) - 1) for tmap in lines[start:]]
 
-        for f_proc in diff:
+        for f_proc in diff['diffs']:
             if f_proc['new'].name.lstrip('/') != file:
                 continue
 
@@ -653,7 +683,7 @@ class TUIDService:
         parsed_diffs = {entry['cset']: entry['diff'] for entry in all_diffs}
         for csets_diff in all_diffs:
             cset_len12 = csets_diff['cset']
-            parsed_diff = csets_diff['diff']
+            parsed_diff = csets_diff['diff']['diffs']
 
             for f_added in parsed_diff:
                 # Get new entries for removed files.
@@ -742,11 +772,7 @@ class TUIDService:
                     try:
                         self.insert_annotations(transaction, recomputed_inserts)
                     except Exception as e:
-                        Log.note(
-                            "Error inserting into annotations table: {{inserting}}",
-                            inserting=recomputed_inserts
-                        )
-                        Log.error("Error found: {{cause}}", cause=e)
+                        Log.error("Error inserting into annotations table.", cause=e)
 
         if len(anns_to_get) > 0:
             result.extend(self.get_tuids(anns_to_get, revision, repo=repo))
@@ -819,7 +845,7 @@ class TUIDService:
             "Running on revision with HG URL: {{url}}",
             url=HG_URL / self.config.hg.branch / 'rev' / revision
         )
-        while not remaining_frontiers:
+        while remaining_frontiers:
             # Get a changelog
             clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
             try:
@@ -839,7 +865,8 @@ class TUIDService:
 
             # For each changeset in the log (except the last one
             # which is duplicated on the next log page requested.
-            for clog_cset in clog_obj['changesets'][:-1]:
+            clog_obj_list = list(clog_obj['changesets'])
+            for clog_cset in clog_obj_list[:-1]:
                 nodes_cset = clog_cset['node'][:12]
 
                 if remaining_frontiers:
@@ -870,7 +897,7 @@ class TUIDService:
                 break
             else:
                 # Go to the next log page
-                last_entry = clog_obj['changesets'][-1]
+                last_entry = clog_obj_list[-1]
                 final_rev = last_entry['node'][:12]
 
         if not remaining_frontiers:
@@ -907,7 +934,7 @@ class TUIDService:
             # apply for each file in files_to_process.
             for csets_diff in all_diffs:
                 cset_len12 = csets_diff['cset']
-                parsed_diff = csets_diff['diff']
+                parsed_diff = csets_diff['diff']['diffs']
 
                 for f_added in parsed_diff:
                     # Get new entries for removed files.
