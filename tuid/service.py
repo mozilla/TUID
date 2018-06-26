@@ -388,7 +388,8 @@ class TUIDService:
 
             # Check if the file has already been collected at
             # this revision and get the result if so
-            already_ann = self._get_annotation(revision, file)
+            with self.conn.transaction() as t:
+                already_ann = self._get_annotation(revision, file, transaction=t)
             if already_ann:
                 result.append((file,self.destringify_tuids(already_ann)))
                 if going_forward:
@@ -408,7 +409,9 @@ class TUIDService:
                     Log.note("Will update frontier for file {{file}}.", file=file)
                 frontier_update_list.append((file, latest_rev[0]))
             elif latest_rev == revision:
-                tmp_res = self.destringify_tuids(self._get_annotation(latest_rev[0], file))
+                with self.conn.transaction() as t:
+                    tmp_ann = self._get_annotation(latest_rev[0], file, transaction=t)
+                tmp_res = self.destringify_tuids(tmp_ann)
                 result.append((file, tmp_res))
                 Log.note(
                     "Frontier update - already exists in DB with state `exists`: " +
@@ -604,7 +607,8 @@ class TUIDService:
 
         # Check if the files were already annotated.
         for file in files:
-            already_ann = self._get_annotation(revision, file)
+            with self.conn.transaction() as t:
+                already_ann = self._get_annotation(revision, file, transaction=t)
             if already_ann:
                 result.append((file, self.destringify_tuids(already_ann)))
                 log_existing_files.append('exists|' + file)
@@ -1229,7 +1233,8 @@ class TUIDService:
 
             annotations_to_get = []
             for file in new_files:
-                already_ann = self._get_annotation(revision, file)
+                with self.conn.transaction() as t:
+                    already_ann = self._get_annotation(revision, file, transaction=t)
                 if already_ann:
                     results.append((file, self.destringify_tuids(already_ann)))
                 elif already_ann == '':
@@ -1395,7 +1400,7 @@ class TUIDService:
 
             # Make sure we are not adding the same thing another thread
             # added.
-            tmp_ann = self._get_annotation(revision, file, transaction)
+            tmp_ann = self._get_annotation(revision, file, transaction=transaction)
             if tmp_ann:
                 results.append((file, self.destringify_tuids(tmp_ann)))
                 continue
