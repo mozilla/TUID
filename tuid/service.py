@@ -386,11 +386,10 @@ class TUIDService:
 
             with self.conn.transaction() as t:
                 latest_rev = self._get_latest_revision(file, transaction=t)
+                already_ann = self._get_annotation(revision, file, transaction=t)
 
             # Check if the file has already been collected at
             # this revision and get the result if so
-            with self.conn.transaction() as t:
-                already_ann = self._get_annotation(revision, file, transaction=t)
             if already_ann:
                 result.append((file,self.destringify_tuids(already_ann)))
                 if going_forward:
@@ -411,11 +410,10 @@ class TUIDService:
                 frontier_update_list.append((file, latest_rev[0]))
             elif latest_rev == revision:
                 with self.conn.transaction() as t:
-                    tmp_ann = self._get_annotation(latest_rev[0], file, transaction=t)
-                tmp_res = self.destringify_tuids(tmp_ann)
-                result.append((file, tmp_res))
+                    t.execute("DELETE FROM latestFileMod WHERE file = " + quote_value(file))
+                new_files.append(file)
                 Log.note(
-                    "Frontier update - already exists in DB with state `exists`: " +
+                    "Missing annotation for existing frontier - readding: " +
                     "{{rev}}|{{file}} ",
                     file=file, rev=revision
                 )
@@ -507,10 +505,10 @@ class TUIDService:
             except Exception as e:
                 Log.warning("Thread dead becasue of problem", cause=e)
 
-        # If there are too many files to process, start a thread to do
-        # that work and return completed as False.
         threaded = False
         if use_thread:
+            # If there are too many files to process, start a thread to do
+            # that work and return completed as False.
             if (len(new_files) + len(frontier_update_list) > FILES_TO_PROCESS_THRESH):
                 threaded = True
 
@@ -559,8 +557,15 @@ class TUIDService:
             return lines[:start-1] + [TuidMap(tmap.tuid, int(tmap.line) - 1) for tmap in lines[start:]]
 
         for f_proc in diff['diffs']:
-            if f_proc['new'].name.lstrip('/') != file:
+            new_fname = f_proc['new'].name.lstrip('/')
+            old_fname = f_proc['old'].name.lstrip('/')
+            print(old_fname)
+            if new_fname != file and old_fname != file:
                 continue
+            if old_fname != new_fname:
+                # Change the file name so that new tuids
+                # are correctly created.
+                file = new_fname
 
             f_diff = f_proc['changes']
             for change in f_diff:
@@ -935,6 +940,11 @@ class TUIDService:
             # to be used later when applying them.
             parsed_diffs = {diff_entry['cset']: diff_entry['diff'] for diff_entry in all_diffs}
 
+            # In case the file name changes, this will map
+            # the requested file to the new file name so
+            # diffs can all be gathered.
+            filenames_to_seek = {}
+
             # Parse diffs for files to process and store diffs to
             # apply for each file in files_to_process.
             for csets_diff in all_diffs:
@@ -947,16 +957,30 @@ class TUIDService:
                     old_name = f_added['old'].name.lstrip('/')
 
                     # If we don't need this file, skip it
-                    if new_name not in file_to_frontier:
-                        # If the file was removed, set a
-                        # flag and return no tuids later.
-                        if new_name == 'dev/null':
-                            removed_files[old_name] = True
-                        continue
+                    if new_name not in file_to_frontier and \
+                       new_name not in filenames_to_seek:
+                        # If the file name was changed
+                        if old_name not in file_to_frontier and \
+                           old_name not in filenames_to_seek:
+                            # If the file was removed, set a
+                            # flag and return no tuids later.
+                            if new_name == 'dev/null':
+                                removed_files[old_name] = True
+                            continue
+                        else:
+                            # File name was changed, keep the diff anyway
+                            # to add any changes it makes.
+                            filenames_to_seek[new_name] = old_name
+
+                    # Get the originally requested file name
+                    # by following filenames_to_seek entries
+                    frontier_filename = new_name
+                    while frontier_filename in filenames_to_seek:
+                        frontier_filename = filenames_to_seek[frontier_filename]
 
                     # File was added
                     if old_name == 'dev/null':
-                        added_files[new_name] = True
+                        added_files[frontier_filename] = True
 
                     # At this point, file is in the database, is
                     # asked to be processed, and we are still
@@ -964,11 +988,11 @@ class TUIDService:
 
                     # If we are past the frontier for this file,
                     # or if we are at the frontier skip it.
-                    if file_to_frontier[new_name] == '':
+                    if file_to_frontier[frontier_filename] == '':
                         # Previously found frontier, skip
                         continue
-                    if file_to_frontier[new_name] == cset_len12:
-                        file_to_frontier[new_name] = ''
+                    if file_to_frontier[frontier_filename] == cset_len12:
+                        file_to_frontier[frontier_filename] = ''
                         # Just found the frontier, skip
                         continue
 
@@ -979,19 +1003,18 @@ class TUIDService:
                     # because any frontier for the new_name file should be at this revision or
                     # further ahead - never earlier.
                     if old_name != new_name:
-                        Log.warning(
-                            "Should not have made it here, name changed to {{file}} from {{oldfile}}. " +
-                            "We should have an initial frontier at or after this diff, not before.",
+                        Log.note(
+                            "{{cset}} changes a requested file's name: {{file}} from {{oldfile}}. ",
                             file=new_name,
-                            oldfile=old_name
+                            oldfile=old_name,
+                            cset=cset
                         )
-                        continue
 
                     # Store the diff as it needs to be applied
-                    if new_name in files_to_process:
-                        files_to_process[new_name].append(cset_len12)
+                    if frontier_filename in files_to_process:
+                        files_to_process[frontier_filename].append(cset_len12)
                     else:
-                        files_to_process[new_name] = [cset_len12]
+                        files_to_process[frontier_filename] = [cset_len12]
 
         # Process each file that needs it based on the
         # files_to_process list.
@@ -1265,6 +1288,8 @@ class TUIDService:
             for t in threads:
                 t.join()
 
+            # Help for memory, because `chunk` (or a lot of)
+            # threads are started at once.
             del threads
 
             with self.conn.transaction() as transaction:
@@ -1349,10 +1374,10 @@ class TUIDService:
             for node in annotated_object['annotate']:
                 cset_len12 = node['node'][:12]
 
-                # If the cset is not in the database, process it
-                #
-                # Use the 'abspath' field to determine the current filename in
-                # case it has changed.
+                # If the line added by `cset_len12` is not known
+                # add it. Use the 'abspath' field to determine the
+                # name of the file it was created in (in case it was
+                # changed).
                 tuid_tmp = transaction.get_one(GET_TUID_QUERY, (node['abspath'], cset_len12, int(node['targetline'])))
                 if (not tuid_tmp):
                     annotated_lines.append(node)
