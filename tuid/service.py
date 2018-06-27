@@ -413,13 +413,13 @@ class TUIDService:
                     t.execute("DELETE FROM latestFileMod WHERE file = " + quote_value(file))
                 new_files.append(file)
                 Log.note(
-                    "Missing annotation for existing frontier - readding: " +
+                    "Missing annotation for existing frontier - readding: "
                     "{{rev}}|{{file}} ",
                     file=file, rev=revision
                 )
             else:
                 Log.note(
-                    "Frontier update - adding: " +
+                    "Frontier update - adding: "
                     "{{rev}}|{{file}} ",
                     file=file, rev=revision
                 )
@@ -427,13 +427,13 @@ class TUIDService:
 
         if DEBUG:
             Log.note(
-                "Frontier update - already exist in DB: " +
+                "Frontier update - already exist in DB: "
                 "{{rev}} || {{file_list}} ",
                 file_list=str(log_existing_files), rev=revision
             )
         else:
             Log.note(
-                "Frontier update - already exist in DB for {{rev}}: " +
+                "Frontier update - already exist in DB for {{rev}}: "
                     "{{count}}/{{total}} | {{percent|percent}}",
                 count=str(len(log_existing_files)), total=str(len(files)),
                 rev=revision, percent=len(log_existing_files)/len(files)
@@ -588,7 +588,7 @@ class TUIDService:
             count = 0
             for _, inserts_list in jx.groupby(list_to_insert, size=SQL_BATCH_SIZE):
                 transaction.execute(
-                    "INSERT INTO temporal (tuid, revision, file, line)" +
+                    "INSERT INTO temporal (tuid, revision, file, line)"
                     " VALUES " +
                     sql_list(sql_iso(sql_list(map(quote_value, tp))) for tp in inserts_list)
                 )
@@ -733,7 +733,7 @@ class TUIDService:
             for file in files_to_update:
                 if file not in curr_annots_dict:
                     Log.note(
-                        "WARNING: Missing annotation entry in mozilla-central branch revision {{cset}} " +
+                        "WARNING: Missing annotation entry in mozilla-central branch revision {{cset}} "
                         "for {{file}}",
                         file=file, cset=mc_revision
                     )
@@ -1049,7 +1049,7 @@ class TUIDService:
                         latestFileMod_inserts[file] = (file, revision)
 
                     Log.note(
-                        "Frontier update - can't find frontier {{lost_frontier}}: " +
+                        "Frontier update - can't find frontier {{lost_frontier}}: "
                         "{{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
                         count=count,
                         total=total,
@@ -1070,7 +1070,7 @@ class TUIDService:
                         # added last (to give it a larger count)
                         anns_to_get.append(file)
                         Log.note(
-                            "Frontier update - adding: " +
+                            "Frontier update - adding: "
                             "{{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
                             count=count,
                             total=total,
@@ -1081,7 +1081,7 @@ class TUIDService:
                         )
                     else:
                         Log.note(
-                            "Frontier update - deleting: " +
+                            "Frontier update - deleting: "
                             "{{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
                             count=count,
                             total=total,
@@ -1105,7 +1105,7 @@ class TUIDService:
                     tmp_ann = self._get_annotation(old_frontier, file, transaction)
                     if tmp_ann is None or tmp_ann == '' or self.destringify_tuids(tmp_ann) is None:
                         Log.warning(
-                            "{{file}} has frontier but can't find old annotation for it in {{rev}}, " +
+                            "{{file}} has frontier but can't find old annotation for it in {{rev}}, "
                             "restarting it's frontier.",
                             rev=old_frontier,
                             file=file
@@ -1122,7 +1122,7 @@ class TUIDService:
 
                         ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
                         Log.note(
-                            "Frontier update - modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} " +
+                            "Frontier update - modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} "
                             "| {{rev}}|{{file}} ",
                             count=count,
                             total=total,
@@ -1137,7 +1137,7 @@ class TUIDService:
                         # a new initial entry for this file.
                         anns_to_get.append(file)
                         Log.note(
-                            "Frontier update - readded: {{count}}/{{total}} - {{percent|percent(decimal=0)}} " +
+                            "Frontier update - readded: {{count}}/{{total}} - {{percent|percent(decimal=0)}} "
                             "| {{rev}}|{{file}} ",
                             count=count,
                             total=total,
@@ -1151,7 +1151,7 @@ class TUIDService:
                         tmp_res = self.destringify_tuids(old_ann) if old_ann != '' else []
                         ann_inserts.append((revision, file, old_ann))
                         Log.note(
-                            "Frontier update - not modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} " +
+                            "Frontier update - not modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} "
                             "| {{rev}}|{{file}} ",
                             count=count,
                             total=total,
@@ -1257,7 +1257,7 @@ class TUIDService:
         '''
         for _, tmp_qf_list in jx.groupby(qf_list, size=SQL_BATCH_SIZE):
             transaction.execute(
-                "INSERT INTO temporal (tuid, revision, file, line)" +
+                "INSERT INTO temporal (tuid, revision, file, line)"
                 " VALUES " +
                 sql_list(sql_iso(sql_list(map(quote_value, (self.tuid(), i[0], i[1], i[2])))) for i in tmp_qf_list)
             )
@@ -1386,7 +1386,7 @@ class TUIDService:
                 errored = True
             elif 'annotate' not in annotated_object:
                 Log.warning(
-                    "Missing annotate, type got: {{ann_type}}, expecting:dict returned when getting " +
+                    "Missing annotate, type got: {{ann_type}}, expecting:dict returned when getting "
                     "annotation for: {{file}} in the revision {{cset}}",
                     cset=revision, file=file, ann_type=type(annotated_object)
                 )
