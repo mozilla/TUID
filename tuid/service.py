@@ -543,7 +543,9 @@ class TUIDService:
         '''
         # Ignore merges, they have duplicate entries.
         if diff['merge']:
-            return annotation
+            return annotation, file
+        if file.lstrip('/') == 'dev/null':
+            return [], file
 
         list_to_insert = []
         new_ann = [x for x in annotation]
@@ -559,10 +561,11 @@ class TUIDService:
         for f_proc in diff['diffs']:
             new_fname = f_proc['new'].name.lstrip('/')
             old_fname = f_proc['old'].name.lstrip('/')
-            print(old_fname)
             if new_fname != file and old_fname != file:
                 continue
             if old_fname != new_fname:
+                if new_fname == 'dev/null':
+                    return [], file
                 # Change the file name so that new tuids
                 # are correctly created.
                 file = new_fname
@@ -590,7 +593,7 @@ class TUIDService:
                     sql_list(sql_iso(sql_list(map(quote_value, tp))) for tp in inserts_list)
                 )
 
-        return new_ann
+        return new_ann, file
 
 
     def _get_tuids_from_files_try_branch(self, files, revision):
@@ -753,8 +756,9 @@ class TUIDService:
 
                     # Apply all the diffs
                     tmp_res = old_ann
+                    new_fname = file
                     for i in csets_to_proc:
-                        tmp_res = self._apply_diff(transaction, tmp_res, parsed_diffs[i], i, file)
+                        tmp_res, new_fname = self._apply_diff(transaction, tmp_res, parsed_diffs[i], i, new_fname)
 
                     ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
                     tmp_results[file] = tmp_res
@@ -947,6 +951,7 @@ class TUIDService:
 
             # Parse diffs for files to process and store diffs to
             # apply for each file in files_to_process.
+            added_and_removed_counts = {file: 1 for file in file_to_frontier}
             for csets_diff in all_diffs:
                 cset_len12 = csets_diff['cset']
                 parsed_diff = csets_diff['diff']['diffs']
@@ -959,18 +964,35 @@ class TUIDService:
                     # If we don't need this file, skip it
                     if new_name not in file_to_frontier and \
                        new_name not in filenames_to_seek:
-                        # If the file name was changed
                         if old_name not in file_to_frontier and \
                            old_name not in filenames_to_seek:
-                            # If the file was removed, set a
-                            # flag and return no tuids later.
-                            if new_name == 'dev/null':
-                                removed_files[old_name] = True
+                            # File not requested
                             continue
-                        else:
-                            # File name was changed, keep the diff anyway
-                            # to add any changes it makes.
-                            filenames_to_seek[new_name] = old_name
+                        if new_name == 'dev/null':
+                            frontier_filename = old_name
+                            while frontier_filename in filenames_to_seek:
+                                frontier_filename = filenames_to_seek[frontier_filename]
+
+                            if frontier_filename not in removed_files:
+                                removed_files[frontier_filename] = 0
+                            removed_files[frontier_filename] = added_and_removed_counts[frontier_filename]
+                            added_and_removed_counts[frontier_filename] += 1
+                            continue
+
+                    if old_name == 'dev/null':
+                        frontier_filename = new_name
+                        while frontier_filename in filenames_to_seek:
+                            frontier_filename = filenames_to_seek[frontier_filename]
+
+                        if frontier_filename not in added_files:
+                            added_files[frontier_filename] = 0
+                        added_files[frontier_filename] = added_and_removed_counts[frontier_filename]
+                        added_and_removed_counts[frontier_filename] += 1
+                        continue
+                    if new_name != old_name:
+                        # File name was changed, keep the diff anyway
+                        # to add any changes it makes.
+                        filenames_to_seek[new_name] = old_name
 
                     # Get the originally requested file name
                     # by following filenames_to_seek entries
@@ -978,30 +1000,20 @@ class TUIDService:
                     while frontier_filename in filenames_to_seek:
                         frontier_filename = filenames_to_seek[frontier_filename]
 
-                    # File was added
-                    if old_name == 'dev/null':
-                        added_files[frontier_filename] = True
-
-                    # At this point, file is in the database, is
-                    # asked to be processed, and we are still
-                    # searching for the last frontier.
-
                     # If we are past the frontier for this file,
                     # or if we are at the frontier skip it.
                     if file_to_frontier[frontier_filename] == '':
                         # Previously found frontier, skip
                         continue
+
+                    # At this point, file is in the database, is
+                    # asked to be processed, and we are still
+                    # searching for the last frontier.
                     if file_to_frontier[frontier_filename] == cset_len12:
                         file_to_frontier[frontier_filename] = ''
-                        # Just found the frontier, skip
+                        # Found the frontier, skip
                         continue
 
-                    # Skip diffs that change file names, this is the first
-                    # annotate entry to the new file_name and it doesn't do
-                    # anything to the old other than bring it to new.
-                    # We should never make it to this point unless there was an error elsewhere
-                    # because any frontier for the new_name file should be at this revision or
-                    # further ahead - never earlier.
                     if old_name != new_name:
                         Log.note(
                             "{{cset}} changes a requested file's name: {{file}} from {{oldfile}}. ",
@@ -1047,16 +1059,48 @@ class TUIDService:
                         lost_frontier=old_frontier
                     )
                     continue
+                elif file in removed_files or file in added_files:
+                    if file not in removed_files:
+                        removed_files[file] = 0
+                    if file not in added_files:
+                        added_files[file] = 0
+
+                    if removed_files[file] <= added_files[file]:
+                        # For it to still exist it has to be
+                        # added last (to give it a larger count)
+                        anns_to_get.append(file)
+                        Log.note(
+                            "Frontier update - adding: " +
+                            "{{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
+                            count=count,
+                            total=total,
+                            file=file,
+                            rev=revision,
+                            percent=count / total,
+                            lost_frontier=old_frontier
+                        )
+                    else:
+                        Log.note(
+                            "Frontier update - deleting: " +
+                            "{{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
+                            count=count,
+                            total=total,
+                            file=file,
+                            rev=revision,
+                            percent=count / total,
+                            lost_frontier=old_frontier
+                        )
+                        tmp_results[file] = []
+                    if going_forward:
+                        # If we are always going forward, update the frontier
+                        latestFileMod_inserts[file] = (file, revision)
+
+                    continue
 
                 # If the file was modified, get it's newest
                 # annotation and update the file.
-                proc = False
-                if file in files_to_process:
-                    proc = True
-
                 tmp_res = None
-
-                if proc and file not in removed_files:
+                if file in files_to_process:
                     # Process this file using the diffs found
                     tmp_ann = self._get_annotation(old_frontier, file, transaction)
                     if tmp_ann is None or tmp_ann == '' or self.destringify_tuids(tmp_ann) is None:
@@ -1072,8 +1116,9 @@ class TUIDService:
                         # Reverse the diff list, we always find the newest diff first
                         csets_to_proc = files_to_process[file][::-1]
                         tmp_res = self.destringify_tuids(tmp_ann)
+                        new_fname = file
                         for i in csets_to_proc:
-                            tmp_res = self._apply_diff(transaction, tmp_res, parsed_diffs[i], i, file)
+                            tmp_res, new_fname = self._apply_diff(transaction, tmp_res, parsed_diffs[i], i, new_fname)
 
                         ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
                         Log.note(
@@ -1085,7 +1130,7 @@ class TUIDService:
                             rev=revision,
                             percent=count / total
                         )
-                elif file not in removed_files:
+                else:
                     old_ann = self._get_annotation(old_frontier, file, transaction)
                     if old_ann is None or (old_ann == '' and file in added_files):
                         # File is new (likely from an error), or re-added - we need to create
@@ -1114,18 +1159,6 @@ class TUIDService:
                             rev=revision,
                             percent=count / total
                         )
-                else:
-                    # File was removed
-                    ann_inserts.append((revision, file, ''))
-                    Log.note(
-                        "Frontier update - removed: {{count}}/{{total}} - {{percent|percent(decimal=0)}} " +
-                        "| {{rev}}|{{file}} ",
-                        count=count,
-                        total=total,
-                        file=file,
-                        rev=revision,
-                        percent=count / total
-                    )
 
                 if tmp_res:
                     tmp_results[file] = tmp_res
