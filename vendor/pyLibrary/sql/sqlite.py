@@ -317,7 +317,6 @@ class Sqlite(DB):
                 except Exception as e:
                     # DEAL WITH ERRORS IN QUEUED COMMANDS
                     # WE WILL UNWRAP THE OUTER EXCEPTION TO GET THE CAUSE
-                    e = Except.wrap(e)
                     err = Except(
                         type=ERROR,
                         template="Bad call to Sqlite3 while "+FORMAT_COMMAND,
@@ -405,10 +404,10 @@ class Transaction(object):
 
     def do_all(self):
         # ENSURE PARENT TRANSACTION IS UP TO DATE
-        if self.parent:
-            self.parent.do_all()
-
+        c = None
         try:
+            if self.parent:
+                self.parent.do_all()
             # GET THE REMAINING COMMANDS
             with self.locker:
                 todo = self.todo[self.complete:]
