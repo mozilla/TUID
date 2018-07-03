@@ -692,9 +692,9 @@ def test_merged_changes(service):
     assert completed == len(lines_added.keys())
 
 
-#@pytest.mark.skip(
-#    reason="Very long to get diffs. It tests across multiple merges to ensure TUIDs are stable."
-#)
+@pytest.mark.skip(
+    reason="Very long to get diffs. It tests across multiple merges to ensure TUIDs are stable."
+)
 def test_very_distant_files(service):
     new_rev = "6e8e861540e6"
     old_rev = "1e2c9151a09e"
