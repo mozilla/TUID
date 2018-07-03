@@ -114,7 +114,7 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
             result = http.post_json(
                         "http://localhost:5000/tuid",
                         json=request,
-                        timeout=10000
+                        timeout=30
                     )
             if not client.enabled:
                 Log.note("pausing consumer for {{num}}sec", num=PAUSE_ON_FAILURE)
