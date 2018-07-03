@@ -657,9 +657,44 @@ def test_try_rev_then_mc(service):
             assert False
 
 
-@pytest.mark.skip(
-    reason="Very long to get diffs. It tests across multiple merges to ensure TUIDs are stable."
-)
+def test_merged_changes(service):
+    old_rev = '316e5fab18f1'
+    new_rev = '06d10d09e6ee'
+    test_files = [
+        "js/src/wasm/WasmTextToBinary.cpp"
+    ]
+    old_tuids, _ = service.get_tuids_from_files(test_files, old_rev, use_thread=False)
+    new_tuids, _ = service.get_tuids_from_files(test_files, new_rev, use_thread=False)
+
+    lines_added = {
+        "js/src/wasm/WasmTextToBinary.cpp": [1668, 1669, 1670, 1671]
+    }
+    completed = 0
+    for file, old_file_tuids in old_tuids:
+        if file in lines_added:
+            assert len(old_file_tuids) == 5461
+
+            for new_file, tmp_tuids in new_tuids:
+                new_file_tuids = []
+                if new_file == file:
+                    for tuid_map in tmp_tuids:
+                        if tuid_map.line in lines_added[file]:
+                            new_file_tuids.append(tuid_map.tuid)
+
+                    assert len(tmp_tuids) == 5461
+
+                    # No tuids from the new should be in the old
+                    # so this intersection should always be empty.
+                    assert len(set(new_file_tuids) & set([t.tuid for t in old_file_tuids])) <= 0
+                    completed += 1
+
+                    break
+    assert completed == len(lines_added.keys())
+
+
+#@pytest.mark.skip(
+#    reason="Very long to get diffs. It tests across multiple merges to ensure TUIDs are stable."
+#)
 def test_very_distant_files(service):
     new_rev = "6e8e861540e6"
     old_rev = "1e2c9151a09e"
@@ -725,7 +760,6 @@ def test_very_distant_files(service):
                     for tuid_map in tmp_tuids:
                         if tuid_map.line in lines_added[file]:
                             new_file_tuids.append(tuid_map.tuid)
-                    new_file_tuids = tmp_tuids
 
                     # No tuids from the new should be in the old
                     # so this intersection should always be empty.
