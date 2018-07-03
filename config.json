@@ -62,11 +62,11 @@
     "constants": {
         "tuid.service.DEBUG": false,
         "tuid.service.ENABLE_TRY": true,
-        "tuid.service.MINIMUM_PERMANENT_CSETS": 10,
-        "tuid.service.CSET_BACKFILL_WAIT_TIME": 5,
-        "tuid.service.CSET_MAINTENANCE_WAIT_TIME": 15,
-        "tuid.service.MAXIMUM_NONPERMANENT_CSETS": 100,
-        "tuid.service.CSET_DELETION_WAIT_TIME": 5,
+        "tuid.clogger.MINIMUM_PERMANENT_CSETS": 10,
+        "tuid.clogger.CSET_BACKFILL_WAIT_TIME": 5,
+        "tuid.clogger.CSET_MAINTENANCE_WAIT_TIME": 15,
+        "tuid.clogger.MAXIMUM_NONPERMANENT_CSETS": 100,
+        "tuid.clogger.CSET_DELETION_WAIT_TIME": 5,
         "pyLibrary.env.http.DEBUG": false,
         "pyLibrary.env.http.default_headers": {
             "Referer": "https://github.com/mozilla/TUID",

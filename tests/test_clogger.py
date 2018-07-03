@@ -19,8 +19,7 @@ from mo_times import Timer
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR
-from tuid.service import Clogger
-from tuid.service import MAXIMUM_NONPERMANENT_CSETS
+from tuid.clogger import Clogger
 from tuid import sql
 
 _clogger = None
