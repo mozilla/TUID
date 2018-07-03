@@ -58,6 +58,9 @@ class TUIDService:
 
             self.locker = Lock()
             self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
+            self.total_locker = Lock()
+            self.total_files_requested = 0
+            self.total_tuids_mapped = 0
         except Exception as e:
             Log.error("can not setup service", cause=e)
 
@@ -71,6 +74,18 @@ class TUIDService:
                 return self.next_tuid
             finally:
                 self.next_tuid += 1
+
+
+    def update_totals(self, num_files_req, num_tuids_mapped):
+        with self.total_locker:
+            self.total_files_requested += num_files_req
+            self.total_tuids_mapped += num_tuids_mapped
+
+
+    def reset_totals(self):
+        with self.total_locker:
+            self.total_files_requested = 0
+            self.total_tuids_mapped = 0
 
 
     def init_db(self):
@@ -304,7 +319,7 @@ class TUIDService:
         :return:
         """
         Log.note("Thread {{pos}} is running.", pos=res_position)
-        results[res_position], _ = self.get_tuids_from_files(files, revision, going_forward=going_forward, repo=repo)
+        results[res_position], _, pc = self.get_tuids_from_files(files, revision, going_forward=going_forward, repo=repo)
         Log.note("Thread {{pos}} is ending.", pos=res_position)
         return
 
@@ -355,7 +370,7 @@ class TUIDService:
             check = self._check_branch(revision, repo)
             if not check:
                 # Error was already output by _check_branch
-                return [(file, []) for file in files], completed
+                return [(file, []) for file in files], completed, 100
 
         if repo in ('try',):
             # We don't need to keep latest file revisions
@@ -363,8 +378,8 @@ class TUIDService:
 
             # Enable the 'try' repo calls with ENABLE_TRY
             if ENABLE_TRY:
-                return self._get_tuids_from_files_try_branch(files, revision), completed
-            return [(file, []) for file in files], completed
+                return self._get_tuids_from_files_try_branch(files, revision), completed, 100
+            return [(file, []) for file in files], completed, 100
 
         result = []
         revision = revision[:12]
@@ -454,6 +469,7 @@ class TUIDService:
                 new_files,
                 frontier_update_list,
                 revision,
+                using_thread,
                 please_stop=None
             ):
             try:
@@ -500,6 +516,8 @@ class TUIDService:
                     )
                     result.extend(tmp)
 
+                if using_thread:
+                    self.update_totals(0, len(result))
                 Log.note("Completed work overflow for revision {{cset}}", cset=revision)
                 return result
             except Exception as e:
@@ -517,14 +535,16 @@ class TUIDService:
             Log.note("Incomplete response given")
             Thread.run(
                 'get_tuids_from_files (' + Random.base64(9) + ")",
-                update_tuids_in_thread, new_files, frontier_update_list, revision
+                update_tuids_in_thread, new_files, frontier_update_list, revision, threaded
             )
         else:
             result.extend(
-                update_tuids_in_thread(new_files, frontier_update_list, revision)
+                update_tuids_in_thread(new_files, frontier_update_list, revision, threaded)
             )
 
-        return result, completed
+        self.update_totals(len(files), len(result))
+        percent_complete = 100 * (self.total_tuids_mapped / self.total_files_requested)
+        return result, completed, percent_complete
 
 
     def _apply_diff(self, transaction, annotation, diff, cset, file):

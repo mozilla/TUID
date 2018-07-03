@@ -98,7 +98,7 @@ def test_tryrepo_tuids(service):
     test_revision = "0f4946791ddb"
 
     found_file = False
-    result, _ = service.get_tuids_from_files(test_file, test_revision, repo='try')
+    result, _, _ = service.get_tuids_from_files(test_file, test_revision, repo='try')
     for file, tuids in result:
         if file == 'testing/mochitest/baselinecoverage/browser_chrome/browser.ini':
             found_file = True
@@ -133,7 +133,8 @@ def test_multithread_service(service):
 
     # Check that we can get the same result after these
     # calls.
-    tuids = service.get_tuids(test_file, revision)
+    tuids, _, pc = service.get_tuids_from_files(test_file, revision, use_thread=False)
+    assert pc >= 100
     assert len(tuids[0][1]) == 41
 
     for tuid_count, mapping in enumerate(tuids[0][1]):
@@ -304,13 +305,13 @@ def test_many_files_one_revision(service):
     test_file = test_file_init + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    old, _ = service.get_tuids_from_files(test_file,first_front, use_thread=False)
+    old, _, _ = service.get_tuids_from_files(test_file,first_front, use_thread=False)
     print("old:")
     for el in old:
         print(el[0])
         print("     "+el[0]+":"+str(len(el[1])))
 
-    new, _ = service.get_tuids_from_files(test_file,test_rev, use_thread=False)
+    new, _, _ = service.get_tuids_from_files(test_file,test_rev, use_thread=False)
     print("new:")
     for el in new:
         print("     "+el[0]+":"+str(len(el[1])))
@@ -318,7 +319,7 @@ def test_many_files_one_revision(service):
 
 def test_one_addition_many_files(service):
     # Get current annotation
-    result, _ = service.get_tuids_from_files(["widget/cocoa/nsCocoaWindow.mm"], '159e1105bdc7')
+    result, _, _ = service.get_tuids_from_files(["widget/cocoa/nsCocoaWindow.mm"], '159e1105bdc7')
 
     _, curr_tuids = result[0]
     curr_tuid_array = map_to_array(curr_tuids)
@@ -336,7 +337,7 @@ def test_one_addition_many_files(service):
     test_file = test_file_change + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    tuid_response, _ = service.get_tuids_from_files(test_file,test_rev, use_thread=False)
+    tuid_response, _, _ = service.get_tuids_from_files(test_file,test_rev, use_thread=False)
     print("new:")
     for filename, tuids in tuid_response:
         print("     "+filename+":"+str(len(tuids)))
@@ -495,13 +496,17 @@ def test_one_http_call_required(service):
     # SETUP
     proc_files = files[-10:] + [k for k in changed_files] # Useful in testing
     Log.note("Number of files to process: {{flen}}", flen=len(files))
-    first_f_n_tuids, _ = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "d63ed14ed622", use_thread=False)
+    first_f_n_tuids, _, _ = service.get_tuids_from_files(
+        ['/dom/base/Link.cpp']+proc_files, "d63ed14ed622", use_thread=False
+    )
 
     # THIS NEXT CALL SHOULD BE FAST, DESPITE THE LACK OF LOCAL CACHE
     start = http.request_count
     timer = Timer("get next revision")
     with timer:
-        f_n_tuids, _ = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "14dc6342ec50", use_thread=False)
+        f_n_tuids, _, _ = service.get_tuids_from_files(
+            ['/dom/base/Link.cpp']+proc_files, "14dc6342ec50", use_thread=False
+        )
     num_http_calls = http.request_count - start
 
     #assert num_http_calls <= 2
@@ -561,10 +566,9 @@ def test_out_of_order_get_tuids_from_files(service):
     test_file = ["dom/base/nsWrapperCache.cpp"]
     check_lines = [41]
 
-    result1, _ = service.get_tuids_from_files(test_file, rev_initial, use_thread=False)
-    result2, _ = service.get_tuids_from_files(test_file, rev_latest, use_thread=False)
-    test_result, _ = service.get_tuids_from_files(test_file, rev_middle, use_thread=False)
-
+    result1, _, _ = service.get_tuids_from_files(test_file, rev_initial, use_thread=False)
+    result2, _, _ = service.get_tuids_from_files(test_file, rev_latest, use_thread=False)
+    test_result, _, _ = service.get_tuids_from_files(test_file, rev_middle, use_thread=False)
     # Check that test_result's tuids at line 41 is different from
     # result 2.
     for (fname, tuids2) in result2:
@@ -589,11 +593,10 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
     test_file = ["dom/base/nsWrapperCache.cpp"]
     check_lines = [41]
 
-    result1, _ = service.get_tuids_from_files(test_file, rev_initial, going_forward=True, use_thread=False)
-    result2, _ = service.get_tuids_from_files(test_file, rev_latest, going_forward=True, use_thread=False)
-    test_result, _ = service.get_tuids_from_files(test_file, rev_middle, going_forward=True, use_thread=False)
-    result2, _ = service.get_tuids_from_files(test_file, rev_latest2, going_forward=True, use_thread=False)
-
+    result1, _, _ = service.get_tuids_from_files(test_file, rev_initial, going_forward=True, use_thread=False)
+    result2, _, _ = service.get_tuids_from_files(test_file, rev_latest, going_forward=True, use_thread=False)
+    test_result, _, _ = service.get_tuids_from_files(test_file, rev_middle, going_forward=True, use_thread=False)
+    result2, _, _ = service.get_tuids_from_files(test_file, rev_latest2, going_forward=True, use_thread=False)
     # Check that test_result's tuids at line 41 is different from
     # result 2.
     for (fname, tuids2) in result2:
@@ -625,17 +628,26 @@ def test_threaded_service_call(service):
         "/toolkit/components/reader/test/browser_readerMode_with_anchor.js",
     ]
 
-    res, completed = service.get_tuids_from_files(test_file, mc_revision, going_forward=True)
+    service.reset_totals()
+    res, completed, percent_complete = service.get_tuids_from_files(test_file, mc_revision, going_forward=True)
     assert not completed
+    assert percent_complete < 100
     assert all([len(tuids) == 0 for file, tuids in res])
 
-    while not completed:
+    threads = []
+    while not completed or percent_complete < 100:
+        # If everything works correctly, when the requested files have been processed
+        # and all requests that requested those files have completed, percent_complete
+        # will be 100. If not, a thread may have died or some other synchronization
+        # issue has occurred.
+
         # Wait a bit to let them process
         Till(seconds=timeout_seconds).wait()
 
         # Try getting them again
-        res, completed = service.get_tuids_from_files(test_file, mc_revision, going_forward=True)
+        res, completed, percent_complete = service.get_tuids_from_files(test_file, mc_revision, going_forward=True)
 
+    assert percent_complete >= 100
     assert completed
     assert all([len(tuids) > 0 for file, tuids in res])
 
@@ -646,10 +658,10 @@ def test_try_rev_then_mc(service):
     test_file = ["browser/components/payments/test/browser/browser_host_name.js"]
     file_length = 34
 
-    res1, _ = service.get_tuids_from_files(test_file, try_revision, going_forward=True, use_thread=False)
+    res1, _, _ = service.get_tuids_from_files(test_file, try_revision, going_forward=True, use_thread=False)
     assert len(res1[0][1]) == 0
 
-    res2, _ = service.get_tuids_from_files(test_file, mc_revision, going_forward=True, use_thread=False)
+    res2, _, _ = service.get_tuids_from_files(test_file, mc_revision, going_forward=True, use_thread=False)
     assert len(res2[0][1]) == file_length
 
     for tuid_map in res2[0][1]:
@@ -663,8 +675,8 @@ def test_merged_changes(service):
     test_files = [
         "js/src/wasm/WasmTextToBinary.cpp"
     ]
-    old_tuids, _ = service.get_tuids_from_files(test_files, old_rev, use_thread=False)
-    new_tuids, _ = service.get_tuids_from_files(test_files, new_rev, use_thread=False)
+    old_tuids, _, _ = service.get_tuids_from_files(test_files, old_rev, use_thread=False)
+    new_tuids, _, _ = service.get_tuids_from_files(test_files, new_rev, use_thread=False)
 
     lines_added = {
         "js/src/wasm/WasmTextToBinary.cpp": [1668, 1669, 1670, 1671]
@@ -710,8 +722,8 @@ def test_very_distant_files(service):
                 " WHERE file = " + quote_value(file)
             )
 
-    old_tuids, _ = service.get_tuids_from_files(test_files, old_rev, use_thread=False, max_csets_proc=10000)
-    new_tuids, _ = service.get_tuids_from_files(test_files, new_rev, use_thread=False, max_csets_proc=10000)
+    old_tuids, _, _ = service.get_tuids_from_files(test_files, old_rev, use_thread=False, max_csets_proc=10000)
+    new_tuids, _, _ = service.get_tuids_from_files(test_files, new_rev, use_thread=False, max_csets_proc=10000)
 
     lines_moved = {
         "docshell/base/nsDocShell.cpp": {1028: 1026, 1097: 1029}
