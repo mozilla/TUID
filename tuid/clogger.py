@@ -53,6 +53,11 @@ class Clogger:
             self.at_tip = True
             self.config = self.config.tuid
 
+            self.disable_backfilling = False
+            self.disable_tipfilling = False
+            self.disable_deletion = False
+            self.disable_maintenance = False
+
             # Make sure we are filled before allowing queries
             numrevs = self.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
             print("csetLog has " + str(numrevs))
@@ -76,7 +81,7 @@ class Clogger:
 
             Thread.run('clogger-tip', self.fill_forward_continuous)
             Thread.run('clogger-backfill', self.fill_backward_with_list)
-            Thread.run('clogger-maintenance', self.csetLog_maintenaner)
+            Thread.run('clogger-maintenance', self.csetLog_maintenance)
             Thread.run('clogger-deleter', self.csetLog_deleter)
 
             Log.note("Started clogger workers.")
@@ -277,7 +282,7 @@ class Clogger:
         '''
         try:
             while not please_stop:
-                if len(self.csets_todo_backwards) <= 0:
+                if len(self.csets_todo_backwards) <= 0 or self.disable_backfilling:
                     (please_stop | Till(seconds=CSET_BACKFILL_WAIT_TIME)).wait()
                     continue
 
@@ -368,16 +373,26 @@ class Clogger:
     def fill_forward_continuous(self, please_stop=None):
         try:
             while not please_stop:
-                did_an_update = self.update_tip()
-                if not did_an_update:
+                waiting_a_bit = False
+                if self.disable_backfilling:
+                    waiting_a_bit = True
+
+                if not waiting_a_bit:
+                    # If an update was done, check if there are
+                    # more changesets that have arrived just in case,
+                    # otherwise, we wait.
+                    did_an_update = self.update_tip()
+                    if not did_an_update:
+                        waiting_a_bit = True
+
+                if waiting_a_bit:
                     (please_stop | Till(seconds=CSET_TIP_WAIT_TIME)).wait()
                     continue
-
         except Exception as e:
             Log.warning("Unknown error occurred during tip maintenance:", cause=e)
 
 
-    def csetLog_maintenaner(self, please_stop=None):
+    def csetLog_maintenance(self, please_stop=None):
         '''
         Handles deleting old csetLog entries and timestamping
         revisions once they pass the length for permanent
@@ -389,7 +404,7 @@ class Clogger:
             try:
                 # Wait a bit for maintenance cycle to begin
                 (Till(seconds=CSET_MAINTENANCE_WAIT_TIME)).wait()
-                if len(self.deletions_todo) > 0:
+                if len(self.deletions_todo) > 0 or self.disable_maintenance:
                     continue
 
                 with self.tip_locker and self.backfill_locker:
@@ -484,11 +499,12 @@ class Clogger:
         '''
         while not please_stop:
             try:
-                if len(self.deletions_todo) <= 0:
-                    Log.note(
-                        "Did not find any deletion requests, waiting for {{secs}} to check again.",
-                        secs=str(CSET_DELETION_WAIT_TIME)
-                    )
+                if len(self.deletions_todo) <= 0 or self.disable_deletion:
+                    if not self.disable_deletion:
+                        Log.note(
+                            "Did not find any deletion requests, waiting for {{secs}} to check again.",
+                            secs=str(CSET_DELETION_WAIT_TIME)
+                        )
                     (Till(seconds=CSET_DELETION_WAIT_TIME)).wait()
                     continue
 

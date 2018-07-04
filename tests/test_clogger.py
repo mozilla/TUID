@@ -25,6 +25,7 @@ from tuid import sql
 _clogger = None
 _conn = None
 
+DEBUG = False
 HG_URL = "https://hg.mozilla.org/"
 
 @pytest.fixture
@@ -49,6 +50,11 @@ def test_initializing(clogger):
 
 
 def test_tipfilling(clogger):
+    clogger.disable_tipfilling = False
+    clogger.disable_backfilling = True
+    clogger.disable_deletion = True
+    clogger.disable_maintenance = True
+
     num_trys = 50
     wait_time = 2
     current_tip = None
@@ -61,12 +67,11 @@ def test_tipfilling(clogger):
         nothing_exists = True
         new_tip = None
         while nothing_exists:
-            with clogger.conn.transaction() as t:
-                new_tip = t.get_one("SELECT max(revnum) AS revnum, revision FROM csetLog")[1]
+            new_tip = clogger.conn.get_one("SELECT max(revnum) AS revnum, revision FROM csetLog")[1]
             if new_tip:
                 nothing_exists = False
             else:
-                (Till(seconds=wait_time)).wait()
+                Till(seconds=wait_time).wait()
         if current_tip == new_tip:
             break
         num_trys -= 1
@@ -76,14 +81,16 @@ def test_tipfilling(clogger):
 
 
 def test_backfilling_to_revision(clogger):
+    clogger.disable_backfilling = False
+    clogger.disable_tipfilling = True
+    clogger.disable_deletion = True
+    clogger.disable_maintenance = True
+
     num_trys = 50
     wait_time = 2
     num_to_go_back = 10
 
-    oldest_rev = None
-    oldest_revnum = 1
-    with clogger.conn.transaction() as t:
-        oldest_revnum, oldest_rev = t.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")
+    oldest_revnum, oldest_rev = clogger.conn.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")
 
     new_old_rev = None
     clog_url = HG_URL + clogger.config.hg.branch + '/' + 'json-log/' + oldest_rev
@@ -97,15 +104,12 @@ def test_backfilling_to_revision(clogger):
 
     new_ending = None
     while num_trys > 0:
-        with clogger.conn.transaction() as t:
-            new_ending = t.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")[1]
-        print(oldest_rev)
-        print(new_old_rev)
-        print(new_ending)
+        new_ending = clogger.conn.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")[1]
+        DEBUG and Log.note("{{data}}", data=(oldest_rev, new_old_rev, new_ending))
         if new_ending == new_old_rev:
             break
         else:
-            (Till(seconds=wait_time)).wait()
+            Till(seconds=wait_time).wait()
             num_trys -= 1
 
     assert num_trys > 0
@@ -119,14 +123,16 @@ def test_backfilling_to_revision(clogger):
 
 
 def test_backfilling_by_count(clogger):
+    clogger.disable_backfilling = False
+    clogger.disable_tipfilling = True
+    clogger.disable_deletion = True
+    clogger.disable_maintenance = True
+
     num_trys = 50
     wait_time = 2
     num_to_go_back = 10
 
-    oldest_rev = None
-    oldest_revnum = 1
-    with clogger.conn.transaction() as t:
-        oldest_revnum, oldest_rev = t.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")
+    oldest_revnum, oldest_rev = clogger.conn.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")
 
     new_old_rev = None
     clog_url = HG_URL + clogger.config.hg.branch + '/' + 'json-log/' + oldest_rev
@@ -139,16 +145,16 @@ def test_backfilling_by_count(clogger):
     clogger.csets_todo_backwards.append((num_to_go_back, True))
 
     new_ending = None
+    new_revnum = None
     while num_trys > 0:
         with clogger.conn.transaction() as t:
             new_ending = t.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")[1]
-        print(oldest_rev)
-        print(new_old_rev)
-        print(new_ending)
-        if new_ending == new_old_rev:
-            break
-        else:
-            (Till(seconds=wait_time)).wait()
+            DEBUG and Log.note("{{data}}", data=(oldest_rev, new_old_rev, new_ending))
+            if new_ending == new_old_rev:
+                new_revnum = t.get_one("SELECT revnum FROM csetLog WHERE revision=?", (oldest_rev,))[0]
+                break
+        if new_ending != new_old_rev:
+            Till(seconds=wait_time).wait()
             num_trys -= 1
 
     assert num_trys > 0
@@ -156,13 +162,17 @@ def test_backfilling_by_count(clogger):
 
     # Check that revnum's were properly handled
     expected_revnum = oldest_revnum + num_to_go_back
-    with clogger.conn.transaction() as t:
-        new_revnum = t.get_one("SELECT revnum FROM csetLog WHERE revision=?", (oldest_rev,))[0]
     assert expected_revnum == new_revnum
 
 
 def test_maintenance_and_deletion(clogger):
     # IMPORTANT: Assumes that the max csets is 100
+    clogger.disable_tipfilling = True
+
+    # Temporarily disable these workers
+    clogger.disable_maintenance = True
+    clogger.disable_deletion = True
+
     max_revs = 100
     extra_to_add = 50
     num_trys = 50
@@ -181,7 +191,7 @@ def test_maintenance_and_deletion(clogger):
     new_tail = None
     tmp_num_trys = 0
     while tmp_num_trys < num_trys:
-        (Till(seconds=wait_time)).wait()
+        Till(seconds=wait_time).wait()
         with clogger.conn.transaction() as t:
             new_tail = clogger.get_tail(t)[1]
         if new_tail != tail_cset:
@@ -206,6 +216,10 @@ def test_maintenance_and_deletion(clogger):
         Log.note("Maintenance worker already ran.")
         assert True
         return
+
+    clogger.disable_backfilling = True
+    clogger.disable_deletion = False
+    clogger.disable_maintenance = False
 
     wait_time = 10
     tmp_num_trys = 0
