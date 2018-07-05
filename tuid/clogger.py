@@ -6,7 +6,7 @@ from mo_future import text_type
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_files.url import URL
 from mo_logs import Log
-from mo_threads import Till, Thread, Lock
+from mo_threads import Till, Thread, Lock, Queue
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
@@ -49,7 +49,7 @@ class Clogger:
 
             self.init_db()
             self.next_revnum = coalesce(self.conn.get_one("SELECT max(revnum)+1 FROM csetLog")[0], 1)
-            self.csets_todo_backwards = []
+            self.csets_todo_backwards = Queue(name="Clogger.csets_todo_backwards")
             self.deletions_todo = []
             self.at_tip = True
             self.config = self.config.tuid
@@ -61,7 +61,6 @@ class Clogger:
 
             # Make sure we are filled before allowing queries
             numrevs = self.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
-            print("csetLog has " + str(numrevs))
             if numrevs < MINIMUM_PERMANENT_CSETS:
                 Log.note("Filling in csets to hold {{minim}} csets.", minim=MINIMUM_PERMANENT_CSETS)
                 oldest_rev = 'tip'
@@ -308,21 +307,19 @@ class Clogger:
         '''
         try:
             while not please_stop:
-                if len(self.csets_todo_backwards) <= 0 or self.disable_backfilling:
+                if not self.csets_todo_backwards or self.disable_backfilling:
                     (please_stop | Till(seconds=CSET_BACKFILL_WAIT_TIME)).wait()
                     continue
 
                 with self.working_locker:
-                    done = []
-                    for parent_cset, timestamp in self.csets_todo_backwards:
+                    for parent_cset, timestamp in self.csets_todo_backwards.pop_all():
                         with self.conn.transaction() as t:
                             parent_revnum = self._get_one_revnum(t, parent_cset)
                         if parent_revnum:
-                            done.append((parent_cset, timestamp))
                             continue
 
                         with self.conn.transaction() as t:
-                            oldest_revision = t.query("SELECT min(revNum), revision FROM csetLog").data[0][1]
+                            oldest_revision = self.get_tail(t)[1]
 
                         self._fill_in_range(
                             parent_cset,
@@ -330,9 +327,7 @@ class Clogger:
                             timestamp=timestamp,
                             number_forward=False
                         )
-                        done.append((parent_cset,timestamp))
-                        Log.note("Finished {{cset}}", cset=parent_cset)
-                    self.csets_todo_backwards = []
+                    Log.note("Finished {{cset}}", cset=parent_cset)
         except Exception as e:
             Log.warning("Unknown error occurred during backfill: ", cause=e)
 
@@ -347,7 +342,7 @@ class Clogger:
 
         # Get current tip in DB
         with self.conn.transaction() as t:
-            newest_known_rev = t.query("SELECT max(revnum) AS revnum, revision FROM csetLog").data[0][1]
+            newest_known_rev = self.get_tip(t)[1]
 
         # If we are still at the newest, wait for CSET_TIP_WAIT_TIME seconds
         # before checking again.
@@ -428,7 +423,7 @@ class Clogger:
         while not please_stop:
             try:
                 # Wait a bit for maintenance cycle to begin
-                Till(seconds=CSET_MAINTENANCE_WAIT_TIME).wait()
+                (Till(seconds=CSET_MAINTENANCE_WAIT_TIME)).wait()
                 if len(self.deletions_todo) > 0 or self.disable_maintenance:
                     continue
 
@@ -533,19 +528,15 @@ class Clogger:
                     Till(seconds=CSET_DELETION_WAIT_TIME).wait()
                     continue
 
-                Log.note("Waiting for locks...")
                 with self.working_locker:
-                    Log.note("Locks acquired.")
                     tmp_deletions = self.deletions_todo
                     for first_cset in tmp_deletions:
                         with self.conn.transaction() as t:
                             revnum = self._get_one_revnum(t, first_cset)[0]
-                            print("revnum:" + str(revnum))
                             csets_to_del = t.get(
                                 "SELECT revnum, revision FROM csetLog WHERE revnum <= ?", (revnum,)
                             )
                             csets_to_del = [cset for _, cset in csets_to_del]
-                            print(csets_to_del)
                             existing_frontiers = t.query(
                                 "SELECT revision FROM latestFileMod WHERE revision IN " +
                                 sql_iso(sql_list(map(quote_value, csets_to_del)))
@@ -594,7 +585,7 @@ class Clogger:
 
 
     def get_old_cset_revnum(self, revision):
-        self.csets_todo_backwards.append((
+        self.csets_todo_backwards.add((
             revision,
             True
         ))

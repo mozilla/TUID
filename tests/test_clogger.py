@@ -100,7 +100,7 @@ def test_backfilling_to_revision(clogger):
             new_old_rev = clog_obj['node'][:12]
             break
 
-    clogger.csets_todo_backwards.append((new_old_rev, True))
+    clogger.csets_todo_backwards.add((new_old_rev, True))
 
     new_ending = None
     while num_trys > 0:
@@ -142,7 +142,7 @@ def test_backfilling_by_count(clogger):
             new_old_rev = clog_obj['node'][:12]
             break
 
-    clogger.csets_todo_backwards.append((num_to_go_back, True))
+    clogger.csets_todo_backwards.add((num_to_go_back, True))
 
     new_ending = None
     new_revnum = None
@@ -187,7 +187,7 @@ def test_maintenance_and_deletion(clogger):
     with clogger.conn.transaction() as t:
         tail_cset = clogger.get_tail(t)[1]
 
-    clogger.csets_todo_backwards.append((extra_to_add, True))
+    clogger.csets_todo_backwards.add((extra_to_add, True))
     new_tail = None
     tmp_num_trys = 0
     while tmp_num_trys < num_trys:
