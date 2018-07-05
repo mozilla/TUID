@@ -44,9 +44,10 @@ class Clogger:
             self.tuid_service = tuid_service if tuid_service else tuid.service.TUIDService(
                 database=None, hg=None, kwargs=self.config, conn=self.conn, clogger=self
             )
-            self.locker = Lock()
-            self.tip_locker = Lock()
-            self.backfill_locker = Lock()
+            self.rev_locker = Lock()
+            self.working_locker = Lock()
+
+            self.init_db()
             self.next_revnum = coalesce(self.conn.get_one("SELECT max(revnum)+1 FROM csetLog")[0], 1)
             self.csets_todo_backwards = []
             self.deletions_todo = []
@@ -89,25 +90,31 @@ class Clogger:
             Log.error("Can not setup clogger: {{cause}}", cause=e)
 
 
+    def init_db(self):
+        with self.conn.transaction() as t:
+            t.execute('''
+            CREATE TABLE IF NOT EXISTS csetLog (
+                revnum         INTEGER PRIMARY KEY,
+                revision       CHAR(12) NOT NULL,
+                timestamp      INTEGER
+            );''')
+
+
     def revnum(self):
         """
         :return: next tuid
         """
-        with self.locker:
-            try:
-                return self.next_revnum
-            finally:
-                self.next_revnum += 1
+        return self.conn.get_one("SELECT max(revnum) as revnum FROM csetLog")[0]
 
 
     def get_tip(self, transaction):
-        return coalesce(transaction, self.conn).get_one(
+        return transaction.get_one(
             "SELECT max(revnum) as revnum, revision FROM csetLog"
         )
 
 
     def get_tail(self, transaction):
-        return coalesce(transaction, self.conn).get_one(
+        return transaction.get_one(
             "SELECT min(revnum) as revnum, revision FROM csetLog"
         )
 
@@ -115,11 +122,6 @@ class Clogger:
         try:
             Log.note("Searching through changelog {{url}}", url=clog_url)
             clog_obj = http.get_json(clog_url, retry=RETRY)
-            if isinstance(clog_obj, (text_type, str)):
-                Log.error(
-                    "Unexpected error getting clog for url: {{url}}",
-                    url=clog_url
-                )
             return clog_obj
         except Exception as e:
             Log.error(
@@ -142,16 +144,41 @@ class Clogger:
 
     def _get_revnum_range(self, transaction, revnum1, revnum2):
         # Returns a range of revision numbers (that is inclusive)
-        high_num = revnum1
-        low_num = revnum2
-        if high_num < low_num:
-            high_num = revnum2
-            low_num = revnum1
+        high_num = max(revnum1, revnum2)
+        low_num = min(revnum1, revnum2)
 
         return transaction.query(
             "SELECT revnum, revision FROM csetLog WHERE revnum >= ? AND revnum <= ?",
             (low_num, high_num)
         )
+
+
+    def recompute_table_revnums(self):
+        '''
+        Recomputes the revnums for the csetLog table
+        by creating a new table, and copying csetLog to
+        it. The INTEGER PRIMARY KEY in the temp table auto increments
+        as rows are added.
+
+        IMPORTANT: Only call this after acquiring the
+                   lock `self.working_locker`.
+        :return:
+        '''
+        with self.conn.transaction() as t:
+            t.execute('''
+            CREATE TABLE temp (
+                revnum         INTEGER PRIMARY KEY,
+                revision       CHAR(12) NOT NULL,
+                timestamp      INTEGER
+            );''')
+
+            t.execute(
+                "INSERT INTO temp (revision, timestamp) "
+                "SELECT revision, timestamp FROM csetlog ORDER BY revnum ASC"
+            )
+
+            t.execute("DROP TABLE csetLog;")
+            t.execute("ALTER TABLE temp RENAME TO csetLog;")
 
 
     def add_cset_entries(self, ordered_rev_list, timestamp=False, number_forward=True):
@@ -202,15 +229,14 @@ class Clogger:
                     "INSERT INTO csetLog (revnum, revision, timestamp)" +
                     " VALUES " +
                     sql_list(
-                        sql_iso(sql_list(map(quote_value, (i[0], i[1], i[2])))) for i in tmp_insert_list
+                        sql_iso(
+                            sql_list(map(quote_value, (revnum, revision, timestamp)))
+                        ) for revnum, revision, timestamp in tmp_insert_list
                     )
                 )
 
-            # Move the revision numbers forward if needed
-            if not number_forward:
-                t.execute(
-                    "UPDATE csetLog SET revnum = revnum + " + str(len(fmt_insert_list))
-                )
+        # Move the revision numbers forward if needed
+        self.recompute_table_revnums()
 
 
     def _fill_in_range(self, parent_cset, child_cset, timestamp=False, number_forward=True):
@@ -286,7 +312,7 @@ class Clogger:
                     (please_stop | Till(seconds=CSET_BACKFILL_WAIT_TIME)).wait()
                     continue
 
-                with self.backfill_locker:
+                with self.working_locker:
                     done = []
                     for parent_cset, timestamp in self.csets_todo_backwards:
                         with self.conn.transaction() as t:
@@ -298,13 +324,12 @@ class Clogger:
                         with self.conn.transaction() as t:
                             oldest_revision = t.query("SELECT min(revNum), revision FROM csetLog").data[0][1]
 
-                        with self.tip_locker:
-                            self._fill_in_range(
-                                parent_cset,
-                                oldest_revision,
-                                timestamp=timestamp,
-                                number_forward=False
-                            )
+                        self._fill_in_range(
+                            parent_cset,
+                            oldest_revision,
+                            timestamp=timestamp,
+                            number_forward=False
+                        )
                         done.append((parent_cset,timestamp))
                         Log.note("Finished {{cset}}", cset=parent_cset)
                     self.csets_todo_backwards = []
@@ -330,7 +355,7 @@ class Clogger:
         if newest_known_rev == first_clog_entry:
             return False
 
-        with self.tip_locker:
+        with self.working_locker:
             self.at_tip = False
             csets_to_gather = None
             if not newest_known_rev:
@@ -364,7 +389,7 @@ class Clogger:
                     clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
                     clog_obj = self._get_clog(clog_url)
 
-            Log.note("Adding {{csets}}", csets=str(csets_to_add))
+            Log.note("Adding {{csets}}", csets=csets_to_add)
             self.add_cset_entries(csets_to_add, timestamp=False)
             self.at_tip = True
         return True
@@ -403,11 +428,11 @@ class Clogger:
         while not please_stop:
             try:
                 # Wait a bit for maintenance cycle to begin
-                (Till(seconds=CSET_MAINTENANCE_WAIT_TIME)).wait()
+                Till(seconds=CSET_MAINTENANCE_WAIT_TIME).wait()
                 if len(self.deletions_todo) > 0 or self.disable_maintenance:
                     continue
 
-                with self.tip_locker and self.backfill_locker:
+                with self.working_locker:
                     all_data = None
                     with self.conn.transaction() as t:
                         all_data = sorted(
@@ -459,7 +484,7 @@ class Clogger:
 
                                 still_exist = True
                                 while still_exist:
-                                    (Till(seconds=TUID_EXISTENCE_WAIT_TIME)).wait()
+                                    Till(seconds=TUID_EXISTENCE_WAIT_TIME).wait()
                                     with self.conn.transaction() as t:
                                         old_files = t.get(
                                             "SELECT file FROM latestFileMod WHERE revision=?",
@@ -478,10 +503,10 @@ class Clogger:
                                     for cset_entry in new_data2
                                 )
                             )
-                    if len(deleted_data) <= 0:
+                    if not deleted_data:
                         continue
 
-                    Log.note("Scheduling {{num_csets}} for deletion", num_csets=str(len(deleted_data)))
+                    Log.note("Scheduling {{num_csets}} for deletion", num_csets=len(deleted_data))
                     self.deletions_todo.append(delete_overflowing_revstart)
             except Exception as e:
                 Log.warning("Unexpected error occured while maintaining csetLog, continuing to try: ", cause=e)
@@ -503,13 +528,13 @@ class Clogger:
                     if not self.disable_deletion:
                         Log.note(
                             "Did not find any deletion requests, waiting for {{secs}} to check again.",
-                            secs=str(CSET_DELETION_WAIT_TIME)
+                            secs=CSET_DELETION_WAIT_TIME
                         )
-                    (Till(seconds=CSET_DELETION_WAIT_TIME)).wait()
+                    Till(seconds=CSET_DELETION_WAIT_TIME).wait()
                     continue
 
                 Log.note("Waiting for locks...")
-                with self.tip_locker and self.backfill_locker:
+                with self.working_locker:
                     Log.note("Locks acquired.")
                     tmp_deletions = self.deletions_todo
                     for first_cset in tmp_deletions:
@@ -530,7 +555,7 @@ class Clogger:
 
                         Log.note(
                             "Deleting all annotations and changeset log entries with revisions in the list: {{csets}}",
-                            csets=str(csets_to_del)
+                            csets=csets_to_del
                         )
 
                         if len(existing_frontiers) > 0:
@@ -550,33 +575,21 @@ class Clogger:
                                 sql_iso(sql_list(map(quote_value, csets_to_del)))
                             )
 
-                            # Recompute so that we don't subtract too many
-                            # revision numbers after deletion.
-                            recomputed_cset_deletions = []
-                            for cset in csets_to_del:
-                                tmp = self._get_one_revnum(t, cset)
-                                if tmp:
-                                    recomputed_cset_deletions.append(cset)
-
                             Log.note(
                                 "Deleting {{num_entries}} csetLog entries...",
-                                num_entries=len(recomputed_cset_deletions)
+                                num_entries=len(csets_to_del)
                             )
                             t.execute(
                                 "DELETE FROM csetLog WHERE revision IN " +
-                                sql_iso(sql_list(map(quote_value, recomputed_cset_deletions)))
+                                sql_iso(sql_list(map(quote_value, csets_to_del)))
                             )
 
-                            # This UPDATE ssumes csets_to_del from self.deletions_todo which should
-                            # contain ordered deletions and that no holes are
-                            # created here because of this sassumption.
-                            t.execute(
-                                "UPDATE csetLog SET revnum = revnum - " + str(len(recomputed_cset_deletions) - 1)
-                            )
+                        # Recalculate the revnums
+                        self.recompute_table_revnums()
                     self.deletions_todo = [todo for todo in self.deletions_todo if todo not in tmp_deletions]
             except Exception as e:
                 Log.warning("Unexpected error occured while deleting from csetLog:", cause=e)
-                (Till(seconds=CSET_DELETION_WAIT_TIME)).wait()
+                Till(seconds=CSET_DELETION_WAIT_TIME).wait()
         return
 
 
@@ -586,6 +599,7 @@ class Clogger:
             True
         ))
 
+        revnum = None
         not_in_db = True
         while not_in_db:
             with self.conn.transaction() as t:
@@ -594,7 +608,7 @@ class Clogger:
                 not_in_db = False
             else:
                 Log.note("Waiting for backfill to complete...")
-                (Till(seconds=CSET_BACKFILL_WAIT_TIME)).wait()
+                Till(seconds=CSET_BACKFILL_WAIT_TIME).wait()
         return revnum
 
 

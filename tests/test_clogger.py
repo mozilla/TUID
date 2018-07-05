@@ -46,7 +46,7 @@ def clogger(config, new_db):
 def test_initializing(clogger):
     # If clogger is set up properly
     # this test will always pass
-    assert clogger is not None
+    assert clogger
 
 
 def test_tipfilling(clogger):
@@ -224,9 +224,8 @@ def test_maintenance_and_deletion(clogger):
     wait_time = 10
     tmp_num_trys = 0
     while tmp_num_trys < num_trys:
-        (Till(seconds=wait_time)).wait()
-        with clogger.conn.transaction() as t:
-            revnums_in_db = t.get_one("SELECT count(revnum) as revnum FROM csetLog")[0]
+        Till(seconds=wait_time).wait()
+        revnums_in_db = clogger.conn.get_one("SELECT count(revnum) as revnum FROM csetLog")[0]
         if revnums_in_db <= max_revs:
             break
         tmp_num_trys += 1

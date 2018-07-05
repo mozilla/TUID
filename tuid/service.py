@@ -40,17 +40,6 @@ FILES_TO_PROCESS_THRESH = 5
 ENABLE_TRY = False
 DAEMON_WAIT_AT_NEWEST = 30 * SECOND # Time to wait at the newest revision before polling again.
 
-# Clogger constants
-SQL_CSET_BATCH_SIZE = 500
-CSET_TIP_WAIT_TIME = 5 * 60 # seconds
-CSET_BACKFILL_WAIT_TIME = 1 * 60 # seconds
-CSET_MAINTENANCE_WAIT_TIME = 30 * 60 # seconds
-CSET_DELETION_WAIT_TIME = 1 * 60 # seconds
-TUID_EXISTENCE_WAIT_TIME = 1 * 60 # seconds
-MINIMUM_PERMANENT_CSETS = 1000
-MAXIMUM_NONPERMANENT_CSETS = 20000
-UPDATE_VERY_OLD_FRONTIERS = False
-
 GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE file=? and revision=? and line=?"
 GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and file=?"
 GET_LATEST_MODIFICATION = "SELECT revision FROM latestFileMod WHERE file=?"
@@ -118,15 +107,6 @@ class TUIDService:
                 file           TEXT,
                 revision       CHAR(12) NOT NULL,
                 PRIMARY KEY(file)
-            );''')
-
-            # Used by cset worker
-            t.execute('''
-            CREATE TABLE csetLog (
-                revnum         INTEGER,
-                revision       CHAR(12) NOT NULL,
-                timestamp      INTEGER,
-                PRIMARY KEY(revision)
             );''')
 
             t.execute("CREATE UNIQUE INDEX temporal_rev_file ON temporal(revision, file, line)")
