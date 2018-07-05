@@ -101,9 +101,9 @@ class Clogger:
 
     def revnum(self):
         """
-        :return: next tuid
+        :return: max revnum that was added
         """
-        return self.conn.get_one("SELECT max(revnum) as revnum FROM csetLog")[0]
+        return coalesce(self.conn.get_one("SELECT max(revnum) as revnum FROM csetLog")[0], 0)
 
 
     def get_tip(self, transaction):
@@ -202,13 +202,16 @@ class Clogger:
         insert_list = []
 
         # Format insertion list
+        new_insert_count = 1
+        current_max = self.revnum()
         for count, rev in enumerate(ordered_rev_list):
             tstamp = -1
             if timestamp:
                 tstamp = int(time.time())
 
             if number_forward:
-                revnum = self.revnum()
+                revnum = current_max + new_insert_count
+                new_insert_count += 1
             else:
                 revnum = -count
 
@@ -222,6 +225,7 @@ class Clogger:
                 tmp = self._get_one_revision(t, cset_entry)
                 if not tmp:
                     fmt_insert_list.append(cset_entry)
+            Log.note("inserting: {{inserting}}",inserting=fmt_insert_list)
 
             for _, tmp_insert_list in jx.groupby(fmt_insert_list, size=SQL_CSET_BATCH_SIZE):
                 t.execute(
@@ -394,7 +398,7 @@ class Clogger:
         try:
             while not please_stop:
                 waiting_a_bit = False
-                if self.disable_backfilling:
+                if self.disable_tipfilling:
                     waiting_a_bit = True
 
                 if not waiting_a_bit:

@@ -67,6 +67,7 @@
         "tuid.clogger.CSET_MAINTENANCE_WAIT_TIME": 15,
         "tuid.clogger.MAXIMUM_NONPERMANENT_CSETS": 100,
         "tuid.clogger.CSET_DELETION_WAIT_TIME": 5,
+        "tuid.clogger.CSET_TIP_WAIT_TIME": 40,
         "pyLibrary.env.http.DEBUG": false,
         "pyLibrary.env.http.default_headers": {
             "Referer": "https://github.com/mozilla/TUID",

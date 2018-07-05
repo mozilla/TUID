@@ -233,11 +233,33 @@ def test_maintenance_and_deletion(clogger):
 
 
 def test_partial_tipfilling(clogger):
+    clogger.disable_tipfilling = True
+    clogger.disable_backfilling = True
+    clogger.disable_maintenance = True
+    clogger.disable_deletion = True
+
     num_trys = 50
     wait_time = 2
+    prev_total_revs = clogger.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
     with clogger.conn.transaction() as t:
-        max_tip_num = clogger.get_tail(t)
-        total_revs = t.get_one("SELECT count(revnum) FROM csetLog")
+        max_tip_num = clogger.get_tip(t)[0]
+        t.execute(
+            "DELETE FROM csetLog WHERE revnum >= " + str(max_tip_num) + " - 5"
+        )
 
-    #if total_revs > max_tip_num:
+    with clogger.working_locker:
+        clogger.recompute_table_revnums()
+
+    clogger.disable_tipfilling = False
+    tmp_num_trys = 0
+    while tmp_num_trys < num_trys:
+        Till(seconds=wait_time).wait()
+        revnums_in_db = clogger.conn.get_one("SELECT count(revnum) as revnum FROM csetLog")[0]
+        if revnums_in_db == prev_total_revs:
+            break
+        tmp_num_trys += 1
+    assert tmp_num_trys < num_trys
+
+
+def test_get_revnum_range(clogger):
     assert True
