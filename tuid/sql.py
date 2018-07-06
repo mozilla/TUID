@@ -42,6 +42,13 @@ class Sql:
     def transaction(self):
         return Transaction(self.db.transaction())
 
+    @property
+    def pending_transactions(self):
+        """
+        :return: NUMBER OF TRANSACTIONS IN THE QUEUE
+        """
+        return len(self.db.available_transactions)
+
 
 class Transaction():
     def __init__(self, transaction):

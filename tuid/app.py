@@ -27,7 +27,7 @@ from tuid.util import map_to_array
 OVERVIEW = None
 QUERY_SIZE_LIMIT = 10 * 1000 * 1000
 EXPECTING_QUERY = b"expecting query\r\n"
-
+TOO_BUSY = 10
 
 class TUIDApp(Flask):
 
@@ -96,6 +96,9 @@ def tuid_endpoint(path):
 
         if len(paths) == 0:
             response, completed = [], True
+        elif service.conn.pending_transactions > TOO_BUSY:  # CHECK IF service IS VERY BUSY
+            # TODO:  BE SURE TO UPDATE STATS TOO
+            response, completed = [], False
         else:
             # RETURN TUIDS
             with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
