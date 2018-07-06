@@ -17,6 +17,8 @@ More details can be gleaned from the [motivational document](https://github.com/
 
 ## Running tests
 
+Running any tests requires access to an Elastic Search cluster for `mo_hg` on localhost:9201.
+
 After cloning the repo into `~/TUID`:
 
 **Linux**

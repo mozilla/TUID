@@ -657,6 +657,119 @@ def test_try_rev_then_mc(service):
             assert False
 
 
+def test_merged_changes(service):
+    old_rev = '316e5fab18f1'
+    new_rev = '06d10d09e6ee'
+    test_files = [
+        "js/src/wasm/WasmTextToBinary.cpp"
+    ]
+    old_tuids, _ = service.get_tuids_from_files(test_files, old_rev, use_thread=False)
+    new_tuids, _ = service.get_tuids_from_files(test_files, new_rev, use_thread=False)
+
+    lines_added = {
+        "js/src/wasm/WasmTextToBinary.cpp": [1668, 1669, 1670, 1671]
+    }
+    completed = 0
+    for file, old_file_tuids in old_tuids:
+        if file in lines_added:
+            assert len(old_file_tuids) == 5461
+
+            for new_file, tmp_tuids in new_tuids:
+                new_file_tuids = []
+                if new_file == file:
+                    for tuid_map in tmp_tuids:
+                        if tuid_map.line in lines_added[file]:
+                            new_file_tuids.append(tuid_map.tuid)
+
+                    assert len(tmp_tuids) == 5461
+
+                    # No tuids from the new should be in the old
+                    # so this intersection should always be empty.
+                    assert len(set(new_file_tuids) & set([t.tuid for t in old_file_tuids])) <= 0
+                    completed += 1
+
+                    break
+    assert completed == len(lines_added.keys())
+
+
+@pytest.mark.skip(
+    reason="Very long to get diffs. It tests across multiple merges to ensure TUIDs are stable."
+)
+def test_very_distant_files(service):
+    new_rev = "6e8e861540e6"
+    old_rev = "1e2c9151a09e"
+    test_files = [
+        "docshell/base/nsDocShell.cpp"
+    ]
+
+    with service.conn.transaction() as t:
+        t.execute("DELETE FROM annotations WHERE revision = " + quote_value(new_rev))
+        for file in test_files:
+            t.execute(
+                "UPDATE latestFileMod SET revision = " + quote_value(old_rev) +
+                " WHERE file = " + quote_value(file)
+            )
+
+    old_tuids, _ = service.get_tuids_from_files(test_files, old_rev, use_thread=False, max_csets_proc=10000)
+    new_tuids, _ = service.get_tuids_from_files(test_files, new_rev, use_thread=False, max_csets_proc=10000)
+
+    lines_moved = {
+        "docshell/base/nsDocShell.cpp": {1028: 1026, 1097: 1029}
+    }
+    lines_added = {
+        "docshell/base/nsDocShell.cpp": [2770]
+    }
+
+    Log.note("Check output manually for any abnormalities as well.")
+
+    completed = 0
+    for file, old_file_tuids in old_tuids:
+        if file in lines_moved:
+            old_moved_tuids = {}
+            print("OLD:")
+            for tuid_map in old_file_tuids:
+                print(str(tuid_map.line) + ":" + str(tuid_map.tuid))
+                if tuid_map.line in lines_moved[file].keys():
+                    old_moved_tuids[tuid_map.line] = tuid_map.tuid
+
+            assert len(old_moved_tuids) == len(lines_moved[file].keys())
+
+            print("\n\nNEW:")
+            new_moved_tuids = {}
+            for new_file, tmp_tuids in new_tuids:
+                if new_file == file:
+                    tmp_lines = [lines_moved[file][line] for line in lines_moved[file]]
+                    for tuid_map in tmp_tuids:
+                        print(str(tuid_map.line) + ":" + str(tuid_map.tuid))
+                        if tuid_map.line in tmp_lines:
+                            new_moved_tuids[tuid_map.line] = tuid_map.tuid
+                    break
+
+            assert len(new_moved_tuids) == len(old_moved_tuids)
+            for line_moved in old_moved_tuids:
+                old_tuid = old_moved_tuids[line_moved]
+                new_line = lines_moved[file][line_moved]
+                assert new_line in new_moved_tuids
+                assert old_tuid == new_moved_tuids[new_line]
+            completed += 1
+
+        if file in lines_added:
+            for new_file, tmp_tuids in new_tuids:
+                new_file_tuids = []
+                if new_file == file:
+                    for tuid_map in tmp_tuids:
+                        if tuid_map.line in lines_added[file]:
+                            new_file_tuids.append(tuid_map.tuid)
+
+                    # No tuids from the new should be in the old
+                    # so this intersection should always be empty.
+                    assert len(set(new_file_tuids) & set([t.tuid for t in old_file_tuids])) <= 0
+                    completed += 1
+
+                    break
+    assert completed == len(lines_moved.keys()) + len(lines_added.keys())
+
+
 @pytest.mark.skip(reason="Never completes")
 def test_daemon(service):
     from mo_threads import Signal

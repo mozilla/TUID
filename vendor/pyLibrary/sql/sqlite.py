@@ -228,7 +228,15 @@ class Sqlite(DB):
         transaction.end_of_life = True
         with self.locker:
             self.available_transactions.remove(transaction)
+            assert transaction not in self.available_transactions
+
+            old_length = len(self.transaction_stack)
+            old_trans = self.transaction_stack[-1]
             del self.transaction_stack[-1]
+
+            assert old_length - 1 == len(self.transaction_stack)
+            assert old_trans
+            assert old_trans not in self.transaction_stack
         if not self.transaction_stack:
             # NESTED TRANSACTIONS NOT ALLOWED IN sqlite3
             DEBUG and Log.note(FORMAT_COMMAND, command=query)
@@ -404,10 +412,12 @@ class Transaction(object):
 
     def do_all(self):
         # ENSURE PARENT TRANSACTION IS UP TO DATE
-        if self.parent:
-            self.parent.do_all()
-
+        c = None
         try:
+            if self.parent == self:
+                Log.warning("Transactions parent is equal to itself.")
+            if self.parent:
+                self.parent.do_all()
             # GET THE REMAINING COMMANDS
             with self.locker:
                 todo = self.todo[self.complete:]

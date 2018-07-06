@@ -1,7 +1,7 @@
 {
     "tuid": {
         "database": {
-            "name": "resources/tuid_app.db"
+            "name": "/data1/tuid_app.db"
         },
         "hg": {
             "branch": "mozilla-central"
