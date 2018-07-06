@@ -124,12 +124,12 @@ sudo pip install -r requirements.txt
 
 # ELASTICSEARCH CONFIG
 sudo chown -R ec2-user:ec2-user /usr/local/elasticsearch
-cp ~/ActiveData/resources/config/elasticsearch.yml     /usr/local/elasticsearch/config/elasticsearch.yml
-cp ~/ActiveData/resources/config/es6_jvm.options       /usr/local/elasticsearch/config/jvm.options
-cp ~/ActiveData/resources/config/es6_log4j2.properties /usr/local/elasticsearch/config/log4j2.properties
+cp ~/TUID/resources/config/elasticsearch.yml     /usr/local/elasticsearch/config/elasticsearch.yml
+cp ~/TUID/resources/config/es6_jvm.options       /usr/local/elasticsearch/config/jvm.options
+cp ~/TUID/resources/config/es6_log4j2.properties /usr/local/elasticsearch/config/log4j2.properties
 
 # SUPERVISOR CONFIG
-sudo cp ~/ActiveData/resources/config/supervisord.conf /etc/supervisord.conf
+sudo cp ~/TUID/resources/config/supervisord.conf /etc/supervisord.conf
 
 # START DAEMON (OR THROW ERROR IF RUNNING ALREADY)
 sudo /usr/local/bin/supervisord -c /etc/supervisord.conf
