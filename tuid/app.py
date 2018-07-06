@@ -98,6 +98,7 @@ def tuid_endpoint(path):
             response, completed = [], True
         elif service.conn.pending_transactions > TOO_BUSY:  # CHECK IF service IS VERY BUSY
             # TODO:  BE SURE TO UPDATE STATS TOO
+            Log.note("Too many open transactions")
             response, completed = [], False
         else:
             # RETURN TUIDS
