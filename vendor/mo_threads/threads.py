@@ -17,6 +17,7 @@ from __future__ import unicode_literals
 
 import signal as _signal
 import sys
+from _weakref import ref
 from copy import copy
 from datetime import datetime, timedelta
 from time import sleep
@@ -346,15 +347,37 @@ class Thread(object):
         output.start()
         return output
 
-
     @staticmethod
     def current():
-        id = get_ident()
+        ident = get_ident()
         with ALL_LOCK:
-            try:
-                return ALL[id]
-            except KeyError:
-                return MAIN_THREAD
+            output = ALL.get(ident)
+
+        if isinstance(output, ref):
+            output = output()
+
+        if output is None:
+            output = UnknownThread(ident)
+            with ALL_LOCK:
+                ALL[ident] = ref(output)
+
+        return output
+
+
+class UnknownThread(object):
+    def __init__(self, ident):
+        self.id = ident
+        self.name = "Unknown Thread " + text_type(ident)
+        self.children = []
+
+    def add_child(self, child):
+        self.children.append(child)
+
+    def remove_child(self, child):
+        try:
+            self.children.remove(child)
+        except Exception:
+            pass
 
 
 def stop_main_thread(*args):

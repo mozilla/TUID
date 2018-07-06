@@ -126,6 +126,7 @@ def tuid_endpoint(path):
             }
         )
     except Exception as e:
+        e = Except.wrap(e)
         Log.warning("could not handle request", cause=e)
         return Response(
             unicode2utf8(value2json(e, pretty=True)),

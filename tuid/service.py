@@ -504,6 +504,7 @@ class TUIDService:
                 return result
             except Exception as e:
                 Log.warning("Thread dead becasue of problem", cause=e)
+                return []
 
         threaded = False
         if use_thread:
