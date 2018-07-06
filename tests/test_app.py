@@ -18,6 +18,7 @@ from mo_json import json2value
 from mo_logs.strings import utf82unicode
 from mo_threads import Process
 from pyLibrary.env import http
+from tuid.app import EXPECTING_QUERY
 
 from tuid.client import TuidClient
 
@@ -52,7 +53,7 @@ def test_empty_query(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
     response = http.get(url)
     assert response.status_code == 400
-    assert response.content == b"expecting query"
+    assert response.content == EXPECTING_QUERY
 
 
 @pytest.mark.first_run

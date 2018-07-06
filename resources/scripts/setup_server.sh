@@ -98,7 +98,7 @@ sudo pip install requests
 sudo pip install supervisor
 
 cd /usr/bin
-sudo ln -s /usr/local/bin/supervisorctl supervisorctl
+sudo ln -s /usr/bin/supervisorctl supervisorctl
 
 
 # SIMPLE PLACE FOR LOGS
@@ -132,11 +132,11 @@ cp ~/TUID/resources/config/es6_log4j2.properties /usr/local/elasticsearch/config
 sudo cp ~/TUID/resources/config/supervisord.conf /etc/supervisord.conf
 
 # START DAEMON (OR THROW ERROR IF RUNNING ALREADY)
-sudo /usr/local/bin/supervisord -c /etc/supervisord.conf
+sudo /usr/bin/supervisord -c /etc/supervisord.conf
 
 # READ CONFIG
-sudo /usr/local/bin/supervisorctl reread
-sudo /usr/local/bin/supervisorctl update
+sudo /usr/bin/supervisorctl reread
+sudo /usr/bin/supervisorctl update
 
 
 

@@ -26,6 +26,8 @@ from tuid.util import map_to_array
 
 OVERVIEW = None
 QUERY_SIZE_LIMIT = 10 * 1000 * 1000
+EXPECTING_QUERY = b"expecting query\r\n"
+
 
 class TUIDApp(Flask):
 
@@ -51,7 +53,7 @@ def tuid_endpoint(path):
         if flask.request.headers.get("content-length", "") in ["", "0"]:
             # ASSUME A BROWSER HIT THIS POINT, SEND text/html RESPONSE BACK
             return Response(
-                unicode2utf8("expecting query"),
+                EXPECTING_QUERY,
                 status=400,
                 headers={
                     "Content-Type": "text/html"
