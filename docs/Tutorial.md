@@ -8,6 +8,7 @@ TUID is an acronym for Temporally Unique Identifiers.
 
 
 ### Blame Lines
+
 Starting with blame
 
 ![](Tutorial%20Annotate.png)
@@ -117,8 +118,6 @@ I like to use the analogy of a light source placed at a particular revision on t
  * **Shadow TUIDs** - TUIDs found on not-lit revisions, but not in the lit revision
 
 
-### Coverage, past and future
-### Same file over time coverage
 
 ## Coverage counting
 
@@ -316,6 +315,8 @@ We can aggregate coverage over time, in much the same way we did for a single fi
 
 ## 
 
+### Coverage, past and future
+### Same file over time coverage
 
 ## Coverage Difference
 
