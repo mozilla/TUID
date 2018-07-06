@@ -110,7 +110,7 @@ def tuid_endpoint(path):
             if not completed:
                 Log.note(
                     "Request for {{num}} files is incomplete for revision {{rev}}.",
-                    num=str(len(paths)), rev=rev
+                    num=len(paths), rev=rev
                 )
 
         if query.meta.format == 'list':
