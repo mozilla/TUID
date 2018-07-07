@@ -261,5 +261,116 @@ def test_partial_tipfilling(clogger):
     assert tmp_num_trys < num_trys
 
 
-def test_get_revnum_range(clogger):
-    assert True
+def test_get_revnum_range_backfill(clogger):
+    clogger.disable_tipfilling = True
+    clogger.disable_backfilling = True
+    clogger.disable_maintenance = True
+    clogger.disable_deletion = True
+
+    # Get the current tail, go 10 changesets back and request
+    # the final one as the second revision.
+    with clogger.conn.transaction() as t:
+        rev1, oldest_rev = clogger.get_tail(t)
+
+    num_to_go_back = 10
+    rev2 = None
+    clog_url = HG_URL + clogger.config.hg.branch + '/' + 'json-log/' + oldest_rev
+    clog_obj_list = list(clogger._get_clog(clog_url)['changesets'])
+    for count, clog_obj in enumerate(clog_obj_list[1:]):
+        if count >= num_to_go_back - 1:
+            rev2 = clog_obj['node'][:12]
+            break
+
+    assert oldest_rev and rev2
+
+    clogger.disable_backfilling = False
+    revnums = clogger.get_revnnums_from_range(oldest_rev, rev2)
+
+    assert len(revnums) == 11
+
+    curr_revnum = -1
+    for revnum, revision in revnums:
+        assert revision
+        assert revnum > curr_revnum
+        curr_revnum = revnum
+
+
+def test_get_revnum_range_tipfill(clogger):
+    clogger.disable_tipfilling = True
+    clogger.disable_backfilling = True
+    clogger.disable_maintenance = True
+    clogger.disable_deletion = True
+
+    # Get the current tip, delete it, then request it's
+    # revnum range up to a known revision
+    with clogger.conn.transaction() as t:
+        tip_num, tip_rev = clogger.get_tip(t)
+        t.execute(
+            "DELETE FROM csetLog WHERE revnum >= " + str(tip_num) + " - 5"
+        )
+        new_tip_rev = clogger.get_tip(t)[1]
+
+    assert tip_rev and new_tip_rev
+
+    # Test out of order revision requests here also
+    revnums = clogger.get_revnnums_from_range(new_tip_rev, tip_rev)
+
+    assert len(revnums) == 7
+
+    curr_revnum = -1
+    for revnum, revision in revnums:
+        assert revision
+        assert revnum > curr_revnum
+        curr_revnum = revnum
+
+
+def test_get_revnum_range_tipnback(clogger):
+    clogger.disable_tipfilling = True
+    clogger.disable_backfilling = True
+    clogger.disable_maintenance = True
+    clogger.disable_deletion = True
+
+    for ordering in range(2):
+        # Used for testing output
+        prev_total_revs = clogger.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
+        expected_total_revs = prev_total_revs + 10
+
+        # Get the current tail, go 10 changesets back and request
+        # the final one as the second revision.
+        with clogger.conn.transaction() as t:
+            rev1, oldest_rev = clogger.get_tail(t)
+
+        # Get the current tip, delete it, then request it's revnum range
+        # to a non-existent (backfill required) revision in the past.
+        with clogger.conn.transaction() as t:
+            tip_num, tip_rev = clogger.get_tip(t)
+            t.execute(
+                "DELETE FROM csetLog WHERE revnum >= " + str(tip_num) + " - 5"
+            )
+            new_tip_rev = clogger.get_tip(t)[1]
+
+        num_to_go_back = 10
+        rev2 = None
+        clog_url = HG_URL + clogger.config.hg.branch + '/' + 'json-log/' + oldest_rev
+        clog_obj_list = list(clogger._get_clog(clog_url)['changesets'])
+        for count, clog_obj in enumerate(clog_obj_list[1:]):
+            if count >= num_to_go_back - 1:
+                rev2 = clog_obj['node'][:12]
+                break
+
+        assert rev2 and new_tip_rev
+
+        clogger.disable_backfilling = False
+        if ordering == 0:
+            revnums = clogger.get_revnnums_from_range(tip_rev, rev2)
+        else:
+            revnums = clogger.get_revnnums_from_range(rev2, tip_rev)
+        clogger.disable_backfilling = True
+
+        assert len(revnums) == expected_total_revs
+
+        curr_revnum = -1
+        for revnum, revision in revnums:
+            assert revision
+            assert revnum > curr_revnum
+            curr_revnum = revnum

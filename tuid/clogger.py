@@ -117,6 +117,7 @@ class Clogger:
             "SELECT min(revnum) as revnum, revision FROM csetLog"
         )
 
+
     def _get_clog(self, clog_url):
         try:
             Log.note("Searching through changelog {{url}}", url=clog_url)
@@ -147,9 +148,9 @@ class Clogger:
         low_num = min(revnum1, revnum2)
 
         return transaction.query(
-            "SELECT revnum, revision FROM csetLog WHERE revnum >= ? AND revnum <= ?",
-            (low_num, high_num)
-        )
+            "SELECT revnum, revision FROM csetLog WHERE "
+            "revnum >= " + str(low_num) + " AND revnum <= " + str(high_num)
+        ).data
 
 
     def recompute_table_revnums(self):
@@ -225,7 +226,6 @@ class Clogger:
                 tmp = self._get_one_revision(t, cset_entry)
                 if not tmp:
                     fmt_insert_list.append(cset_entry)
-            Log.note("inserting: {{inserting}}",inserting=fmt_insert_list)
 
             for _, tmp_insert_list in jx.groupby(fmt_insert_list, size=SQL_CSET_BATCH_SIZE):
                 t.execute(
@@ -598,9 +598,13 @@ class Clogger:
         not_in_db = True
         while not_in_db:
             with self.conn.transaction() as t:
-                revnum = self._get_one_revnum(t, (revision,))
+                revnum = self._get_one_revnum(t, revision)
             if revnum:
-                not_in_db = False
+                if revnum[0] < 0:
+                    Log.note("Waiting for table to recompute...")
+                    Till(seconds=CSET_BACKFILL_WAIT_TIME).wait()
+                else:
+                    not_in_db = False
             else:
                 Log.note("Waiting for backfill to complete...")
                 Till(seconds=CSET_BACKFILL_WAIT_TIME).wait()
@@ -611,26 +615,28 @@ class Clogger:
         with self.conn.transaction() as t:
             revnum1 = self._get_one_revnum(t, revision1)
             revnum2 = self._get_one_revnum(t, revision2)
-
-        if revnum1 is None:
+        if not revnum1 or not revnum2:
             did_an_update = self.update_tip()
             if did_an_update:
                 with self.conn.transaction() as t:
                     revnum1 = self._get_one_revnum(t, revision1)
                     revnum2 = self._get_one_revnum(t, revision2)
 
-            if revnum1 is None:
+            if not revnum1:
                 revnum1 = self.get_old_cset_revnum(revision1)
-
                 # Refresh the second entry
                 with self.conn.transaction() as t:
                     revnum2 = self._get_one_revnum(t, revision2)
 
-        if revnum2 is None:
-            revnum2 = self.get_old_cset_revnum(revision2)
+            if not revnum2:
+                revnum2 = self.get_old_cset_revnum(revision2)
+
+                # The first revnum might change also
+                with self.conn.transaction() as t:
+                    revnum1 = self._get_one_revnum(t, revision1)
 
         with self.conn.transaction() as t:
-            result = self._get_revnum_range(t, revnum1, revnum2)
+            result = self._get_revnum_range(t, revnum1[0], revnum2[0])
         return sorted(
             result,
             key=lambda x: int(x[0])
