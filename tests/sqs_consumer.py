@@ -111,16 +111,17 @@ def queue_consumer(client, pull_queue, please_stop=None, kwargs=None):
         request.branch = repo
         with Timer("Make TUID request from {{timestamp|date}}", {"timestamp": request.meta.request_time}):
             client.enabled = True  # ENSURE THE REQUEST IS MADE
-            result = http.post_json(
-                        "http://localhost:5000/tuid",
-                        json=request,
-                        timeout=30
-                    )
+            try:
+                result = http.post_json(
+                            "http://localhost:5000/tuid",
+                            json=request,
+                            timeout=30
+                        )
+            except Exception as e:
+                Log.note("Exceeded timeout or another error occurred: {{cause}}", cause=e)
             if not client.enabled:
                 Log.note("pausing consumer for {{num}}sec", num=PAUSE_ON_FAILURE)
                 Till(seconds=PAUSE_ON_FAILURE).wait()
-            if result is None or len(result.data) != len(files):
-                Log.warning("expecting response for every file requested")
 
         queue.commit()
 
