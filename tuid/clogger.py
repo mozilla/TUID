@@ -50,7 +50,7 @@ class Clogger:
             self.init_db()
             self.next_revnum = coalesce(self.conn.get_one("SELECT max(revnum)+1 FROM csetLog")[0], 1)
             self.csets_todo_backwards = Queue(name="Clogger.csets_todo_backwards")
-            self.deletions_todo = []
+            self.deletions_todo = Queue(name="Clogger.deletions_todo")
             self.at_tip = True
             self.config = self.config.tuid
 
@@ -311,27 +311,34 @@ class Clogger:
         '''
         try:
             while not please_stop:
-                if not self.csets_todo_backwards or self.disable_backfilling:
-                    (please_stop | Till(seconds=CSET_BACKFILL_WAIT_TIME)).wait()
+                request = self.csets_todo_backwards.pop(till=please_stop)
+                if self.disable_backfilling:
+                    if request:
+                        self.csets_todo_backwards.push(request)
+                    Till(till=CSET_BACKFILL_WAIT_TIME).wait()
+                    continue
+
+                if request:
+                    parent_cset, timestamp = request
+                else:
                     continue
 
                 with self.working_locker:
-                    for parent_cset, timestamp in self.csets_todo_backwards.pop_all():
-                        with self.conn.transaction() as t:
-                            parent_revnum = self._get_one_revnum(t, parent_cset)
-                        if parent_revnum:
-                            continue
+                    with self.conn.transaction() as t:
+                        parent_revnum = self._get_one_revnum(t, parent_cset)
+                    if parent_revnum:
+                        continue
 
-                        with self.conn.transaction() as t:
-                            oldest_revision = self.get_tail(t)[1]
+                    with self.conn.transaction() as t:
+                        oldest_revision = self.get_tail(t)[1]
 
-                        self._fill_in_range(
-                            parent_cset,
-                            oldest_revision,
-                            timestamp=timestamp,
-                            number_forward=False
-                        )
-                    Log.note("Finished {{cset}}", cset=parent_cset)
+                    self._fill_in_range(
+                        parent_cset,
+                        oldest_revision,
+                        timestamp=timestamp,
+                        number_forward=False
+                    )
+                Log.note("Finished {{cset}}", cset=parent_cset)
         except Exception as e:
             Log.warning("Unknown error occurred during backfill: ", cause=e)
 
@@ -506,7 +513,7 @@ class Clogger:
                         continue
 
                     Log.note("Scheduling {{num_csets}} for deletion", num_csets=len(deleted_data))
-                    self.deletions_todo.append(delete_overflowing_revstart)
+                    self.deletions_todo.add(delete_overflowing_revstart)
             except Exception as e:
                 Log.warning("Unexpected error occured while maintaining csetLog, continuing to try: ", cause=e)
         return
@@ -523,65 +530,61 @@ class Clogger:
         '''
         while not please_stop:
             try:
-                if len(self.deletions_todo) <= 0 or self.disable_deletion:
-                    if not self.disable_deletion:
-                        Log.note(
-                            "Did not find any deletion requests, waiting for {{secs}} to check again.",
-                            secs=CSET_DELETION_WAIT_TIME
-                        )
-                    Till(seconds=CSET_DELETION_WAIT_TIME).wait()
+                request = self.deletions_todo.pop(till=please_stop)
+                if self.disable_deletion:
+                    if request:
+                        self.deletions_todo.push(request)
+                    Till(till=CSET_DELETION_WAIT_TIME).wait()
                     continue
 
                 with self.working_locker:
-                    tmp_deletions = self.deletions_todo
-                    for first_cset in tmp_deletions:
+                    first_cset = request
+                    with self.conn.transaction() as t:
+                        revnum = self._get_one_revnum(t, first_cset)[0]
+                        csets_to_del = t.get(
+                            "SELECT revnum, revision FROM csetLog WHERE revnum <= ?", (revnum,)
+                        )
+                        csets_to_del = [cset for _, cset in csets_to_del]
+                        existing_frontiers = t.query(
+                            "SELECT revision FROM latestFileMod WHERE revision IN " +
+                            sql_iso(sql_list(map(quote_value, csets_to_del)))
+                        ).data
+
+                    existing_frontiers = [existing_frontiers[i][0] for i, _ in enumerate(existing_frontiers)]
+
+                    Log.note(
+                        "Deleting all annotations and changeset log entries with revisions in the list: {{csets}}",
+                        csets=csets_to_del
+                    )
+
+                    if len(existing_frontiers) > 0:
+                        # This handles files which no longer exist anymore in
+                        # the main branch.
+                        Log.note("Deleting existing frontiers for files: {{files}}", files=existing_frontiers)
                         with self.conn.transaction() as t:
-                            revnum = self._get_one_revnum(t, first_cset)[0]
-                            csets_to_del = t.get(
-                                "SELECT revnum, revision FROM csetLog WHERE revnum <= ?", (revnum,)
+                            t.execute(
+                                "DELETE FROM latestFileMod WHERE revision IN " +
+                                sql_iso(sql_list(map(quote_value, existing_frontiers)))
                             )
-                            csets_to_del = [cset for _, cset in csets_to_del]
-                            existing_frontiers = t.query(
-                                "SELECT revision FROM latestFileMod WHERE revision IN " +
-                                sql_iso(sql_list(map(quote_value, csets_to_del)))
-                            ).data
 
-                        existing_frontiers = [existing_frontiers[i][0] for i, _ in enumerate(existing_frontiers)]
-
-                        Log.note(
-                            "Deleting all annotations and changeset log entries with revisions in the list: {{csets}}",
-                            csets=csets_to_del
+                    with self.conn.transaction() as t:
+                        Log.note("Deleting annotations...")
+                        t.execute(
+                            "DELETE FROM annotations WHERE revision IN " +
+                            sql_iso(sql_list(map(quote_value, csets_to_del)))
                         )
 
-                        if len(existing_frontiers) > 0:
-                            # This handles files which no longer exist anymore in
-                            # the main branch.
-                            Log.note("Deleting existing frontiers for files: {{files}}", files=existing_frontiers)
-                            with self.conn.transaction() as t:
-                                t.execute(
-                                    "DELETE FROM latestFileMod WHERE revision IN " +
-                                    sql_iso(sql_list(map(quote_value, existing_frontiers)))
-                                )
+                        Log.note(
+                            "Deleting {{num_entries}} csetLog entries...",
+                            num_entries=len(csets_to_del)
+                        )
+                        t.execute(
+                            "DELETE FROM csetLog WHERE revision IN " +
+                            sql_iso(sql_list(map(quote_value, csets_to_del)))
+                        )
 
-                        with self.conn.transaction() as t:
-                            Log.note("Deleting annotations...")
-                            t.execute(
-                                "DELETE FROM annotations WHERE revision IN " +
-                                sql_iso(sql_list(map(quote_value, csets_to_del)))
-                            )
-
-                            Log.note(
-                                "Deleting {{num_entries}} csetLog entries...",
-                                num_entries=len(csets_to_del)
-                            )
-                            t.execute(
-                                "DELETE FROM csetLog WHERE revision IN " +
-                                sql_iso(sql_list(map(quote_value, csets_to_del)))
-                            )
-
-                        # Recalculate the revnums
-                        self.recompute_table_revnums()
-                    self.deletions_todo = [todo for todo in self.deletions_todo if todo not in tmp_deletions]
+                    # Recalculate the revnums
+                    self.recompute_table_revnums()
             except Exception as e:
                 Log.warning("Unexpected error occured while deleting from csetLog:", cause=e)
                 Till(seconds=CSET_DELETION_WAIT_TIME).wait()
@@ -589,10 +592,7 @@ class Clogger:
 
 
     def get_old_cset_revnum(self, revision):
-        self.csets_todo_backwards.add((
-            revision,
-            True
-        ))
+        self.csets_todo_backwards.add((revision, True))
 
         revnum = None
         not_in_db = True
