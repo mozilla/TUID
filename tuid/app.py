@@ -97,16 +97,14 @@ def tuid_endpoint(path):
         else:
             # RETURN TUIDS
             with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
-                response, completed, percent_complete = service.get_tuids_from_files(
+                response, completed = service.get_tuids_from_files(
                     revision=rev, files=paths, going_forward=True, repo=branch_name
                 )
 
             if not completed:
                 Log.note(
-                    "Request for {{num}} files is incomplete for revision {{rev}}, with percent complete: {{percent}}",
-                    num=str(len(paths)),
-                    rev=rev,
-                    percent=str(percent_complete)
+                    "Request for {{num}} files is incomplete for revision {{rev}}.",
+                    num=len(paths), rev=rev
                 )
 
         if query.meta.format == 'list':
