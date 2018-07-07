@@ -308,9 +308,9 @@ class Sqlite(DB):
                     DEBUG and Log.note(FORMAT_COMMAND, command=BEGIN)
                     self.db.execute(BEGIN)
                     self.transaction_stack.append(transaction)
-                elif transaction != self.transaction_stack[-1]:
+                elif transaction is not self.transaction_stack[-1]:
                     self.transaction_stack.append(transaction)
-                elif transaction.exception:
+                elif transaction.exception and query is not ROLLBACK:
                     result.exception = Except(
                         type=ERROR,
                         template="Not allowed to continue using a transaction that failed",

@@ -47,7 +47,7 @@ def app():
     app_process.join(raise_on_error=False)
 
 
-@pytest.mark.first_run
+@pytest.mark.first_run  # MARKED first_run SO WE DO NOT RETEST ON SECOND travis RUN
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_empty_query(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
