@@ -19,7 +19,7 @@ from mo_kwargs import override
 from mo_logs import Log
 from mo_math.randoms import Random
 from mo_threads import Till, Thread, Lock
-from mo_times.durations import SECOND, DAY
+from mo_times.durations import SECOND, MINUTE, DAY
 from pyLibrary.env import http
 from pyLibrary.meta import cache
 from pyLibrary.sql import sql_list, sql_iso
@@ -35,6 +35,7 @@ SQL_BATCH_SIZE = 500
 FILES_TO_PROCESS_THRESH = 5
 ENABLE_TRY = False
 DAEMON_WAIT_AT_NEWEST = 30 * SECOND # Time to wait at the newest revision before polling again.
+DAEMON_WAIT_FOR_PC = 2 * MINUTE # Time until a percent complete log message is emitted.
 
 GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE file=? and revision=? and line=?"
 GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and file=?"
@@ -61,6 +62,8 @@ class TUIDService:
             self.total_locker = Lock()
             self.total_files_requested = 0
             self.total_tuids_mapped = 0
+
+            Thread.run("pc-daemon", self._percent_complete_daemon)
         except Exception as e:
             Log.error("can not setup service", cause=e)
 
@@ -319,7 +322,7 @@ class TUIDService:
         :return:
         """
         Log.note("Thread {{pos}} is running.", pos=res_position)
-        results[res_position], _, pc = self.get_tuids_from_files(files, revision, going_forward=going_forward, repo=repo)
+        results[res_position], _ = self.get_tuids_from_files(files, revision, going_forward=going_forward, repo=repo)
         Log.note("Thread {{pos}} is ending.", pos=res_position)
         return
 
@@ -370,7 +373,7 @@ class TUIDService:
             check = self._check_branch(revision, repo)
             if not check:
                 # Error was already output by _check_branch
-                return [(file, []) for file in files], completed, 100
+                return [(file, []) for file in files], completed
 
         if repo in ('try',):
             # We don't need to keep latest file revisions
@@ -378,8 +381,8 @@ class TUIDService:
 
             # Enable the 'try' repo calls with ENABLE_TRY
             if ENABLE_TRY:
-                return self._get_tuids_from_files_try_branch(files, revision), completed, 100
-            return [(file, []) for file in files], completed, 100
+                return self._get_tuids_from_files_try_branch(files, revision), completed
+            return [(file, []) for file in files], completed
 
         result = []
         revision = revision[:12]
@@ -543,8 +546,7 @@ class TUIDService:
             )
 
         self.update_totals(len(files), len(result))
-        percent_complete = 100 * (self.total_tuids_mapped / self.total_files_requested)
-        return result, completed, percent_complete
+        return result, completed
 
 
     def _apply_diff(self, transaction, annotation, diff, cset, file):
@@ -1495,6 +1497,23 @@ class TUIDService:
             results.append((file, tuids))
 
         return results
+
+
+    def _percent_complete_daemon(self, please_stop=None):
+        while not please_stop:
+            try:
+                requested = self.total_files_requested
+                if requested != 0:
+                        mapped = self.total_tuids_mapped
+                        Log.note(
+                            "Percent complete {{mapped}}/{{requested}} = {{percent}}",
+                            requested=requested,
+                            mapped=mapped,
+                            percent=100 * mapped/requested
+                        )
+                (Till(seconds=DAEMON_WAIT_FOR_PC.seconds) | please_stop).wait()
+            except Exception as e:
+                Log.warning("Unexpected error in pc-daemon: {{cause}}", cause=e)
 
 
     def _daemon(self, please_stop, only_coverage_revisions=False):
