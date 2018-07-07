@@ -19,7 +19,7 @@ from mo_kwargs import override
 from mo_logs import Log
 from mo_math.randoms import Random
 from mo_threads import Till, Thread, Lock
-from mo_times.durations import SECOND, MINUTE, DAY
+from mo_times.durations import SECOND, HOUR, DAY
 from pyLibrary.env import http
 from pyLibrary.meta import cache
 from pyLibrary.sql import sql_list, sql_iso
@@ -35,7 +35,7 @@ SQL_BATCH_SIZE = 500
 FILES_TO_PROCESS_THRESH = 5
 ENABLE_TRY = False
 DAEMON_WAIT_AT_NEWEST = 30 * SECOND # Time to wait at the newest revision before polling again.
-DAEMON_WAIT_FOR_PC = 2 * MINUTE # Time until a percent complete log message is emitted.
+DAEMON_WAIT_FOR_PC = 1 * HOUR # Time until a percent complete log message is emitted.
 
 GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE file=? and revision=? and line=?"
 GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and file=?"
