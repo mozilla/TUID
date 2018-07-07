@@ -28,4 +28,4 @@ install:
 
 script:
 - "python -m pytest -m first_run --capture=no tests"
-- "python -m pytest --capture=no tests"
+- "python -m pytest -m 'not first_run' --capture=no tests"
