@@ -17,7 +17,6 @@ from __future__ import unicode_literals
 
 import signal as _signal
 import sys
-from _weakref import ref
 from copy import copy
 from datetime import datetime, timedelta
 from time import sleep
@@ -75,15 +74,14 @@ class AllThread(object):
         self.threads.append(t)
 
 
-class MainThread(object):
-    def __init__(self):
-        self.name = "Main Thread"
-        self.id = get_ident()
-        self.please_stop = Signal()
+class BaseThread(object):
+    __slots__ = ["id", "name", "children"]
+
+    def __init__(self, ident):
+        self.id = ident
+        if ident != -1:
+            self.name = "Unknown Thread " + text_type(ident)
         self.children = []
-        self.stop_logging = Log.stop
-        self.timers = None
-        self.cprofiler = Null
 
     def add_child(self, child):
         self.children.append(child)
@@ -93,6 +91,16 @@ class MainThread(object):
             self.children.remove(child)
         except Exception:
             pass
+
+
+class MainThread(BaseThread):
+    def __init__(self):
+        BaseThread.__init__(self, get_ident())
+        self.name = "Main Thread"
+        self.please_stop = Signal()
+        self.stop_logging = Log.stop
+        self.timers = None
+        self.cprofiler = Null
 
     def stop(self):
         """
@@ -178,7 +186,7 @@ class MainThread(object):
             self.stop()
 
 
-class Thread(object):
+class Thread(BaseThread):
     """
     join() ENHANCED TO ALLOW CAPTURE OF CTRL-C, AND RETURN POSSIBLE THREAD EXCEPTIONS
     run() ENHANCED TO CAPTURE EXCEPTIONS
@@ -187,7 +195,7 @@ class Thread(object):
     num_threads = 0
 
     def __init__(self, name, target, *args, **kwargs):
-        self.id = -1
+        BaseThread.__init__(self, -1)
         self.name = name
         self.target = target
         self.end_of_thread = None
@@ -202,7 +210,6 @@ class Thread(object):
         self.thread = None
         self.stopped = Signal("stopped signal for " + self.name)
         self.cprofiler = Null
-        self.children = []
 
         if "parent_thread" in kwargs:
             del self.kwargs["parent_thread"]
@@ -237,16 +244,6 @@ class Thread(object):
         self.please_stop.go()
 
         DEBUG and Log.note("Thread {{name|quote}} got request to stop", name=self.name)
-
-    def add_child(self, child):
-        self.children.append(child)
-
-    def remove_child(self, child):
-        try:
-            self.children.remove(child)
-        except Exception as e:
-            # happens when multiple joins on same thread
-            pass
 
     def _run(self):
         self.id = get_ident()
@@ -353,31 +350,12 @@ class Thread(object):
         with ALL_LOCK:
             output = ALL.get(ident)
 
-        if isinstance(output, ref):
-            output = output()
-
         if output is None:
-            output = UnknownThread(ident)
+            output = BaseThread(ident)
             with ALL_LOCK:
-                ALL[ident] = ref(output)
+                ALL[ident] = output
 
         return output
-
-
-class UnknownThread(object):
-    def __init__(self, ident):
-        self.id = ident
-        self.name = "Unknown Thread " + text_type(ident)
-        self.children = []
-
-    def add_child(self, child):
-        self.children.append(child)
-
-    def remove_child(self, child):
-        try:
-            self.children.remove(child)
-        except Exception:
-            pass
 
 
 def stop_main_thread(*args):
