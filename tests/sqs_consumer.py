@@ -10,6 +10,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
+from mo_future import text_type
+
 from mo_hg import hg_mozilla_org
 from mo_kwargs import override
 from mo_logs import startup, constants, Log
@@ -43,7 +45,7 @@ def one_request(request, please_stop):
                 timeout=30
             )
             if result is None or len(result.data) != len(files):
-                Log.note("incomplete response")
+                Log.note("incomplete response for {{thread}}", thread=Thread.current().name)
         except Exception as e:
             Log.warning("Request failure", cause=e)
 
@@ -51,6 +53,7 @@ def one_request(request, please_stop):
 def queue_consumer(pull_queue, please_stop=None):
     queue = aws.Queue(pull_queue)
     time_offset = None
+    request_count = 0
 
     while not please_stop:
         request = queue.pop(till=please_stop)
@@ -69,7 +72,8 @@ def queue_consumer(pull_queue, please_stop=None):
         if next_request > now:
             Till(till=next_request).wait()
 
-        Thread.run("request", one_request, request)
+        Thread.run("request "+text_type(request_count), one_request, request)
+        request_count += 1
         queue.commit()
 
 
