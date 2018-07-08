@@ -118,7 +118,7 @@ def request(method, url, headers=None, zip=None, retry=None, **kwargs):
             url = url.encode('ascii')
 
         try:
-            set_default(kwargs, DEFAULTS)
+            set_default(kwargs, {"zip":zip, "retry": retry}, DEFAULTS)
             _to_ascii_dict(kwargs)
 
             # HEADERS
@@ -162,7 +162,7 @@ def request(method, url, headers=None, zip=None, retry=None, **kwargs):
                 return session.request(method=method, headers=headers, url=str(url), **kwargs)
             except Exception as e:
                 e = Except.wrap(e)
-                if "EOF occurred in violation of protocol" in e and retry['http'] and url.startswith("https://"):
+                if retry['http'] and url.startswith("https://") and "EOF occurred in violation of protocol" in e:
                     url = "http://" + url[8:]
                 errors.append(e)
 
