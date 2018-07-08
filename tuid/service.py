@@ -9,7 +9,7 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import gc
-
+from mo_times import Timer
 from jx_python import jx
 from mo_dots import Null, coalesce, wrap
 from mo_future import text_type
@@ -1402,9 +1402,7 @@ class TUIDService:
 
             # Gather all missing csets and the
             # corresponding lines.
-            annotated_lines = []
             line_origins = []
-            existing_tuids = {}
             for node in annotated_object['annotate']:
                 cset_len12 = node['node'][:12]
 
@@ -1412,18 +1410,37 @@ class TUIDService:
                 # add it. Use the 'abspath' field to determine the
                 # name of the file it was created in (in case it was
                 # changed).
-                tuid_tmp = transaction.get_one(GET_TUID_QUERY, (node['abspath'], cset_len12, int(node['targetline'])))
-                if (not tuid_tmp):
-                    annotated_lines.append(node)
-                else:
-                    existing_tuids[int(node['lineno'])] = tuid_tmp[0]
-                # Used to gather TUIDs later
                 line_origins.append((node['abspath'], cset_len12, int(node['targetline'])))
+
+            file_names = list(set([file for file, _, _ in line_origins]))
+            revs_to_find = list(set([rev for _, rev, _ in line_origins]))
+            lines_to_find = list(set([line for _, _, line in line_origins]))
+            existing_tuids_tmp = {
+                str((file, revision, line)): tuid
+                for tuid, file, revision, line in transaction.query(
+                    "SELECT tuid, file, revision, line FROM temporal"
+                    " WHERE file IN " + sql_iso(sql_list(map(quote_value, file_names))) +
+                    " AND revision IN " + sql_iso(sql_list(map(quote_value, revs_to_find))) +
+                    " AND line IN " + sql_iso(sql_list(map(quote_value, lines_to_find)))
+                ).data
+            }
+
+            # Recompute existing tuids based on line_origins
+            # entry ordering because we can't order them any other way
+            # since the `line` entry in the `temporal` table is relative
+            # to it's creation date, not the currently requested
+            # annotation.
+            existing_tuids = {
+                (line_num+1): existing_tuids_tmp[str(ann_entry)]
+                for line_num, ann_entry in enumerate(line_origins)
+                if str(ann_entry) in existing_tuids_tmp
+            }
+            new_lines = set([line_num+1 for line_num, _ in enumerate(line_origins)]) - set(existing_tuids.keys())
+            annotated_lines = [annotated_object['annotate'][line_num-1] for line_num in new_lines]
 
             # Update DB with any revisions found in annotated
             # object that are not in the DB.
             if len(annotated_lines) > 0:
-                # If we are using get_tuids within another transaction
                 try:
                     self._update_file_changesets(transaction, annotated_lines)
                 except Exception as e:
