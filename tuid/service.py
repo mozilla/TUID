@@ -118,8 +118,8 @@ class TUIDService:
     def _dummy_annotate_exists(self, transaction, file_name, rev):
         # True if dummy, false if not.
         # None means there is no entry.
-        return None != transaction.get_one("select 1 from annotations where file=? and revision=? and annotation=?",
-                                         (file_name, rev, ''))
+        return None != transaction.get_one("select annotation from annotations where file=? and revision=?",
+                                         (file_name, rev))
 
 
     def insert_tuid_dummy(self, transaction, rev, file_name, commit=True):
@@ -1458,22 +1458,23 @@ class TUIDService:
                 # Error searching for tuids, go to next file
                 continue
 
+            # TODO: Replace old empty annotation if a new one is found
+            # TODO: at the same revision and if it is not empty as well.
             # Make sure we are not adding the same thing another thread
             # added.
             tmp_ann = self._get_annotation(revision, file, transaction=transaction)
-            if tmp_ann:
+            if tmp_ann == None:
+                self.insert_annotations(
+                    transaction,
+                    [(
+                        revision,
+                        file,
+                        self.stringify_tuids(tuids)
+                    )]
+                )
+                results.append((file, tuids))
+            else:
                 results.append((file, self.destringify_tuids(tmp_ann)))
-                continue
-
-            self.insert_annotations(
-                transaction,
-                [(
-                    revision,
-                    file,
-                    self.stringify_tuids(tuids)
-                )]
-            )
-            results.append((file, tuids))
 
         return results
 
