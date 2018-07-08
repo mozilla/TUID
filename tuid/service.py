@@ -266,6 +266,7 @@ class TUIDService:
         results = self.get_tuids(files, revision)
         return results
 
+
     @cache(duration=DAY)
     def _check_branch(self, revision, branch):
         '''
@@ -292,6 +293,7 @@ class TUIDService:
             return False
         return True
 
+
     def mthread_testing_get_tuids_from_files(self, files, revision, results, res_position,
                                              going_forward=False, repo=None, please_stop=None):
         """
@@ -307,6 +309,7 @@ class TUIDService:
         results[res_position], _ = self.get_tuids_from_files(files, revision, going_forward=going_forward, repo=repo)
         Log.note("Thread {{pos}} is ending.", pos=res_position)
         return
+
 
     def get_tuids_from_files(
             self,
@@ -1233,36 +1236,6 @@ class TUIDService:
         return result
 
 
-    def _update_file_changesets(self, transaction, annotated_lines):
-        '''
-        Inserts new lines from all changesets in the given annotation.
-
-        :param annotated_lines: Response from annotation request from HGMO
-        :return: None
-        '''
-        quickfill_list = []
-
-        for anline in annotated_lines:
-            cset = anline['node'][:12]
-            if not self._get_one_tuid(transaction, cset, anline['abspath'], int(anline['targetline'])):
-                quickfill_list.append((cset, anline['abspath'], int(anline['targetline'])))
-        self._quick_update_file_changeset(transaction, list(set(quickfill_list)))
-
-
-    def _quick_update_file_changeset(self, transaction, qf_list):
-        '''
-        Updates temporal table to include any new TUIDs.
-
-        :param qf_list: List to insert
-        :return: None
-        '''
-        for _, tmp_qf_list in jx.groupby(qf_list, size=SQL_BATCH_SIZE):
-            transaction.execute(
-                "INSERT INTO temporal (tuid, revision, file, line)"
-                " VALUES " +
-                sql_list(sql_iso(sql_list(map(quote_value, (self.tuid(), i[0], i[1], i[2])))) for i in tmp_qf_list)
-            )
-
     def get_tuids(self, files, revision, commit=True, chunk=50, repo=None):
         '''
         Wrapper for `_get_tuids` to limit the number of annotation calls to hg
@@ -1336,6 +1309,7 @@ class TUIDService:
         # Help for memory
         gc.collect()
         return results
+
 
     def _get_tuids(
             self,
@@ -1412,7 +1386,7 @@ class TUIDService:
                 # changed).
                 line_origins.append((node['abspath'], cset_len12, int(node['targetline'])))
 
-            file_names = list(set([file for file, _, _ in line_origins]))
+            file_names = list(set([f for f, _, _ in line_origins]))
             revs_to_find = list(set([rev for _, rev, _ in line_origins]))
             lines_to_find = list(set([line for _, _, line in line_origins]))
             existing_tuids_tmp = {
@@ -1436,44 +1410,42 @@ class TUIDService:
                 if str(ann_entry) in existing_tuids_tmp
             }
             new_lines = set([line_num+1 for line_num, _ in enumerate(line_origins)]) - set(existing_tuids.keys())
-            annotated_lines = [annotated_object['annotate'][line_num-1] for line_num in new_lines]
 
             # Update DB with any revisions found in annotated
             # object that are not in the DB.
-            if len(annotated_lines) > 0:
+            new_line_origins = {}
+            if len(new_lines) > 0:
                 try:
-                    self._update_file_changesets(transaction, annotated_lines)
+                    new_line_origins = {
+                        line_num: (self.tuid(),) + line_origins[line_num - 1]
+                        for line_num in new_lines
+                    }
+
+                    transaction.execute(
+                        "INSERT INTO temporal (tuid, file, revision, line)"
+                        " VALUES " +
+                        sql_list(
+                            sql_iso(
+                                sql_list(map(quote_value, (tuid, f, rev, line_num)))
+                            ) for tuid, f, rev, line_num in list(new_line_origins.values())
+                        )
+                    )
+
+                    # Format so we don't have to use [0] to get at the tuid
+                    new_line_origins = {line_num: new_line_origins[line_num][0] for line_num in new_line_origins}
                 except Exception as e:
                     # Something broke for this file, ignore it and go to the
                     # next one.
-                    Log.note("Failed to insert new tuids", cause=e)
+                    Log.note("Failed to insert new tuids {{cause}}", cause=e)
                     continue
 
-
-            # Get the TUIDs for each line (can probably be optimized with a join)
             tuids = []
-            errored = False
             for line_ind, line_origin in enumerate(line_origins):
                 line_num = line_ind + 1
                 if line_num in existing_tuids:
                     tuids.append(TuidMap(existing_tuids[line_num], line_num))
-                    continue
-                try:
-                    tuid_tmp = transaction.get_one(GET_TUID_QUERY, line_origins[line_ind])
-
-                    # Return dummy line if we can't find the TUID for this entry
-                    # (likely because of an error from insertion).
-                    if tuid_tmp:
-                        tuids.append(TuidMap(tuid_tmp[0], line_num))
-                    else:
-                        tuids.append(MISSING)
-                except Exception as e:
-                    Log.note("Unexpected error searching for tuids {{cause}}", cause=e)
-                    errored = True
-                    break
-            if errored:
-                # Error searching for tuids, go to next file
-                continue
+                else:
+                    tuids.append(TuidMap(new_line_origins[line_num], line_num))
 
             # TODO: Replace old empty annotation if a new one is found
             # TODO: at the same revision and if it is not empty as well.
