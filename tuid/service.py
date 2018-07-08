@@ -29,7 +29,7 @@ from tuid.util import MISSING, TuidMap
 
 DEBUG = False
 VERIFY_TUIDS = True
-RETRY = {"times": 3, "sleep": 5}
+RETRY = {"times": 3, "sleep": 5, "http": True}
 SQL_ANN_BATCH_SIZE = 5
 SQL_BATCH_SIZE = 500
 FILES_TO_PROCESS_THRESH = 5
