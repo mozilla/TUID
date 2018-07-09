@@ -29,6 +29,7 @@ from requests import sessions, Response
 
 from jx_python import jx
 from mo_dots import Data, coalesce, wrap, set_default, unwrap, Null
+from mo_files.url import URL
 from mo_future import text_type, PY2
 from mo_json import value2json, json2value
 from mo_logs import Log
@@ -54,9 +55,8 @@ DEFAULTS = {
     "verify": True,
     "timeout": 600,
     "zip": False,
-    "retry": {"times": 1, "sleep": 0, "http":False}
+    "retry": {"times": 1, "sleep": 0, "http": False}
 }
-
 _warning_sent = False
 request_count = 0
 
@@ -162,8 +162,9 @@ def request(method, url, headers=None, zip=None, retry=None, **kwargs):
                 return session.request(method=method, headers=headers, url=str(url), **kwargs)
             except Exception as e:
                 e = Except.wrap(e)
-                if retry['http'] and url.startswith("https://") and "EOF occurred in violation of protocol" in e:
-                    url = "http://" + url[8:]
+                if retry['http'] and str(url).startswith("https://") and "EOF occurred in violation of protocol" in e:
+                    url = URL("http://" + str(url)[8:])
+                    Log.note("Changed {{url}} to http due to SSL EOF violation.", url=str(url))
                 errors.append(e)
 
         if " Read timed out." in errors[0]:
