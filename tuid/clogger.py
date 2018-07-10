@@ -7,6 +7,7 @@ from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_files.url import URL
 from mo_logs import Log
 from mo_times import Timer
+from mo_times.durations import DAY
 from mo_threads import Till, Thread, Lock, Queue, Signal
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, sql_iso
@@ -27,6 +28,7 @@ CSET_BACKFILL_WAIT_TIME = 1 * 60 # seconds
 CSET_MAINTENANCE_WAIT_TIME = 30 * 60 # seconds
 CSET_DELETION_WAIT_TIME = 1 * 60 # seconds
 TUID_EXISTENCE_WAIT_TIME = 1 * 60 # seconds
+TIME_TO_KEEP_ANNOTATIONS = 5 * DAY
 MAX_TIPFILL_CLOGS = 60  # changeset logs
 MAX_BACKFILL_CLOGS = 200 # changeset logs
 CHANGESETS_PER_CLOG = 20 # changesets
@@ -501,6 +503,11 @@ class Clogger:
                 if self.disable_maintenance:
                     continue
 
+                # Reset signal so we don't request
+                # maintenance infinitely.
+                with self.maintenance_signal.lock:
+                    self.maintenance_signal._go = False
+
                 with self.working_locker:
                     all_data = None
                     with self.conn.transaction() as t:
@@ -519,18 +526,53 @@ class Clogger:
                                 new_data.append((revnum, revision, -1))
                             else:
                                 new_data.append((revnum, revision, timestamp))
-                        elif type(timestamp) != int:
+                        elif type(timestamp) != int or timestamp == -1:
                             modified = True
                             new_data.append((revnum, revision, int(time.time())))
                         else:
                             new_data.append((revnum, revision, timestamp))
 
+                    # Delete annotations at revisions with timestamps
+                    # that are too old. The csetLog entries will have
+                    # their timestamps reset here.
+                    new_data1 = []
+                    annrevs_to_del = []
+                    current_time = time.time()
+                    for count, (revnum, revision, timestamp) in enumerate(new_data[::-1]):
+                        new_timestamp = timestamp
+                        if timestamp != -1:
+                            if current_time >= timestamp + TIME_TO_KEEP_ANNOTATIONS.seconds:
+                                modified = True
+                                new_timestamp = current_time
+                                annrevs_to_del.append(revision)
+                        new_data1.append((revnum, revision, new_timestamp))
+
+                    if len(annrevs_to_del) > 0:
+                        # Delete any latestFileMod and annotation entries
+                        # that are too old.
+                        Log.note(
+                            "Deleting annotations and latestFileMod for revisions for being "
+                            "older than {{oldest}}: {{revisions}}",
+                            oldest=TIME_TO_KEEP_ANNOTATIONS,
+                            revisions=annrevs_to_del
+                        )
+                        with self.conn.transaction() as t:
+                            t.execute(
+                                "DELETE FROM latestFileMod WHERE revision IN " +
+                                sql_iso(sql_list(map(quote_value, annrevs_to_del)))
+                            )
+                            t.execute(
+                                "DELETE FROM annotations WHERE revision IN " +
+                                sql_iso(sql_list(map(quote_value, annrevs_to_del)))
+                            )
+
                     # Delete any overflowing entries
-                    new_data2 = new_data
-                    deleted_data = all_data[:len(all_data) - MAXIMUM_NONPERMANENT_CSETS]
+                    new_data2 = new_data1
+                    reved_all_data = all_data[::-1]
+                    deleted_data = reved_all_data[MAXIMUM_NONPERMANENT_CSETS:]
                     delete_overflowing_revstart = None
                     if len(deleted_data) > 0:
-                        _, delete_overflowing_revstart, _ = deleted_data[-1]
+                        _, delete_overflowing_revstart, _ = deleted_data[0]
                         new_data2 = set(all_data) - set(deleted_data)
 
                         # Update old frontiers if requested, otherwise
@@ -579,11 +621,6 @@ class Clogger:
 
                     Log.note("Scheduling {{num_csets}} for deletion", num_csets=len(deleted_data))
                     self.deletions_todo.add(delete_overflowing_revstart)
-
-                    # Reset signal so we don't request
-                    # deletions infinitely.
-                    with self.maintenance_signal.lock:
-                        self.maintenance_signal._go = False
             except Exception as e:
                 Log.warning("Unexpected error occured while maintaining csetLog, continuing to try: ", cause=e)
         return
@@ -636,7 +673,10 @@ class Clogger:
                         if len(existing_frontiers) > 0:
                             # This handles files which no longer exist anymore in
                             # the main branch.
-                            Log.note("Deleting existing frontiers for files: {{files}}", files=existing_frontiers)
+                            Log.note(
+                                "Deleting existing frontiers for revisions: {{revisions}}",
+                                revisions=existing_frontiers
+                            )
                             t.execute(
                                 "DELETE FROM latestFileMod WHERE revision IN " +
                                 sql_iso(sql_list(map(quote_value, existing_frontiers)))

@@ -199,18 +199,30 @@ def test_maintenance_and_deletion(clogger):
         tmp_num_trys += 1
     assert tmp_num_trys < num_trys
 
-    inserts_list = [
+    inserts_list_latestFileMod = [
         ('file1', new_tail),
         ('file2', new_tail)
+    ]
+    inserts_list_annotations = [
+        ('file1', new_tail, ''),
+        ('file2', new_tail, '')
     ]
     with clogger.conn.transaction() as t:
         t.execute(
             "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
             sql_list(
                 sql_iso(sql_list(map(quote_value, i)))
-                for i in inserts_list
+                for i in inserts_list_latestFileMod
             )
         )
+        t.execute(
+            "INSERT OR REPLACE INTO annotations (file, revision, annotation) VALUES " +
+            sql_list(
+                sql_iso(sql_list(map(quote_value, i)))
+                for i in inserts_list_annotations
+            )
+        )
+
         revnums_in_db = t.get_one("SELECT count(revnum) as revnum FROM csetLog")[0]
     if revnums_in_db <= max_revs:
         Log.note("Maintenance worker already ran.")
@@ -227,6 +239,90 @@ def test_maintenance_and_deletion(clogger):
         Till(seconds=wait_time).wait()
         revnums_in_db = clogger.conn.get_one("SELECT count(revnum) as revnum FROM csetLog")[0]
         if revnums_in_db <= max_revs:
+            break
+        tmp_num_trys += 1
+
+    assert tmp_num_trys < num_trys
+
+    # Check that latestFileMods entries were deleted.
+    latest_rev = clogger.conn.get_one("SELECT 1 FROM latestFileMod WHERE revision=?", (new_tail,))
+    assert not latest_rev
+
+    # Check that annotations were deleted.
+    annotates = clogger.conn.get_one("SELECT 1 FROM annotations WHERE revision=?", (new_tail,))
+    assert not annotates
+
+
+def test_deleting_old_annotations(clogger):
+    clogger.disable_tipfilling = True
+    clogger.disable_backfilling = True
+    clogger.disable_maintenance = True
+    clogger.disable_deletion = True
+
+    min_permanent = 10
+    num_trys = 50
+    wait_time = 2
+    new_timestamp = 1
+
+    # Add extra non-permanent revisions if needed
+    total_revs = clogger.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
+    if total_revs <= min_permanent:
+        clogger.csets_todo_backwards.add((50, True))
+        clogger.disable_backfilling = False
+
+        tmp_num_trys = 0
+        while tmp_num_trys < num_trys:
+            Till(seconds=wait_time).wait()
+            new_total_revs = clogger.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
+            if new_total_revs > total_revs:
+                break
+            tmp_num_trys += 1
+        assert tmp_num_trys < num_trys
+
+        clogger.disable_backfilling = True
+
+    with clogger.conn.transaction() as t:
+        tail_tipnum, tail_cset = clogger.get_tail(t)
+
+    inserts_list_latestFileMod = [
+        ('file1', tail_cset),
+        ('file2', tail_cset)
+    ]
+    inserts_list_annotations = [
+        ('file1', tail_cset, ''),
+        ('file2', tail_cset, '')
+    ]
+
+    with clogger.conn.transaction() as t:
+        t.execute(
+            "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+            sql_list(
+                sql_iso(sql_list(map(quote_value, i)))
+                for i in inserts_list_latestFileMod
+            )
+        )
+        t.execute(
+            "INSERT OR REPLACE INTO annotations (file, revision, annotation) VALUES " +
+            sql_list(
+                sql_iso(sql_list(map(quote_value, i)))
+                for i in inserts_list_annotations
+            )
+        )
+        t.execute(
+            "INSERT OR REPLACE INTO csetLog (revnum, revision, timestamp) VALUES " +
+            sql_iso(sql_list(map(quote_value, (tail_tipnum, tail_cset, new_timestamp))))
+        )
+
+    # Start maintenance
+    clogger.disable_maintenance = False
+    clogger.maintenance_signal.go()
+
+    tmp_num_trys = 0
+    while tmp_num_trys < num_trys:
+        Till(seconds=wait_time).wait()
+        latest_rev = clogger.conn.get_one("SELECT 1 FROM latestFileMod WHERE revision=?", (tail_cset,))
+        annotates = clogger.conn.get_one("SELECT 1 FROM annotations WHERE revision=?", (tail_cset,))
+        if not annotates and not latest_rev:
             break
         tmp_num_trys += 1
     assert tmp_num_trys < num_trys
