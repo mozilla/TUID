@@ -9,7 +9,6 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import gc
-import time
 
 from jx_python import jx
 from mo_dots import Null, coalesce, wrap
@@ -28,10 +27,7 @@ from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
 from tuid.util import MISSING, TuidMap
 
-# Global constants
 DEBUG = False
-
-# Tuid constants
 VERIFY_TUIDS = True
 RETRY = {"times": 3, "sleep": 5}
 SQL_ANN_BATCH_SIZE = 5
@@ -50,7 +46,7 @@ HG_URL = URL('https://hg.mozilla.org/')
 class TUIDService:
 
     @override
-    def __init__(self, database, hg, hg_cache=None, conn=None, kwargs=None, clogger=None):
+    def __init__(self, database, hg, hg_cache=None, conn=None, kwargs=None):
         try:
             self.config = kwargs
 
@@ -60,7 +56,6 @@ class TUIDService:
             if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
 
-            self.clogger = clogger if clogger else Clogger(conn=self.conn, tuid_service=self, kwargs=kwargs)
             self.locker = Lock()
             self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
         except Exception as e:
@@ -546,7 +541,12 @@ class TUIDService:
         :param file: name of file diff is applied to
         :return:
         '''
-        # Add all added lines into the DB.
+        # Ignore merges, they have duplicate entries.
+        if diff['merge']:
+            return annotation, file
+        if file.lstrip('/') == 'dev/null':
+            return [], file
+
         list_to_insert = []
         new_ann = [x for x in annotation]
         new_ann.sort(key=lambda x: x.line)
@@ -558,9 +558,17 @@ class TUIDService:
         def remove_one(start, lines):
             return lines[:start-1] + [TuidMap(tmap.tuid, int(tmap.line) - 1) for tmap in lines[start:]]
 
-        for f_proc in diff:
-            if f_proc['new'].name.lstrip('/') != file:
+        for f_proc in diff['diffs']:
+            new_fname = f_proc['new'].name.lstrip('/')
+            old_fname = f_proc['old'].name.lstrip('/')
+            if new_fname != file and old_fname != file:
                 continue
+            if old_fname != new_fname:
+                if new_fname == 'dev/null':
+                    return [], file
+                # Change the file name so that new tuids
+                # are correctly created.
+                file = new_fname
 
             f_diff = f_proc['changes']
             for change in f_diff:
@@ -585,7 +593,7 @@ class TUIDService:
                     sql_list(sql_iso(sql_list(map(quote_value, tp))) for tp in inserts_list)
                 )
 
-        return new_ann
+        return new_ann, file
 
 
     def _get_tuids_from_files_try_branch(self, files, revision):
@@ -1206,17 +1214,12 @@ class TUIDService:
                             for tuid_map in tmp_ann:
                                 if tuid_map is None or tuid_map.tuid is None or tuid_map.line is None:
                                     Log.warning(
-                                        "None value encountered in annotation insertion in "
-                                        "{{rev}} for {{file}}: {{tuids}}",
+                                        "None value encountered in annotation insertion in {{rev}} for {{file}}: {{tuids}}" ,
                                         rev=rev, file=filename, tuids=str(tuid_map)
                                     )
                         self.insert_annotations(transaction, recomputed_inserts)
                     except Exception as e:
-                        Log.error(
-                            "Error inserting into annotations table: {{inserting}} caused by: {{cause}}",
-                            inserting=recomputed_inserts,
-                            cause=e
-                        )
+                        Log.error("Error inserting into annotations table: {{inserting}}", inserting=recomputed_inserts, cause=e)
 
         if len(anns_to_get) > 0:
             result.extend(self.get_tuids(anns_to_get, revision, commit=False))

@@ -185,7 +185,7 @@ def test_maintenance_and_deletion(clogger):
         extra_to_add += num_csets_missing
 
     with clogger.conn.transaction() as t:
-        tail_cset = clogger.get_tail(t)[1]
+        _, tail_cset = clogger.get_tail(t)
 
     clogger.csets_todo_backwards.add((extra_to_add, True))
     new_tail = None
@@ -193,7 +193,7 @@ def test_maintenance_and_deletion(clogger):
     while tmp_num_trys < num_trys:
         Till(seconds=wait_time).wait()
         with clogger.conn.transaction() as t:
-            new_tail = clogger.get_tail(t)[1]
+            _, new_tail = clogger.get_tail(t)
         if new_tail != tail_cset:
             break
         tmp_num_trys += 1
@@ -201,7 +201,7 @@ def test_maintenance_and_deletion(clogger):
 
     inserts_list = [
         ('file1', new_tail),
-        ('file2', new_tail)
+        ('file2', 'dea772389903')
     ]
     with clogger.conn.transaction() as t:
         t.execute(
@@ -242,7 +242,7 @@ def test_partial_tipfilling(clogger):
     wait_time = 2
     prev_total_revs = clogger.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
     with clogger.conn.transaction() as t:
-        max_tip_num = clogger.get_tip(t)[0]
+        max_tip_num, _ = clogger.get_tip(t)
         t.execute(
             "DELETE FROM csetLog WHERE revnum >= " + str(max_tip_num) + " - 5"
         )
@@ -308,7 +308,7 @@ def test_get_revnum_range_tipfill(clogger):
         t.execute(
             "DELETE FROM csetLog WHERE revnum >= " + str(tip_num) + " - 5"
         )
-        new_tip_rev = clogger.get_tip(t)[1]
+        _, new_tip_rev = clogger.get_tip(t)
 
     assert tip_rev and new_tip_rev
 
@@ -347,7 +347,7 @@ def test_get_revnum_range_tipnback(clogger):
             t.execute(
                 "DELETE FROM csetLog WHERE revnum >= " + str(tip_num) + " - 5"
             )
-            new_tip_rev = clogger.get_tip(t)[1]
+            _, new_tip_rev = clogger.get_tip(t)
 
         num_to_go_back = 10
         rev2 = None
