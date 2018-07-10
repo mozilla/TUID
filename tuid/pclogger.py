@@ -17,7 +17,7 @@ class PercentCompleteLogger:
         self.total_locker = Lock()
         self.total_files_requested = 0
         self.total_tuids_mapped = 0
-        Thread.run("pc-daemon", self.pcdaemon.run_daemon)
+        Thread.run("pc-daemon", self.run_daemon)
 
 
     def update_totals(self, num_files_req, num_tuids_mapped):
