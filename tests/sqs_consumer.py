@@ -16,7 +16,7 @@ from mo_hg import hg_mozilla_org
 from mo_kwargs import override
 from mo_logs import startup, constants, Log
 from mo_threads import Thread, Signal, Till, MAIN_THREAD
-from mo_times import Timer, Date
+from mo_times import Timer, Date, Duration
 from pyLibrary import aws
 from pyLibrary.env import http
 from tuid import service
@@ -37,7 +37,7 @@ def one_request(request, please_stop):
         elif a.eq.path:
             files = [a.eq.path]
 
-    with Timer("Make TUID request from {{timestamp|date}}", {"timestamp": request.meta.request_time}):
+    with Timer("Make TUID request from {{timestamp|datetime}}", {"timestamp": request.meta.request_time}):
         try:
             result = http.post_json(
                 "http://localhost:5000/tuid",
@@ -70,6 +70,7 @@ def queue_consumer(pull_queue, please_stop=None):
 
         next_request = request.meta.request_time + time_offset
         if next_request > now:
+            Log.note("Next request in {{wait_time}}", wait_time=Duration(seconds=next_request - now))
             Till(till=next_request).wait()
 
         Thread.run("request "+text_type(request_count), one_request, request)

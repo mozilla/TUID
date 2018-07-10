@@ -270,7 +270,10 @@ class Sqlite(DB):
                 command_item = self.queue.pop(till=please_stop)
                 if command_item is None:
                     break
-                self._process_command_item(command_item)
+                try:
+                    self._process_command_item(command_item)
+                except Exception as e:
+                    Log.warning("worker can not execute command", cause=e)
         except Exception as e:
             e = Except.wrap(e)
             if not please_stop:
@@ -427,8 +430,6 @@ class Transaction(object):
             for c in todo:
                 DEBUG and Log.note(FORMAT_COMMAND, command=c.command)
                 self.db.db.execute(c.command)
-                if c.command in [COMMIT, ROLLBACK]:
-                    Log.error("logic error")
         except Exception as e:
             Log.error("problem running commands", current=c, cause=e)
 
