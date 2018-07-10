@@ -201,7 +201,7 @@ def test_maintenance_and_deletion(clogger):
 
     inserts_list = [
         ('file1', new_tail),
-        ('file2', 'dea772389903')
+        ('file2', new_tail)
     ]
     with clogger.conn.transaction() as t:
         t.execute(
