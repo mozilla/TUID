@@ -63,8 +63,6 @@ class TUIDService:
             self.total_files_requested = 0
             self.total_tuids_mapped = 0
             self.pcdaemon = PercentCompleteLogger()
-
-            Thread.run("pc-daemon", self.pcdaemon.run_daemon)
         except Exception as e:
             Log.error("can not setup service", cause=e)
 

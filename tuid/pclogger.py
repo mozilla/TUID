@@ -6,7 +6,7 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
 from mo_logs import Log
-from mo_threads import Till, Lock
+from mo_threads import Till, Lock, Thread
 from mo_times.durations import MINUTE
 
 DAEMON_WAIT_FOR_PC = 5 * MINUTE # Time until a percent complete log message is emitted.
@@ -17,6 +17,7 @@ class PercentCompleteLogger:
         self.total_locker = Lock()
         self.total_files_requested = 0
         self.total_tuids_mapped = 0
+        Thread.run("pc-daemon", self.pcdaemon.run_daemon)
 
 
     def update_totals(self, num_files_req, num_tuids_mapped):
