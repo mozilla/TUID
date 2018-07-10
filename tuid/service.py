@@ -1459,15 +1459,16 @@ class TUIDService:
                     else:
                         lines_to_insert = new_line_origins.values()
 
-                    transaction.execute(
-                        "INSERT INTO temporal (tuid, file, revision, line)"
-                        " VALUES " +
-                        sql_list(
-                            sql_iso(
-                                sql_list(map(quote_value, (tuid, f, rev, line_num)))
-                            ) for tuid, f, rev, line_num in list(lines_to_insert)
+                    for _, part_of_insert in jx.groupby(lines_to_insert, size=SQL_BATCH_SIZE):
+                        transaction.execute(
+                            "INSERT INTO temporal (tuid, file, revision, line)"
+                            " VALUES " +
+                            sql_list(
+                                sql_iso(
+                                    sql_list(map(quote_value, (tuid, f, rev, line_num)))
+                                ) for tuid, f, rev, line_num in list(part_of_insert)
+                            )
                         )
-                    )
 
                     # Format so we don't have to use [0] to get at the tuid
                     new_line_origins = {line_num: new_line_origins[line_num][0] for line_num in new_line_origins}
