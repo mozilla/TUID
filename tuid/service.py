@@ -1341,6 +1341,13 @@ class TUIDService:
         for fcount, annotated_object in enumerate(annotated_files):
             file = files[fcount]
 
+            # TODO: Replace old empty annotation if a new one is found
+            # TODO: at the same revision and if it is not empty as well.
+            tmp_ann = self._get_annotation(revision, file, transaction=transaction)
+            if tmp_ann != None:
+                results.append((file, self.destringify_tuids(tmp_ann)))
+                continue
+
             # If it's not defined at this revision, we need to add it in
             errored = False
             if isinstance(annotated_object, (text_type, str)):
@@ -1416,10 +1423,57 @@ class TUIDService:
             new_line_origins = {}
             if len(new_lines) > 0:
                 try:
+                    '''
+                        HG Annotate Bug, Issue #58:
+                        Here is where we assign the new tuids for the first
+                        time we see duplicate entries - they are left
+                        in `new_line_origins` after duplicates are found.
+                        We only remove it from the lines to insert. In future
+                        requests, `existing_tuids` above will handle duplicating
+                        tuids for the entries if needed.
+                    '''
                     new_line_origins = {
                         line_num: (self.tuid(),) + line_origins[line_num - 1]
                         for line_num in new_lines
                     }
+
+                    lines_to_insert = []
+                    duplicate_lines = {
+                        line_num+1: line
+                        for line_num, line in enumerate(line_origins)
+                        if line in line_origins[:line_num]
+                    }
+                    if len(duplicate_lines) > 0:
+                        Log.note(
+                            "Duplicates found in {{file}} at {{cset}}: {{dupes}}",
+                            file=file,
+                            cset=revision,
+                            dupes=duplicate_lines
+                        )
+                        lines_to_insert = [
+                            line
+                            for line_num, line in new_line_origins.items()
+                            if line_num not in duplicate_lines
+                        ]
+
+                        # Give all duplicate entries the same TUID
+                        tmp_line_origins = {}
+                        duplicate_tuids = {}
+                        duplicate_entries = duplicate_lines.values()
+                        for line_num, line in new_line_origins:
+                            if line not in duplicate_entries:
+                                tmp_line_origins[line_num] = line
+                                continue
+
+                            tuid, file, rev, tarline = line
+                            if line in duplicate_tuids:
+                                tuid = duplicate_tuids[line]
+
+                            duplicate_tuids[line] = tuid
+                            tmp_line_origins[line_num] = (tuid, file, rev, tarline)
+                        new_line_origins = tmp_line_origins
+                    else:
+                        lines_to_insert = new_line_origins.values()
 
                     transaction.execute(
                         "INSERT INTO temporal (tuid, file, revision, line)"
@@ -1427,7 +1481,7 @@ class TUIDService:
                         sql_list(
                             sql_iso(
                                 sql_list(map(quote_value, (tuid, f, rev, line_num)))
-                            ) for tuid, f, rev, line_num in list(new_line_origins.values())
+                            ) for tuid, f, rev, line_num in list(lines_to_insert)
                         )
                     )
 
@@ -1447,23 +1501,17 @@ class TUIDService:
                 else:
                     tuids.append(TuidMap(new_line_origins[line_num], line_num))
 
-            # TODO: Replace old empty annotation if a new one is found
-            # TODO: at the same revision and if it is not empty as well.
             # Make sure we are not adding the same thing another thread
             # added.
-            tmp_ann = self._get_annotation(revision, file, transaction=transaction)
-            if tmp_ann == None:
-                self.insert_annotations(
-                    transaction,
-                    [(
-                        revision,
-                        file,
-                        self.stringify_tuids(tuids)
-                    )]
-                )
-                results.append((file, tuids))
-            else:
-                results.append((file, self.destringify_tuids(tmp_ann)))
+            self.insert_annotations(
+                transaction,
+                [(
+                    revision,
+                    file,
+                    self.stringify_tuids(tuids)
+                )]
+            )
+            results.append((file, tuids))
 
         return results
 
