@@ -1437,7 +1437,6 @@ class TUIDService:
                         for line_num in new_lines
                     }
 
-                    lines_to_insert = []
                     duplicate_lines = {
                         line_num+1: line
                         for line_num, line in enumerate(line_origins)
@@ -1448,7 +1447,7 @@ class TUIDService:
                             "Duplicates found in {{file}} at {{cset}}: {{dupes}}",
                             file=file,
                             cset=revision,
-                            dupes=duplicate_lines
+                            dupes=str(duplicate_lines)
                         )
                         lines_to_insert = [
                             line
