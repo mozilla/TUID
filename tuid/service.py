@@ -1455,23 +1455,6 @@ class TUIDService:
                             for line_num, line in new_line_origins.items()
                             if line_num not in duplicate_lines
                         ]
-
-                        # Give all duplicate entries the same TUID
-                        tmp_line_origins = {}
-                        duplicate_tuids = {}
-                        duplicate_entries = duplicate_lines.values()
-                        for line_num, line in new_line_origins:
-                            if line not in duplicate_entries:
-                                tmp_line_origins[line_num] = line
-                                continue
-
-                            tuid, file, rev, tarline = line
-                            if line in duplicate_tuids:
-                                tuid = duplicate_tuids[line]
-
-                            duplicate_tuids[line] = tuid
-                            tmp_line_origins[line_num] = (tuid, file, rev, tarline)
-                        new_line_origins = tmp_line_origins
                     else:
                         lines_to_insert = new_line_origins.values()
 
