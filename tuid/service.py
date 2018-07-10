@@ -25,6 +25,7 @@ from pyLibrary.meta import cache
 from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
+from tuid.pclogger import PercentCompleteLogger
 from tuid.util import MISSING, TuidMap
 
 DEBUG = False
@@ -35,7 +36,6 @@ SQL_BATCH_SIZE = 500
 FILES_TO_PROCESS_THRESH = 5
 ENABLE_TRY = False
 DAEMON_WAIT_AT_NEWEST = 30 * SECOND # Time to wait at the newest revision before polling again.
-DAEMON_WAIT_FOR_PC = 1 * HOUR # Time until a percent complete log message is emitted.
 
 GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE file=? and revision=? and line=?"
 GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and file=?"
@@ -62,8 +62,9 @@ class TUIDService:
             self.total_locker = Lock()
             self.total_files_requested = 0
             self.total_tuids_mapped = 0
+            self.pcdaemon = PercentCompleteLogger()
 
-            Thread.run("pc-daemon", self._percent_complete_daemon)
+            Thread.run("pc-daemon", self.pcdaemon.run_daemon)
         except Exception as e:
             Log.error("can not setup service", cause=e)
 
@@ -77,18 +78,6 @@ class TUIDService:
                 return self.next_tuid
             finally:
                 self.next_tuid += 1
-
-
-    def update_totals(self, num_files_req, num_tuids_mapped):
-        with self.total_locker:
-            self.total_files_requested += num_files_req
-            self.total_tuids_mapped += num_tuids_mapped
-
-
-    def reset_totals(self):
-        with self.total_locker:
-            self.total_files_requested = 0
-            self.total_tuids_mapped = 0
 
 
     def init_db(self):
@@ -520,7 +509,7 @@ class TUIDService:
                     result.extend(tmp)
 
                 if using_thread:
-                    self.update_totals(0, len(result))
+                    self.pcdaemon.update_totals(0, len(result))
                 Log.note("Completed work overflow for revision {{cset}}", cset=revision)
                 return result
             except Exception as e:
@@ -545,7 +534,7 @@ class TUIDService:
                 update_tuids_in_thread(new_files, frontier_update_list, revision, threaded)
             )
 
-        self.update_totals(len(files), len(result))
+        self.pcdaemon.update_totals(len(files), len(result))
         return result, completed
 
 
@@ -1497,23 +1486,6 @@ class TUIDService:
             results.append((file, tuids))
 
         return results
-
-
-    def _percent_complete_daemon(self, please_stop=None):
-        while not please_stop:
-            try:
-                requested = self.total_files_requested
-                if requested != 0:
-                        mapped = self.total_tuids_mapped
-                        Log.note(
-                            "Percent complete {{mapped}}/{{requested}} = {{percent}}",
-                            requested=requested,
-                            mapped=mapped,
-                            percent=100 * mapped/requested
-                        )
-                (Till(seconds=DAEMON_WAIT_FOR_PC.seconds) | please_stop).wait()
-            except Exception as e:
-                Log.warning("Unexpected error in pc-daemon: {{cause}}", cause=e)
 
 
     def _daemon(self, please_stop, only_coverage_revisions=False):

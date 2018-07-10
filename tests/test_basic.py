@@ -496,7 +496,9 @@ def test_one_http_call_required(service):
     proc_files = files[-10:] + [k for k in changed_files] # Useful in testing
     Log.note("Number of files to process: {{flen}}", flen=len(files))
     first_f_n_tuids, _ = service.get_tuids_from_files(
-        ['/dom/base/Link.cpp']+proc_files, "d63ed14ed622", use_thread=False
+        ['/dom/base/Link.cpp']+proc_files,
+        "d63ed14ed622",
+        use_thread=False
     )
 
     # THIS NEXT CALL SHOULD BE FAST, DESPITE THE LACK OF LOCAL CACHE
@@ -504,7 +506,9 @@ def test_one_http_call_required(service):
     timer = Timer("get next revision")
     with timer:
         f_n_tuids, _ = service.get_tuids_from_files(
-            ['/dom/base/Link.cpp']+proc_files, "14dc6342ec50", use_thread=False
+            ['/dom/base/Link.cpp']+proc_files,
+            "14dc6342ec50",
+            use_thread=False
         )
     num_http_calls = http.request_count - start
 
@@ -627,12 +631,10 @@ def test_threaded_service_call(service):
         "/toolkit/components/reader/test/browser_readerMode_with_anchor.js",
     ]
 
-    service.reset_totals()
     res, completed = service.get_tuids_from_files(test_file, mc_revision, going_forward=True)
     assert not completed
     assert all([len(tuids) == 0 for file, tuids in res])
 
-    threads = []
     while not completed:
         # Wait a bit to let them process
         Till(seconds=timeout_seconds).wait()
