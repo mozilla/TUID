@@ -1343,6 +1343,8 @@ class TUIDService:
 
             # TODO: Replace old empty annotation if a new one is found
             # TODO: at the same revision and if it is not empty as well.
+            # Make sure we are not adding the same thing another thread
+            # added.
             tmp_ann = self._get_annotation(revision, file, transaction=transaction)
             if tmp_ann != None:
                 results.append((file, self.destringify_tuids(tmp_ann)))
@@ -1483,8 +1485,6 @@ class TUIDService:
                 else:
                     tuids.append(TuidMap(new_line_origins[line_num], line_num))
 
-            # Make sure we are not adding the same thing another thread
-            # added.
             self.insert_annotations(
                 transaction,
                 [(
