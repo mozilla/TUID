@@ -157,7 +157,7 @@ def test_multithread_service(service):
 
     # Check that we can get the same result after these
     # calls.
-    tuids = service.get_tuids(test_file, revision)
+    tuids, _ = service.get_tuids_from_files(test_file, revision, use_thread=False)
     assert len(tuids[0][1]) == 41
 
     for tuid_count, mapping in enumerate(tuids[0][1]):
@@ -519,13 +519,21 @@ def test_one_http_call_required(service):
     # SETUP
     proc_files = files[-10:] + [k for k in changed_files] # Useful in testing
     Log.note("Number of files to process: {{flen}}", flen=len(files))
-    first_f_n_tuids, _ = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "d63ed14ed622", use_thread=False)
+    first_f_n_tuids, _ = service.get_tuids_from_files(
+        ['/dom/base/Link.cpp']+proc_files,
+        "d63ed14ed622",
+        use_thread=False
+    )
 
     # THIS NEXT CALL SHOULD BE FAST, DESPITE THE LACK OF LOCAL CACHE
     start = http.request_count
     timer = Timer("get next revision")
     with timer:
-        f_n_tuids, _ = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "14dc6342ec50", use_thread=False)
+        f_n_tuids, _ = service.get_tuids_from_files(
+            ['/dom/base/Link.cpp']+proc_files,
+            "14dc6342ec50",
+            use_thread=False
+        )
     num_http_calls = http.request_count - start
 
     #assert num_http_calls <= 2
@@ -588,7 +596,6 @@ def test_out_of_order_get_tuids_from_files(service):
     result1, _ = service.get_tuids_from_files(test_file, rev_initial, use_thread=False)
     result2, _ = service.get_tuids_from_files(test_file, rev_latest, use_thread=False)
     test_result, _ = service.get_tuids_from_files(test_file, rev_middle, use_thread=False)
-
     # Check that test_result's tuids at line 41 is different from
     # result 2.
     for (fname, tuids2) in result2:
@@ -617,7 +624,6 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
     result2, _ = service.get_tuids_from_files(test_file, rev_latest, going_forward=True, use_thread=False)
     test_result, _ = service.get_tuids_from_files(test_file, rev_middle, going_forward=True, use_thread=False)
     result2, _ = service.get_tuids_from_files(test_file, rev_latest2, going_forward=True, use_thread=False)
-
     # Check that test_result's tuids at line 41 is different from
     # result 2.
     for (fname, tuids2) in result2:

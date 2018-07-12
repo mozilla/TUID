@@ -19,12 +19,13 @@ from mo_kwargs import override
 from mo_logs import Log
 from mo_math.randoms import Random
 from mo_threads import Till, Thread, Lock
-from mo_times.durations import SECOND, DAY
+from mo_times.durations import SECOND, HOUR, DAY
 from pyLibrary.env import http
 from pyLibrary.meta import cache
 from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
+from tuid.pclogger import PercentCompleteLogger
 from tuid.util import MISSING, TuidMap
 
 DEBUG = False
@@ -58,6 +59,10 @@ class TUIDService:
 
             self.locker = Lock()
             self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
+            self.total_locker = Lock()
+            self.total_files_requested = 0
+            self.total_tuids_mapped = 0
+            self.pcdaemon = PercentCompleteLogger()
         except Exception as e:
             Log.error("can not setup service", cause=e)
 
@@ -457,6 +462,7 @@ class TUIDService:
                 new_files,
                 frontier_update_list,
                 revision,
+                using_thread,
                 please_stop=None
             ):
             try:
@@ -503,6 +509,8 @@ class TUIDService:
                     )
                     result.extend(tmp)
 
+                if using_thread:
+                    self.pcdaemon.update_totals(0, len(result))
                 Log.note("Completed work overflow for revision {{cset}}", cset=revision)
                 return result
             except Exception as e:
@@ -521,13 +529,14 @@ class TUIDService:
             Log.note("Incomplete response given")
             Thread.run(
                 'get_tuids_from_files (' + Random.base64(9) + ")",
-                update_tuids_in_thread, new_files, frontier_update_list, revision
+                update_tuids_in_thread, new_files, frontier_update_list, revision, threaded
             )
         else:
             result.extend(
-                update_tuids_in_thread(new_files, frontier_update_list, revision)
+                update_tuids_in_thread(new_files, frontier_update_list, revision, threaded)
             )
 
+        self.pcdaemon.update_totals(len(files), len(result))
         return result, completed
 
 
