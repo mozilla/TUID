@@ -99,7 +99,7 @@ class Clogger:
 
             Log.note("Started clogger workers.")
         except Exception as e:
-            Log.error("Can not setup clogger: {{cause}}", cause=e)
+            Log.error("Can not setup clogger", cause=e)
 
 
     def init_db(self):
