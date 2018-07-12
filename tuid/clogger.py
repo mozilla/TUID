@@ -1,3 +1,9 @@
+# encoding: utf-8
+#
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at http://mozilla.org/MPL/2.0/.
 import time
 
 from jx_python import jx
@@ -10,8 +16,7 @@ from mo_times import Timer
 from mo_times.durations import DAY
 from mo_threads import Till, Thread, Lock, Queue, Signal
 from pyLibrary.env import http
-from pyLibrary.sql import sql_list, sql_iso
-from pyLibrary.sql.sqlite import quote_value
+from pyLibrary.sql import sql_list, quote_set
 from tuid import sql
 
 # Use import as follows to prevent
@@ -217,29 +222,29 @@ class Clogger:
                          where X is the length of ordered_rev_list
         :return:
         '''
-        if number_forward:
-            ordered_rev_list = ordered_rev_list[::-1]
-
-        insert_list = []
-
-        # Format insertion list
-        new_insert_count = 1
-        current_max = self.revnum()
-        for count, rev in enumerate(ordered_rev_list):
-            tstamp = -1
-            if timestamp:
-                tstamp = int(time.time())
-
-            if number_forward:
-                revnum = current_max + new_insert_count
-                new_insert_count += 1
-            else:
-                revnum = -count
-
-            cset_entry = (revnum, rev, tstamp)
-            insert_list.append(cset_entry)
-
         with self.conn.transaction() as t:
+            current_min = t.get_one("SELECT min(revnum) FROM csetlog")[0]
+            current_max = t.get_one("SELECT max(revnum) FROM csetlog")[0]
+            if not current_min or not current_max:
+                current_min = 0
+                current_max = 0
+
+            direction = -1
+            start = current_min - 1
+            if number_forward:
+                direction = 1
+                start = current_max + 1
+                ordered_rev_list = ordered_rev_list[::-1]
+
+            insert_list = [
+                (
+                    start + direction * count,
+                    rev,
+                    int(time.time()) if timestamp else -1
+                )
+                for count, rev in enumerate(ordered_rev_list)
+            ]
+
             # In case of overlapping requests
             fmt_insert_list = []
             for cset_entry in insert_list:
@@ -252,14 +257,13 @@ class Clogger:
                     "INSERT INTO csetLog (revnum, revision, timestamp)" +
                     " VALUES " +
                     sql_list(
-                        sql_iso(
-                            sql_list(map(quote_value, (revnum, revision, timestamp)))
-                        ) for revnum, revision, timestamp in tmp_insert_list
+                        quote_set((revnum, revision, timestamp))
+                        for revnum, revision, timestamp in tmp_insert_list
                     )
                 )
 
-        # Move the revision numbers forward if needed
-        self.recompute_table_revnums()
+            # Move the revision numbers forward if needed
+            self.recompute_table_revnums()
 
         # Start a maintenance run if needed
         if self.check_for_maintenance():
@@ -559,11 +563,11 @@ class Clogger:
                         with self.conn.transaction() as t:
                             t.execute(
                                 "DELETE FROM latestFileMod WHERE revision IN " +
-                                sql_iso(sql_list(map(quote_value, annrevs_to_del)))
+                                quote_set(annrevs_to_del)
                             )
                             t.execute(
                                 "DELETE FROM annotations WHERE revision IN " +
-                                sql_iso(sql_list(map(quote_value, annrevs_to_del)))
+                                quote_set(annrevs_to_del)
                             )
 
                     # Delete any overflowing entries
@@ -612,7 +616,7 @@ class Clogger:
                             t.execute(
                                 "INSERT OR REPLACE INTO csetLog (revnum, revision, timestamp) VALUES " +
                                 sql_list(
-                                    sql_iso(sql_list(map(quote_value, cset_entry)))
+                                    quote_set(cset_entry)
                                     for cset_entry in new_data2
                                 )
                             )
@@ -661,7 +665,7 @@ class Clogger:
                         csets_to_del = [cset for _, cset in csets_to_del]
                         existing_frontiers = t.query(
                             "SELECT revision FROM latestFileMod WHERE revision IN " +
-                            sql_iso(sql_list(map(quote_value, csets_to_del)))
+                            quote_set(csets_to_del)
                         ).data
 
                         existing_frontiers = [existing_frontiers[i][0] for i, _ in enumerate(existing_frontiers)]
@@ -679,13 +683,13 @@ class Clogger:
                             )
                             t.execute(
                                 "DELETE FROM latestFileMod WHERE revision IN " +
-                                sql_iso(sql_list(map(quote_value, existing_frontiers)))
+                                quote_set(existing_frontiers)
                             )
 
                         Log.note("Deleting annotations...")
                         t.execute(
                             "DELETE FROM annotations WHERE revision IN " +
-                            sql_iso(sql_list(map(quote_value, csets_to_del)))
+                            quote_set(csets_to_del)
                         )
 
                         Log.note(
@@ -694,7 +698,7 @@ class Clogger:
                         )
                         t.execute(
                             "DELETE FROM csetLog WHERE revision IN " +
-                            sql_iso(sql_list(map(quote_value, csets_to_del)))
+                            quote_set(csets_to_del)
                         )
 
                     # Recalculate the revnums
@@ -709,21 +713,20 @@ class Clogger:
         self.csets_todo_backwards.add((revision, True))
 
         revnum = None
-        timer = Timer(description="Waiting for backfill...")
-        with timer:
-            while timer.duration.seconds < BACKFILL_REVNUM_TIMEOUT:
-                with self.conn.transaction() as t:
-                    revnum = self._get_one_revnum(t, revision)
+        timeout = Till(seconds=BACKFILL_REVNUM_TIMEOUT)
+        while not timeout:
+            with self.conn.transaction() as t:
+                revnum = self._get_one_revnum(t, revision)
 
-                if revnum and revnum[0] >= 0:
-                    break
-                elif revnum[0] < 0:
-                    Log.note("Waiting for table to recompute...")
-                else:
-                    Log.note("Waiting for backfill to complete...")
-                Till(seconds=CSET_BACKFILL_WAIT_TIME).wait()
+            if revnum and revnum[0] >= 0:
+                break
+            elif revnum[0] < 0:
+                Log.note("Waiting for table to recompute...")
+            else:
+                Log.note("Waiting for backfill to complete...")
+            Till(seconds=CSET_BACKFILL_WAIT_TIME).wait()
 
-        if timer.duration.seconds >= BACKFILL_REVNUM_TIMEOUT:
+        if timeout:
             Log.error(
                 "Cannot find revision {{rev}} after waiting {{timeout}} seconds",
                 rev=revision,

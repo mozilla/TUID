@@ -16,6 +16,8 @@ from mo_future import text_type, PY3
 from mo_logs import Log
 from mo_logs.strings import expand_template
 
+import pyLibrary.sql
+
 
 class SQL(text_type):
     """
@@ -125,6 +127,10 @@ def sql_count(sql):
 
 def sql_concat(list_):
     return SQL(" || ").join(sql_iso(l) for l in list_)
+
+
+def quote_set(list_):
+    return sql_iso(sql_list(map(pyLibrary.sql.sqlite.quote_value, list_)))
 
 
 def sql_alias(value, alias):
