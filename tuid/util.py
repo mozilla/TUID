@@ -5,6 +5,41 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 from collections import namedtuple
+from mo_hg.apply import Line, SourceFile
+
+
+class TuidLine(Line):
+
+    def __init__(self, tuidmap, **kwargs):
+        super(Line, self).__init__(tuidmap.line, **kwargs)
+        self.tuid = tuidmap.tuid
+
+
+class AnnotateFile(SourceFile):
+
+    def annotation_to_lines(self, annotation):
+        self.lines = [TuidLine(tuidmap) for tuidmap in annotation]
+
+    def lines_to_annotation(self):
+        return [
+            TuidMap(line_obj.tuid, line_obj.line)
+            for line_obj in self.lines
+        ]
+
+    def replace_line_with_tuidline(self):
+        new_lines = []
+        for line_obj in self.lines:
+            if type(line_obj, TuidLine):
+                new_lines.append(line_obj)
+                continue
+            new_line_obj = TuidLine(
+                TuidMap(None, line_obj.line),
+                filename=line_obj.filename,
+                is_new_line=True
+            )
+            new_lines.append(new_line_obj)
+        self.lines = new_lines
+        return self.lines
 
 
 def map_to_array(pairs):

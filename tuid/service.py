@@ -14,6 +14,7 @@ from jx_python import jx
 from mo_dots import Null, coalesce, wrap
 from mo_future import text_type
 from mo_hg.hg_mozilla_org import HgMozillaOrg
+from mo_hg.apply import apply_diff, apply_diff_backwards
 from mo_files.url import URL
 from mo_kwargs import override
 from mo_logs import Log
@@ -26,7 +27,8 @@ from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
 from tuid.pclogger import PercentCompleteLogger
-from tuid.util import MISSING, TuidMap
+from tuid.clogger import Clogger
+from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile
 
 DEBUG = False
 VERIFY_TUIDS = True
@@ -47,7 +49,7 @@ HG_URL = URL('https://hg.mozilla.org/')
 class TUIDService:
 
     @override
-    def __init__(self, database, hg, hg_cache=None, conn=None, kwargs=None):
+    def __init__(self, database, hg, hg_cache=None, conn=None, clogger=None, kwargs=None):
         try:
             self.config = kwargs
 
@@ -63,6 +65,7 @@ class TUIDService:
             self.total_files_requested = 0
             self.total_tuids_mapped = 0
             self.pcdaemon = PercentCompleteLogger()
+            self.clogger = clogger if clogger else Clogger(conn=self.conn, tuid_service=self, kwargs=kwargs)
         except Exception as e:
             Log.error("can not setup service", cause=e)
 
@@ -867,74 +870,10 @@ class TUIDService:
         # and all known frontiers.
         diffs_to_frontier = {cset: [] for cset in remaining_frontiers}
 
-        Log.note("Searching for frontier(s): {{frontier}} ", frontier=str(list(remaining_frontiers)))
-        Log.note(
-            "Running on revision with HG URL: {{url}}",
-            url=HG_URL / self.config.hg.branch / 'rev' / revision
-        )
-        while remaining_frontiers:
-            # Get a changelog
-            clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
-            try:
-                Log.note("Searching through changelog {{url}}", url=clog_url)
-                clog_obj = http.get_json(clog_url, retry=RETRY)
-                if isinstance(clog_obj, (text_type, str)):
-                    Log.error(
-                        "Revision {{cset}} does not exist in the {{branch}} branch",
-                        cset=final_rev, branch=self.config.hg.branch
-                    )
-            except Exception as e:
-                Log.error(
-                    "Unexpected error getting changset-log for {{url}}: {{error}}",
-                    url=clog_url,
-                    error=e
-                )
-
-            # For each changeset in the log (except the last one
-            # which is duplicated on the next log page requested.
-            clog_obj_list = list(clog_obj['changesets'])
-            for clog_cset in clog_obj_list[:-1]:
-                nodes_cset = clog_cset['node'][:12]
-
-                if remaining_frontiers:
-                    if nodes_cset in remaining_frontiers:
-                        # Found a frontier, remove it from search list.
-                        remaining_frontiers.remove(nodes_cset)
-
-                        if not remaining_frontiers:
-                            # Found all frontiers, get out of the loop before
-                            # we add the diff to a frontier update list.
-                            break
-
-                    # Add this diff to the processing list
-                    # for each remaining frontier
-                    for cset in diffs_to_frontier:
-                        if cset in remaining_frontiers:
-                            diffs_to_frontier[cset].append(nodes_cset)
-
-            csets_proced += 1
-            if not remaining_frontiers:
-                # End searching
-                break
-            elif csets_proced >= max_csets_proc:
-                # In this case, all files need to be updated to this revision to ensure
-                # line ordering consistency (between past, and future) when a revision
-                # that is in the past is asked for.
-                files_to_process = {file: [revision] for file, _ in frontier_list}
-                break
-            else:
-                # Go to the next log page
-                last_entry = clog_obj_list[-1]
-                final_rev = last_entry['node'][:12]
-
-        if not remaining_frontiers:
-            Log.note("Found all frontiers: {{frontiers_list}}", frontiers_list=str(list(diffs_to_frontier.keys())))
-        else:
-            found_frontiers = [
-                frontier for frontier in diffs_to_frontier if frontier not in remaining_frontiers
-            ]
-            Log.note("Found frontiers: {{found}}", found=str(found_frontiers))
-            Log.note("Did not find frontiers: {{not_found}}", not_found=str(list(remaining_frontiers)))
+        # Get the ordered revisions to apply
+        Log.note("Getting changesets to apply on frontiers: {{frontier}}", frontier=str(list(remaining_frontiers)))
+        for cset in diffs_to_frontier:
+            diffs_to_frontier[cset] = self.clogger.get_revnnums_from_range(revision, cset)
 
         added_files = {}
         removed_files = {}
@@ -948,7 +887,7 @@ class TUIDService:
             diffs_cache = []
             for cset in diffs_to_frontier:
                 if cset not in remaining_frontiers:
-                    diffs_cache.extend(diffs_to_frontier[cset])
+                    diffs_cache.extend([rev for revnum, rev in diffs_to_frontier[cset]])
 
             Log.note("Gathering diffs for: {{csets}}", csets=str(diffs_cache))
             all_diffs = self.get_diffs(diffs_cache)
@@ -1083,7 +1022,7 @@ class TUIDService:
                         # added last (to give it a larger count)
                         anns_to_get.append(file)
                         Log.note(
-                            "Frontier update - adding: "
+                            "Frontier update - attempting to update: "
                             "{{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
                             count=count,
                             total=total,
@@ -1129,10 +1068,12 @@ class TUIDService:
                         # Reverse the diff list, we always find the newest diff first
                         csets_to_proc = files_to_process[file][::-1]
                         tmp_res = self.destringify_tuids(tmp_ann)
-                        new_fname = file
-                        for i in csets_to_proc:
-                            tmp_res, new_fname = self._apply_diff(transaction, tmp_res, parsed_diffs[i], i, new_fname)
+                        file_to_modify = AnnotateFile(file, [TuidLine(tuidmap) for tuidmap in tmp_res])
 
+                        for i in csets_to_proc:
+                            file_to_modify = apply_diff(file_to_modify, parsed_diffs[i],)
+
+                        tmp_res = file_to_modify.lines_to_annotation()
                         ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
                         Log.note(
                             "Frontier update - modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} "
