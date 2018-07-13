@@ -29,8 +29,12 @@ from tuid.pclogger import PercentCompleteLogger
 from tuid.util import MISSING, TuidMap
 
 DEBUG = False
+ANNOTATE_DEBUG = False
 VERIFY_TUIDS = True
 RETRY = {"times": 3, "sleep": 5, "http": True}
+ANN_WAIT_TIME = 5 * HOUR
+MAX_CONCURRENT_ANN_REQUESTS = 10
+MAX_ANN_REQUESTS_WAIT_TIME = 5 * SECOND
 SQL_ANN_BATCH_SIZE = 5
 SQL_BATCH_SIZE = 500
 FILES_TO_PROCESS_THRESH = 5
@@ -58,6 +62,8 @@ class TUIDService:
                 self.init_db()
 
             self.locker = Lock()
+            self.request_locker = Lock()
+            self.num_requests = 0
             self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
             self.total_locker = Lock()
             self.total_files_requested = 0
@@ -231,12 +237,34 @@ class TUIDService:
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
 
-        # Ensure we get the annotate before continuing
-        try:
-            annotated_files[thread_num] = http.get_json(url, retry=RETRY)
-        except Exception as e:
-            annotated_files[thread_num] = []
-            Log.warning("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
+        # Wait until there is room to request
+        num_requests = MAX_CONCURRENT_ANN_REQUESTS
+        timeout = Till(seconds=ANN_WAIT_TIME.seconds)
+        while num_requests >= MAX_CONCURRENT_ANN_REQUESTS and not timeout:
+            with self.request_locker:
+                num_requests = self.num_requests
+                if num_requests < MAX_CONCURRENT_ANN_REQUESTS:
+                    self.num_requests += 1
+                    break
+            if ANNOTATE_DEBUG:
+                Log.note("Waiting to request annotation at {{rev}} for file: {{file}}", rev=cset, file=file)
+            Till(seconds=MAX_ANN_REQUESTS_WAIT_TIME.seconds).wait()
+
+        annotated_files[thread_num] = []
+        if not timeout:
+            try:
+                annotated_files[thread_num] = http.get_json(url, retry=RETRY)
+            except Exception as e:
+                Log.warning("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
+            finally:
+                with self.request_locker:
+                    self.num_requests -= 1
+        else:
+            Log.warning(
+                "Timeout {{timeout}} exceeded waiting for annotation: {{url}}",
+                timeout=ANN_WAIT_TIME,
+                url=url
+            )
         return
 
 
