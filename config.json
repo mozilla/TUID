@@ -61,7 +61,7 @@
     },
     "constants": {
         "tuid.service.DEBUG": false,
-        "tuid.service.ENABLE_TRY": true,
+        "tuid.service.ENABLE_TRY": false,
         "tuid.service.ANNOTATE_DEBUG": true,
         "tuid.clogger.MINIMUM_PERMANENT_CSETS": 10,
         "tuid.clogger.CSET_BACKFILL_WAIT_TIME": 5,

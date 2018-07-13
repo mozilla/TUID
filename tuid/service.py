@@ -1315,22 +1315,43 @@ class TUIDService:
                 continue
 
             # Get all the annotations in parallel and
-            # store in annotated_files
-            annotated_files = [None] * len(annotations_to_get)
-            threads = [
-                Thread.run(
-                    str(thread_count),
-                    self._get_hg_annotate,
-                    revision,
-                    annotations_to_get[thread_count],
-                    annotated_files,
-                    thread_count,
-                    repo
+            # store in annotated_files.
+            # Prevent too many threads from starting up here.
+            num_requests = MAX_CONCURRENT_ANN_REQUESTS
+            timeout = Till(seconds=ANN_WAIT_TIME.seconds)
+            while num_requests >= MAX_CONCURRENT_ANN_REQUESTS and not timeout:
+                with self.request_locker:
+                    num_requests = self.num_requests
+                    if num_requests < MAX_CONCURRENT_ANN_REQUESTS:
+                        # Don't add to requests made, that's done
+                        # by _get_hg_annotate. In the multi-threaded
+                        # case, this can let many threads start their
+                        # requests if possible.
+                        break
+                Till(seconds=MAX_ANN_REQUESTS_WAIT_TIME.seconds).wait()
+
+            if timeout:
+                Log.warning(
+                    "Timeout {{timeout}} exceeded waiting to start annotation threads.",
+                    timeout=MAX_ANN_REQUESTS_WAIT_TIME
                 )
-                for thread_count, _ in enumerate(annotations_to_get)
-            ]
-            for t in threads:
-                t.join()
+                annotated_files = [[] for _ in annotations_to_get]
+            else:
+                annotated_files = [None] * len(annotations_to_get)
+                threads = [
+                    Thread.run(
+                        str(thread_count),
+                        self._get_hg_annotate,
+                        revision,
+                        annotations_to_get[thread_count],
+                        annotated_files,
+                        thread_count,
+                        repo
+                    )
+                    for thread_count, _ in enumerate(annotations_to_get)
+                ]
+                for t in threads:
+                    t.join()
 
             # Help for memory, because `chunk` (or a lot of)
             # threads are started at once.
