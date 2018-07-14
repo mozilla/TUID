@@ -896,89 +896,19 @@ class TUIDService:
             # to be used later when applying them.
             parsed_diffs = {diff_entry['cset']: diff_entry['diff'] for diff_entry in all_diffs}
 
-            # In case the file name changes, this will map
-            # the requested file to the new file name so
-            # diffs can all be gathered.
-            filenames_to_seek = {}
-
-            # Parse diffs for files to process and store diffs to
-            # apply for each file in files_to_process.
-            added_and_removed_counts = {file: 1 for file in file_to_frontier}
             for csets_diff in all_diffs:
                 cset_len12 = csets_diff['cset']
                 parsed_diff = csets_diff['diff']['diffs']
 
                 for f_added in parsed_diff:
-                    # Get new entries for removed files.
                     new_name = f_added['new'].name.lstrip('/')
                     old_name = f_added['old'].name.lstrip('/')
 
-                    # If we don't need this file, skip it
-                    if new_name not in file_to_frontier and \
-                       new_name not in filenames_to_seek:
-                        if old_name not in file_to_frontier and \
-                           old_name not in filenames_to_seek:
-                            # File not requested
-                            continue
-                        if new_name == 'dev/null':
-                            frontier_filename = old_name
-                            while frontier_filename in filenames_to_seek:
-                                frontier_filename = filenames_to_seek[frontier_filename]
-
-                            if frontier_filename not in removed_files:
-                                removed_files[frontier_filename] = 0
-                            removed_files[frontier_filename] = added_and_removed_counts[frontier_filename]
-                            added_and_removed_counts[frontier_filename] += 1
-                            continue
-
-                    if old_name == 'dev/null':
-                        frontier_filename = new_name
-                        while frontier_filename in filenames_to_seek:
-                            frontier_filename = filenames_to_seek[frontier_filename]
-
-                        if frontier_filename not in added_files:
-                            added_files[frontier_filename] = 0
-                        added_files[frontier_filename] = added_and_removed_counts[frontier_filename]
-                        added_and_removed_counts[frontier_filename] += 1
-                        continue
-                    if new_name != old_name:
-                        # File name was changed, keep the diff anyway
-                        # to add any changes it makes.
-                        filenames_to_seek[new_name] = old_name
-
-                    # Get the originally requested file name
-                    # by following filenames_to_seek entries
-                    frontier_filename = new_name
-                    while frontier_filename in filenames_to_seek:
-                        frontier_filename = filenames_to_seek[frontier_filename]
-
-                    # If we are past the frontier for this file,
-                    # or if we are at the frontier skip it.
-                    if file_to_frontier[frontier_filename] == '':
-                        # Previously found frontier, skip
-                        continue
-
-                    # At this point, file is in the database, is
-                    # asked to be processed, and we are still
-                    # searching for the last frontier.
-                    if file_to_frontier[frontier_filename] == cset_len12:
-                        file_to_frontier[frontier_filename] = ''
-                        # Found the frontier, skip
-                        continue
-
-                    if old_name != new_name:
-                        Log.note(
-                            "{{cset}} changes a requested file's name: {{file}} from {{oldfile}}. ",
-                            file=new_name,
-                            oldfile=old_name,
-                            cset=cset
-                        )
-
-                    # Store the diff as it needs to be applied
-                    if frontier_filename in files_to_process:
-                        files_to_process[frontier_filename].append(cset_len12)
-                    else:
-                        files_to_process[frontier_filename] = [cset_len12]
+                    if new_name in file_to_frontier or old_name in file_to_frontier:
+                        if old_name == 'dev/null':
+                            files_to_process[old_name] = True
+                        else:
+                            files_to_process[new_name] = True
 
         # Process each file that needs it based on the
         # files_to_process list.
@@ -991,64 +921,6 @@ class TUIDService:
 
         with self.conn.transaction() as transaction:
             for count, (file, old_frontier) in enumerate(frontier_list):
-                if old_frontier in remaining_frontiers:
-                    # If we were still looking for the frontier by the end, get a new
-                    # annotation for this file.
-                    anns_to_get.append(file)
-
-                    if going_forward:
-                        # If we are always going forward, update the frontier
-                        latestFileMod_inserts[file] = (file, revision)
-
-                    Log.note(
-                        "Frontier update - can't find frontier {{lost_frontier}}: "
-                        "{{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
-                        count=count,
-                        total=total,
-                        file=file,
-                        rev=revision,
-                        percent=count / total,
-                        lost_frontier=old_frontier
-                    )
-                    continue
-                elif file in removed_files or file in added_files:
-                    if file not in removed_files:
-                        removed_files[file] = 0
-                    if file not in added_files:
-                        added_files[file] = 0
-
-                    if removed_files[file] <= added_files[file]:
-                        # For it to still exist it has to be
-                        # added last (to give it a larger count)
-                        anns_to_get.append(file)
-                        Log.note(
-                            "Frontier update - attempting to update: "
-                            "{{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
-                            count=count,
-                            total=total,
-                            file=file,
-                            rev=revision,
-                            percent=count / total,
-                            lost_frontier=old_frontier
-                        )
-                    else:
-                        Log.note(
-                            "Frontier update - deleting: "
-                            "{{count}}/{{total}} - {{percent|percent(decimal=0)}} | {{rev}}|{{file}} ",
-                            count=count,
-                            total=total,
-                            file=file,
-                            rev=revision,
-                            percent=count / total,
-                            lost_frontier=old_frontier
-                        )
-                        tmp_results[file] = []
-                    if going_forward:
-                        # If we are always going forward, update the frontier
-                        latestFileMod_inserts[file] = (file, revision)
-
-                    continue
-
                 # If the file was modified, get it's newest
                 # annotation and update the file.
                 tmp_res = None
@@ -1065,13 +937,31 @@ class TUIDService:
                         anns_to_get.append(file)
                     else:
                         # File was modified, apply it's diffs
-                        # Reverse the diff list, we always find the newest diff first
-                        csets_to_proc = files_to_process[file][::-1]
+                        csets_to_proc = diffs_to_frontier[file_to_frontier[file]]
+                        backwards = False
+                        _, first_rev = csets_to_proc[0]
+
+                        if revision == first_rev:
+                            backwards = True
+                            csets_to_proc = csets_to_proc[::-1]
+
+                        # Strip off the first and last revisions,
+                        # those are the ones we requested.
+                        csets_to_proc = csets_to_proc[1:-1]
+
                         tmp_res = self.destringify_tuids(tmp_ann)
-                        file_to_modify = AnnotateFile(file, [TuidLine(tuidmap) for tuidmap in tmp_res])
+                        file_to_modify = AnnotateFile(
+                            file,
+                            [TuidLine(tuidmap, filename=file) for tuidmap in tmp_res],
+                            tuid_service=self
+                        )
 
                         for i in csets_to_proc:
-                            file_to_modify = apply_diff(file_to_modify, parsed_diffs[i],)
+                            if not backwards:
+                                file_to_modify = apply_diff(file_to_modify, parsed_diffs[i])
+                            else:
+                                file_to_modify = apply_diff_backwards(file_to_modify, parsed_diffs[i])
+                            file_to_modify.create_and_insert_tuids()
 
                         tmp_res = file_to_modify.lines_to_annotation()
                         ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
@@ -1261,6 +1151,95 @@ class TUIDService:
         return results
 
 
+    def insert_tuids_with_duplicates(self, transaction, file, revision, new_lines, line_origins):
+        '''
+        Inserts new lines while creating tuids and handles duplicate entries.
+        :param new_lines: A list of new line numbers.
+        :param line_origins: A list of all lines as tuples (file, revision, line)
+        :return:
+        '''
+
+        '''
+            HG Annotate Bug, Issue #58:
+            Here is where we assign the new tuids for the first
+            time we see duplicate entries - they are left
+            in `new_line_origins` after duplicates are found.
+            We only remove it from the lines to insert. In future
+            requests, the tuid will be duplicated in _get_tuids.
+        '''
+
+        new_line_origins = {
+            line_num: (self.tuid(),) + line_origins[line_num - 1]
+            for line_num in new_lines
+        }
+
+        duplicate_lines = {
+            line_num + 1: line
+            for line_num, line in enumerate(line_origins)
+            if line in line_origins[:line_num]
+        }
+        if len(duplicate_lines) > 0:
+            Log.note(
+                "Duplicates found in {{file}} at {{cset}}: {{dupes}}",
+                file=file,
+                cset=revision,
+                dupes=str(duplicate_lines)
+            )
+            lines_to_insert = [
+                line
+                for line_num, line in new_line_origins.items()
+                if line_num not in duplicate_lines
+            ]
+        else:
+            lines_to_insert = new_line_origins.values()
+
+        for _, part_of_insert in jx.groupby(lines_to_insert, size=SQL_BATCH_SIZE):
+            transaction.execute(
+                "INSERT INTO temporal (tuid, file, revision, line)"
+                " VALUES " +
+                sql_list(
+                    sql_iso(
+                        sql_list(map(quote_value, (tuid, f, rev, line_num)))
+                    ) for tuid, f, rev, line_num in list(part_of_insert)
+                )
+            )
+        return new_line_origins
+
+
+    def get_new_lines(self, transaction, line_origins):
+        '''
+        Checks if any lines were already added.
+        :param transaction:
+        :param line_origins:
+        :return:
+        '''
+        file_names = list(set([f for f, _, _ in line_origins]))
+        revs_to_find = list(set([rev for _, rev, _ in line_origins]))
+        lines_to_find = list(set([line for _, _, line in line_origins]))
+        existing_tuids_tmp = {
+            str((file, revision, line)): tuid
+            for tuid, file, revision, line in transaction.query(
+            "SELECT tuid, file, revision, line FROM temporal"
+            " WHERE file IN " + sql_iso(sql_list(map(quote_value, file_names))) +
+            " AND revision IN " + sql_iso(sql_list(map(quote_value, revs_to_find))) +
+            " AND line IN " + sql_iso(sql_list(map(quote_value, lines_to_find)))
+        ).data
+        }
+
+        # Recompute existing tuids based on line_origins
+        # entry ordering because we can't order them any other way
+        # since the `line` entry in the `temporal` table is relative
+        # to it's creation date, not the currently requested
+        # annotation.
+        existing_tuids = {
+            (line_num + 1): existing_tuids_tmp[str(ann_entry)]
+            for line_num, ann_entry in enumerate(line_origins)
+            if str(ann_entry) in existing_tuids_tmp
+        }
+        new_lines = set([line_num + 1 for line_num, _ in enumerate(line_origins)]) - set(existing_tuids.keys())
+        return new_lines, existing_tuids
+
+
     def _get_tuids(
             self,
             transaction,
@@ -1345,80 +1324,19 @@ class TUIDService:
                 # changed).
                 line_origins.append((node['abspath'], cset_len12, int(node['targetline'])))
 
-            file_names = list(set([f for f, _, _ in line_origins]))
-            revs_to_find = list(set([rev for _, rev, _ in line_origins]))
-            lines_to_find = list(set([line for _, _, line in line_origins]))
-            existing_tuids_tmp = {
-                str((file, revision, line)): tuid
-                for tuid, file, revision, line in transaction.query(
-                    "SELECT tuid, file, revision, line FROM temporal"
-                    " WHERE file IN " + sql_iso(sql_list(map(quote_value, file_names))) +
-                    " AND revision IN " + sql_iso(sql_list(map(quote_value, revs_to_find))) +
-                    " AND line IN " + sql_iso(sql_list(map(quote_value, lines_to_find)))
-                ).data
-            }
-
-            # Recompute existing tuids based on line_origins
-            # entry ordering because we can't order them any other way
-            # since the `line` entry in the `temporal` table is relative
-            # to it's creation date, not the currently requested
-            # annotation.
-            existing_tuids = {
-                (line_num+1): existing_tuids_tmp[str(ann_entry)]
-                for line_num, ann_entry in enumerate(line_origins)
-                if str(ann_entry) in existing_tuids_tmp
-            }
-            new_lines = set([line_num+1 for line_num, _ in enumerate(line_origins)]) - set(existing_tuids.keys())
-
             # Update DB with any revisions found in annotated
             # object that are not in the DB.
+            new_lines, existing_tuids = self.get_new_lines(transaction, line_origins)
             new_line_origins = {}
             if len(new_lines) > 0:
                 try:
-                    '''
-                        HG Annotate Bug, Issue #58:
-                        Here is where we assign the new tuids for the first
-                        time we see duplicate entries - they are left
-                        in `new_line_origins` after duplicates are found.
-                        We only remove it from the lines to insert. In future
-                        requests, `existing_tuids` above will handle duplicating
-                        tuids for the entries if needed.
-                    '''
-                    new_line_origins = {
-                        line_num: (self.tuid(),) + line_origins[line_num - 1]
-                        for line_num in new_lines
-                    }
-
-                    duplicate_lines = {
-                        line_num+1: line
-                        for line_num, line in enumerate(line_origins)
-                        if line in line_origins[:line_num]
-                    }
-                    if len(duplicate_lines) > 0:
-                        Log.note(
-                            "Duplicates found in {{file}} at {{cset}}: {{dupes}}",
-                            file=file,
-                            cset=revision,
-                            dupes=str(duplicate_lines)
-                        )
-                        lines_to_insert = [
-                            line
-                            for line_num, line in new_line_origins.items()
-                            if line_num not in duplicate_lines
-                        ]
-                    else:
-                        lines_to_insert = new_line_origins.values()
-
-                    for _, part_of_insert in jx.groupby(lines_to_insert, size=SQL_BATCH_SIZE):
-                        transaction.execute(
-                            "INSERT INTO temporal (tuid, file, revision, line)"
-                            " VALUES " +
-                            sql_list(
-                                sql_iso(
-                                    sql_list(map(quote_value, (tuid, f, rev, line_num)))
-                                ) for tuid, f, rev, line_num in list(part_of_insert)
-                            )
-                        )
+                    new_line_origins = self.insert_tuids_with_duplicates(
+                        transaction,
+                        file,
+                        revision,
+                        new_lines,
+                        line_origins
+                    )
 
                     # Format so we don't have to use [0] to get at the tuid
                     new_line_origins = {line_num: new_line_origins[line_num][0] for line_num in new_line_origins}

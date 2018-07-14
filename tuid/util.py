@@ -6,6 +6,7 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 from collections import namedtuple
 from mo_hg.apply import Line, SourceFile
+from mo_logs import Log
 
 
 class TuidLine(Line):
@@ -16,6 +17,10 @@ class TuidLine(Line):
 
 
 class AnnotateFile(SourceFile):
+
+    def __init__(self, filename, lines, tuid_service=None):
+        super(SourceFile, self).__init__(filename, lines)
+        self.tuid_service = tuid_service
 
     def annotation_to_lines(self, annotation):
         self.lines = [TuidLine(tuidmap) for tuidmap in annotation]
@@ -40,6 +45,29 @@ class AnnotateFile(SourceFile):
             new_lines.append(new_line_obj)
         self.lines = new_lines
         return self.lines
+
+    def create_and_insert_tuids(self, revision):
+        self.replace_line_with_tuidline()
+
+        line_origins = []
+        for line_obj in self.lines:
+            line_entry = (line_obj.filename, revision, line_obj.line)
+            line_origins.append(line_entry)
+
+        new_lines, _ = self.tuid_service.get_new_lines(line_origins)
+        if len(new_lines) > 0:
+            with self.tuid_service.conn.transaction as t:
+                try:
+                    self.tuid_service.insert_tuids_with_duplicates(
+                        self.filename,
+                        revision,
+                        t,
+                        list(new_lines),
+                        line_origins
+                    )
+                except Exception as e:
+                    Log.note("Failed to insert new tuids {{cause}}", cause=e)
+
 
 
 def map_to_array(pairs):

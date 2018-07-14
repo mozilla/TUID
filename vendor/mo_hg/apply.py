@@ -4,6 +4,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import copy
+
 from mo_logs import Log
 
 
@@ -64,13 +66,13 @@ class SourceFile:
 
     def add_one(self, new_line_obj):
         start = new_line_obj.line
-        return self.lines[:start - 1] +\
-               [new_line_obj] +\
-               [line_obj.move_down() for line_obj in self.lines[start - 1:]]
+        self.lines = self.lines[:start - 1] +\
+                     [new_line_obj] +\
+                     [line_obj.move_down() for line_obj in self.lines[start - 1:]]
 
     def remove_one(self, linenum_to_remove):
-        return self.lines[:linenum_to_remove - 1] +\
-               [line_obj.move_up() for line_obj in self.lines[linenum_to_remove:]]
+        self.lines = self.lines[:linenum_to_remove - 1] +\
+                     [line_obj.move_up() for line_obj in self.lines[linenum_to_remove:]]
 
 
 def apply_diff(file, diff):
@@ -124,4 +126,26 @@ def apply_diff_backwards(file, diff):
     :param diff: a unified diff from get_diff to be reversed, then applied
     :return:
     '''
-    return file
+    new_diffs = []
+    for f_proc in diff['diffs']:
+        new_f_proc = copy.deepcopy(f_proc)
+        new_f_proc['old'].name = f_proc['new'].name
+        new_f_proc['new'].name = f_proc['old'].name
+
+        new_changes = []
+        f_diff =  f_proc['changes']
+        for change in f_diff:
+            if change.action == '+':
+                change.action = '-'
+                new_changes.append(change)
+            elif change.action == '-':
+                change.action = '+'
+                new_changes.append(change)
+
+        # Reverse it because final changes need to
+        # be done first when applied.
+        new_f_proc['changes'] = new_changes[::-1]
+        new_diffs.append(new_f_proc)
+
+    diff['diffs'] = new_diffs
+    return apply_diff(file, diff)
