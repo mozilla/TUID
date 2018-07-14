@@ -35,6 +35,7 @@ RETRY = {"times": 3, "sleep": 5, "http": True}
 ANN_WAIT_TIME = 5 * HOUR
 MAX_CONCURRENT_ANN_REQUESTS = 10
 MAX_ANN_REQUESTS_WAIT_TIME = 5 * SECOND
+MAX_THREAD_WAIT_TIME = 5 * SECOND
 SQL_ANN_BATCH_SIZE = 5
 SQL_BATCH_SIZE = 500
 FILES_TO_PROCESS_THRESH = 5
@@ -63,7 +64,11 @@ class TUIDService:
 
             self.locker = Lock()
             self.request_locker = Lock()
+            self.thread_creation_locker = Lock()
             self.num_requests = 0
+            self.waiting = 0
+            self.threads_waiting = 0
+            self.threads_running = 0
             self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
             self.total_locker = Lock()
             self.total_files_requested = 0
@@ -233,11 +238,14 @@ class TUIDService:
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num, repo, please_stop=None):
+        with self.thread_creation_locker:
+            self.threads_running += 1
         url = HG_URL / repo / "json-annotate" / cset / file
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
 
         # Wait until there is room to request
+        self.waiting += 1
         num_requests = MAX_CONCURRENT_ANN_REQUESTS
         timeout = Till(seconds=ANN_WAIT_TIME.seconds)
         while num_requests >= MAX_CONCURRENT_ANN_REQUESTS and not timeout:
@@ -249,7 +257,13 @@ class TUIDService:
             if ANNOTATE_DEBUG:
                 Log.note("Waiting to request annotation at {{rev}} for file: {{file}}", rev=cset, file=file)
             Till(seconds=MAX_ANN_REQUESTS_WAIT_TIME.seconds).wait()
+        self.waiting -= 1
 
+        Log.note(
+            "Currently {{waiting}} waiting to get annotation, and {{threads}} waiting to start.",
+            waiting=self.waiting,
+            threads=self.threads_waiting
+        )
         annotated_files[thread_num] = []
         if not timeout:
             try:
@@ -265,6 +279,8 @@ class TUIDService:
                 timeout=ANN_WAIT_TIME,
                 url=url
             )
+        with self.thread_creation_locker:
+            self.threads_running -= 1
         return
 
 
@@ -1317,18 +1333,16 @@ class TUIDService:
             # Get all the annotations in parallel and
             # store in annotated_files.
             # Prevent too many threads from starting up here.
-            num_requests = MAX_CONCURRENT_ANN_REQUESTS
+            self.threads_waiting += len(annotations_to_get)
+            num_threads = chunk
             timeout = Till(seconds=ANN_WAIT_TIME.seconds)
-            while num_requests >= MAX_CONCURRENT_ANN_REQUESTS and not timeout:
-                with self.request_locker:
-                    num_requests = self.num_requests
-                    if num_requests < MAX_CONCURRENT_ANN_REQUESTS:
-                        # Don't add to requests made, that's done
-                        # by _get_hg_annotate. In the multi-threaded
-                        # case, this can let many threads start their
-                        # requests if possible.
+            while num_threads >= chunk and not timeout:
+                with self.thread_creation_locker:
+                    num_threads = self.threads_running
+                    if num_threads <= chunk:
                         break
-                Till(seconds=MAX_ANN_REQUESTS_WAIT_TIME.seconds).wait()
+                Till(seconds=MAX_THREAD_WAIT_TIME.seconds).wait()
+            self.threads_waiting -= len(annotations_to_get)
 
             if timeout:
                 Log.warning(
@@ -1337,6 +1351,24 @@ class TUIDService:
                 )
                 annotated_files = [[] for _ in annotations_to_get]
             else:
+                # Recompute annotations to get here, in case we've waited
+                # a while.
+                old_annotations_len = len(annotations_to_get)
+                new_annotations_to_get = []
+                for file in annotations_to_get:
+                    with self.conn.transaction() as t:
+                        already_ann = self._get_annotation(revision, file, transaction=t)
+                    if already_ann:
+                        results.append((file, self.destringify_tuids(already_ann)))
+                    elif already_ann == '':
+                        results.append((file, []))
+                    else:
+                        new_annotations_to_get.append(file)
+                annotations_to_get = new_annotations_to_get
+
+                if not annotations_to_get:
+                    continue
+
                 annotated_files = [None] * len(annotations_to_get)
                 threads = [
                     Thread.run(
@@ -1353,9 +1385,9 @@ class TUIDService:
                 for t in threads:
                     t.join()
 
-            # Help for memory, because `chunk` (or a lot of)
-            # threads are started at once.
-            del threads
+                # Help for memory, because `chunk` (or a lot of)
+                # threads are started at once.
+                del threads
 
             with self.conn.transaction() as transaction:
                 results.extend(
