@@ -22,6 +22,7 @@ from mo_threads import Till, Thread, Lock, Queue, Signal
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, quote_set
 from tuid import sql
+from tuid.util import HG_URL
 
 # Use import as follows to prevent
 # circular dependency conflict for
@@ -47,14 +48,11 @@ MAXIMUM_NONPERMANENT_CSETS = 20000 # changesets
 SIGNAL_MAINTENACE_CSETS = MAXIMUM_NONPERMANENT_CSETS + (0.1 * MAXIMUM_NONPERMANENT_CSETS)
 UPDATE_VERY_OLD_FRONTIERS = False
 
-HG_URL = tuid.service.HG_URL
-
 
 class Clogger:
     def __init__(self, conn=None, tuid_service=None, kwargs=None):
         try:
             self.config = kwargs
-
             self.conn = conn if conn else sql.Sql(self.config.database.name)
             self.hg_cache = HgMozillaOrg(kwargs=self.config.hg_cache, use_cache=True) if self.config.hg_cache else Null
 
@@ -69,7 +67,9 @@ class Clogger:
             self.csets_todo_backwards = Queue(name="Clogger.csets_todo_backwards")
             self.deletions_todo = Queue(name="Clogger.deletions_todo")
             self.maintenance_signal = Signal(name="Clogger.maintenance_signal")
-            self.config = self.config.tuid
+
+            if 'tuid' in self.config:
+                self.config = self.config.tuid
 
             self.disable_backfilling = False
             self.disable_tipfilling = False
@@ -114,6 +114,13 @@ class Clogger:
                 revision       CHAR(12) NOT NULL,
                 timestamp      INTEGER
             );''')
+
+
+    def disable_all(self):
+        self.disable_tipfilling = True
+        self.disable_backfilling = True
+        self.disable_maintenance = True
+        self.disable_deletion = True
 
 
     def revnum(self):
@@ -355,6 +362,45 @@ class Clogger:
             )
             return None
         return csets_to_add
+
+
+    def initialize_to_range(self, old_rev, new_rev, delete_old=True):
+        '''
+        Used in service testing to get to very old
+        changesets quickly.
+        :param old_rev: The oldest revision to keep
+        :param new_rev: The revision to start searching from
+        :return:
+        '''
+        old_settings = [
+            self.disable_tipfilling,
+            self.disable_backfilling,
+            self.disable_maintenance,
+            self.disable_deletion
+        ]
+        self.disable_tipfilling = True
+        self.disable_backfilling = True
+        self.disable_maintenance = True
+        self.disable_deletion = True
+
+        old_rev = old_rev[:12]
+        new_rev = new_rev[:12]
+
+        with self.working_locker:
+            if delete_old:
+                with self.conn.transaction() as t:
+                    t.execute("DELETE FROM csetLog")
+            with self.conn.transaction() as t:
+                t.execute(
+                    "INSERT INTO csetLog (revision, timestamp) VALUES " +
+                    quote_set((new_rev, -1))
+                )
+            self._fill_in_range(old_rev, new_rev, timestamp=True, number_forward=False)
+
+        self.disable_tipfilling = old_settings[0]
+        self.disable_backfilling = old_settings[1]
+        self.disable_maintenance = old_settings[2]
+        self.disable_deletion = old_settings[3]
 
 
     def fill_backward_with_list(self, please_stop=None):

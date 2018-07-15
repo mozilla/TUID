@@ -5,21 +5,29 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 from collections import namedtuple
+from mo_files.url import URL
 from mo_hg.apply import Line, SourceFile
 from mo_logs import Log
+from pyLibrary.sql import quote_set, sql_list
+from pyLibrary.sql.sqlite import quote_value
+
+HG_URL = URL('https://hg.mozilla.org/')
 
 
 class TuidLine(Line):
 
     def __init__(self, tuidmap, **kwargs):
-        super(Line, self).__init__(tuidmap.line, **kwargs)
+        super(TuidLine, self).__init__(tuidmap.line, **kwargs)
         self.tuid = tuidmap.tuid
+
+    def __str__(self):
+        return "{" + str(self.tuid) + ": " + str(self.line) + "}"
 
 
 class AnnotateFile(SourceFile):
 
     def __init__(self, filename, lines, tuid_service=None):
-        super(SourceFile, self).__init__(filename, lines)
+        super(AnnotateFile, self).__init__(filename, lines)
         self.tuid_service = tuid_service
 
     def annotation_to_lines(self, annotation):
@@ -34,7 +42,7 @@ class AnnotateFile(SourceFile):
     def replace_line_with_tuidline(self):
         new_lines = []
         for line_obj in self.lines:
-            if type(line_obj, TuidLine):
+            if type(line_obj) == TuidLine:
                 new_lines.append(line_obj)
                 continue
             new_line_obj = TuidLine(
@@ -48,26 +56,70 @@ class AnnotateFile(SourceFile):
 
     def create_and_insert_tuids(self, revision):
         self.replace_line_with_tuidline()
+        Log.note("hereo")
+        Log.note(revision)
 
         line_origins = []
+        all_new_lines = []
         for line_obj in self.lines:
             line_entry = (line_obj.filename, revision, line_obj.line)
+            if not line_obj.tuid or line_obj.is_new_line:
+                all_new_lines.append(line_obj.line)
             line_origins.append(line_entry)
 
-        new_lines, _ = self.tuid_service.get_new_lines(line_origins)
-        if len(new_lines) > 0:
-            with self.tuid_service.conn.transaction as t:
-                try:
-                    self.tuid_service.insert_tuids_with_duplicates(
-                        self.filename,
-                        revision,
-                        t,
-                        list(new_lines),
-                        line_origins
-                    )
-                except Exception as e:
-                    Log.note("Failed to insert new tuids {{cause}}", cause=e)
+        Log.note("all: {{all}}", all=str(all_new_lines))
+        with self.tuid_service.conn.transaction() as t:
+            # Get the new lines, excluding those that have existing tuids
+            tuided_lines = []
 
+            existing_tuids = {
+                line: tuid
+                for tuid, file, revision, line in t.query(
+                    "SELECT tuid, file, revision, line FROM temporal"
+                    " WHERE file = " + quote_value(self.filename)+
+                    " AND revision = " + quote_value(revision) +
+                    " AND line IN " + quote_set(all_new_lines)
+                ).data
+            }
+
+            insert_entries = []
+            insert_lines = set(all_new_lines) - set(existing_tuids.keys())
+            if len(insert_lines) > 0:
+                try:
+                    insert_entries = [
+                        (self.tuid_service.tuid(),) + line_origins[linenum-1]
+                        for linenum in insert_lines
+                    ]
+                    t.execute(
+                        "INSERT INTO temporal (tuid, file, revision, line) VALUES " +
+                        sql_list(quote_set(entry) for entry in insert_entries)
+                    )
+
+                    if 41 in all_new_lines:
+                        Log.note("tuided_lines: {{tuided_lines}}", tuided_lines=str(insert_entries))
+                except Exception as e:
+                    Log.warning("Failed to insert new tuids {{cause}}", cause=e)
+
+            fmt_inserted_lines = {line: tuid for tuid, _, _, line in insert_entries}
+            for line_obj in self.lines:
+                if line_obj.line == 41:
+                    Log.note(str(existing_tuids))
+                    Log.note(str(fmt_inserted_lines))
+                    Log.note(str(all_new_lines))
+                    Log.note(str(insert_entries))
+                if line_obj.line in existing_tuids:
+                    line_obj.tuid = existing_tuids[line_obj.line]
+                if line_obj.line in fmt_inserted_lines:
+                    line_obj.tuid = fmt_inserted_lines[line_obj.line]
+                if line_obj.tuid:
+                    continue
+                else:
+                    Log.warning(
+                        "Cannot find TUID at {{file}} and {{rev}}for: {{line}}",
+                        file=self.filename,
+                        rev=revision,
+                        line=str(line_obj)
+                    )
 
 
 def map_to_array(pairs):

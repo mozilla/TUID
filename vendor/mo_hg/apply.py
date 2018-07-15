@@ -23,9 +23,14 @@ class Line:
 
     def move_down(self):
         self.line = self.line + 1
+        return self
 
     def move_up(self):
         self.line = self.line - 1
+        return self
+
+    def __str__(self):
+        return "{" + str(self.line) + "}"
 
 
 class SourceFile:
@@ -38,12 +43,12 @@ class SourceFile:
         :param filename: name of the file
         :param lines: list of data objects extending `Line`
         '''
-        self.filename = filename
+        self.filename = filename.lstrip('/')
         self.lines = self._format_line_objects(lines) if lines else []
 
     def _format_line_objects(self, lines):
         fmt_lines = []
-        for lineind, line_obj in lines:
+        for lineind, line_obj in enumerate(lines):
             linenum = lineind + 1
 
             if not hasattr(line_obj, 'line') or not hasattr(line_obj, 'filename'):
@@ -71,7 +76,7 @@ class SourceFile:
                      [line_obj.move_down() for line_obj in self.lines[start - 1:]]
 
     def remove_one(self, linenum_to_remove):
-        self.lines = self.lines[:linenum_to_remove - 1] +\
+        self.lines = self.lines[:linenum_to_remove - 1] + \
                      [line_obj.move_up() for line_obj in self.lines[linenum_to_remove:]]
 
 
@@ -89,8 +94,9 @@ def apply_diff(file, diff):
     '''
     # Ignore merges, they have duplicate entries.
     if diff['merge']:
+        Log.note("Merge diff")
         return file
-    if file.lstrip('/') == 'dev/null':
+    if file.filename.lstrip('/') == 'dev/null':
         file.lines = []
         return file
 
@@ -101,7 +107,8 @@ def apply_diff(file, diff):
             continue
         if old_fname != new_fname:
             if new_fname == 'dev/null':
-                return [], []
+                file.lines = []
+                return file
             # Change the file name so that new lines
             # are correctly created.
             file.filename = new_fname
@@ -109,12 +116,15 @@ def apply_diff(file, diff):
         f_diff = f_proc['changes']
         for change in f_diff:
             if change.action == '+':
+                if change.line + 1 == 41:
+                    Log.note("adding")
                 file.add_one(
-                    Line(change.line + 1, is_new_line=True, filename=file.filename),
-                    file
+                    Line(change.line + 1, is_new_line=True, filename=file.filename)
                 )
             elif change.action == '-':
-                file.remove_one(change.line + 1, file)
+                if change.line + 1 == 41:
+                    Log.note("removing")
+                file.remove_one(change.line + 1)
         break
     return file
 
@@ -133,7 +143,7 @@ def apply_diff_backwards(file, diff):
         new_f_proc['new'].name = f_proc['old'].name
 
         new_changes = []
-        f_diff =  f_proc['changes']
+        f_diff =  new_f_proc['changes']
         for change in f_diff:
             if change.action == '+':
                 change.action = '-'
@@ -147,5 +157,5 @@ def apply_diff_backwards(file, diff):
         new_f_proc['changes'] = new_changes[::-1]
         new_diffs.append(new_f_proc)
 
-    diff['diffs'] = new_diffs
-    return apply_diff(file, diff)
+    Log.note("applying backwards")
+    return apply_diff(file, {'diffs': new_diffs, 'merge': diff['merge']})

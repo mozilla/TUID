@@ -28,7 +28,7 @@ from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
 from tuid.pclogger import PercentCompleteLogger
 from tuid.clogger import Clogger
-from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile
+from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL
 
 DEBUG = False
 VERIFY_TUIDS = True
@@ -42,8 +42,6 @@ DAEMON_WAIT_AT_NEWEST = 30 * SECOND # Time to wait at the newest revision before
 GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE file=? and revision=? and line=?"
 GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and file=?"
 GET_LATEST_MODIFICATION = "SELECT revision FROM latestFileMod WHERE file=?"
-
-HG_URL = URL('https://hg.mozilla.org/')
 
 
 class TUIDService:
@@ -403,14 +401,12 @@ class TUIDService:
             # this revision and get the result if so
             if already_ann:
                 result.append((file,self.destringify_tuids(already_ann)))
-                if going_forward:
-                    latestFileMod_inserts[file] = (file, revision)
+                latestFileMod_inserts[file] = (file, revision)
                 log_existing_files.append('exists|' + file)
                 continue
             elif already_ann == '':
                 result.append((file,[]))
-                if going_forward:
-                    latestFileMod_inserts[file] = (file, revision)
+                latestFileMod_inserts[file] = (file, revision)
                 log_existing_files.append('removed|' + file)
                 continue
 
@@ -875,40 +871,39 @@ class TUIDService:
         for cset in diffs_to_frontier:
             diffs_to_frontier[cset] = self.clogger.get_revnnums_from_range(revision, cset)
 
+        Log.note("Diffs to apply: {{csets}}", csets=str(diffs_to_frontier))
+
         added_files = {}
         removed_files = {}
         parsed_diffs = {}
 
         # This list is used to determine what files
         file_to_frontier = {file: frontier for file, frontier in frontier_list}
-        if len(remaining_frontiers) != len(diffs_to_frontier.keys()):
-            # If there is at least one frontier that was found
-            # Only get diffs that are needed (if any frontiers were not found)
-            diffs_cache = []
-            for cset in diffs_to_frontier:
-                if cset not in remaining_frontiers:
-                    diffs_cache.extend([rev for revnum, rev in diffs_to_frontier[cset]])
 
-            Log.note("Gathering diffs for: {{csets}}", csets=str(diffs_cache))
-            all_diffs = self.get_diffs(diffs_cache)
+        # If there is at least one frontier that was found
+        # Only get diffs that are needed (if any frontiers were not found)
+        diffs_cache = []
+        for cset in diffs_to_frontier:
+            diffs_cache.extend([rev for revnum, rev in diffs_to_frontier[cset]])
 
-            # Build a dict for faster access to the diffs,
-            # to be used later when applying them.
-            parsed_diffs = {diff_entry['cset']: diff_entry['diff'] for diff_entry in all_diffs}
+        Log.note("Gathering diffs for: {{csets}}", csets=str(diffs_cache))
+        all_diffs = self.get_diffs(diffs_cache)
 
-            for csets_diff in all_diffs:
-                cset_len12 = csets_diff['cset']
-                parsed_diff = csets_diff['diff']['diffs']
+        # Build a dict for faster access to the diffs,
+        # to be used later when applying them.
+        parsed_diffs = {diff_entry['cset']: diff_entry['diff'] for diff_entry in all_diffs}
+        for csets_diff in all_diffs:
+            cset_len12 = csets_diff['cset']
+            parsed_diff = csets_diff['diff']['diffs']
 
-                for f_added in parsed_diff:
-                    new_name = f_added['new'].name.lstrip('/')
-                    old_name = f_added['old'].name.lstrip('/')
+            for f_added in parsed_diff:
+                new_name = f_added['new'].name.lstrip('/')
+                old_name = f_added['old'].name.lstrip('/')
 
-                    if new_name in file_to_frontier or old_name in file_to_frontier:
-                        if old_name == 'dev/null':
-                            files_to_process[old_name] = True
-                        else:
-                            files_to_process[new_name] = True
+                if new_name in file_to_frontier:
+                    files_to_process[new_name] = True
+                elif old_name in file_to_frontier:
+                    files_to_process[old_name] = True
 
         # Process each file that needs it based on the
         # files_to_process list.
@@ -918,6 +913,7 @@ class TUIDService:
         anns_to_get = []
         total = len(frontier_list)
         tmp_results = {}
+        Log.note(str(revision))
 
         with self.conn.transaction() as transaction:
             for count, (file, old_frontier) in enumerate(frontier_list):
@@ -941,13 +937,19 @@ class TUIDService:
                         backwards = False
                         _, first_rev = csets_to_proc[0]
 
+                        # Going either forward or backwards requires
+                        # us to remove the first revision, which is
+                        # either the requested revision if we are going
+                        # backwards or the current frontier, if we are
+                        # going forward.
+                        csets_to_proc = csets_to_proc[1:]
+
                         if revision == first_rev:
                             backwards = True
-                            csets_to_proc = csets_to_proc[::-1]
 
-                        # Strip off the first and last revisions,
-                        # those are the ones we requested.
-                        csets_to_proc = csets_to_proc[1:-1]
+                            # Reverse the list, we apply the frontier
+                            # diff first when going backwards.
+                            csets_to_proc = csets_to_proc[::-1]
 
                         tmp_res = self.destringify_tuids(tmp_ann)
                         file_to_modify = AnnotateFile(
@@ -956,12 +958,22 @@ class TUIDService:
                             tuid_service=self
                         )
 
-                        for i in csets_to_proc:
+                        for count, (_, rev) in enumerate(csets_to_proc):
+                            next_rev = revision
+                            if count + 1 < len(csets_to_proc):
+                                _, next_rev = csets_to_proc[count + 1]
+                            Log.note("On diff {{rev}}", rev=rev)
                             if not backwards:
-                                file_to_modify = apply_diff(file_to_modify, parsed_diffs[i])
+                                file_to_modify = apply_diff(file_to_modify, parsed_diffs[rev])
+                                file_to_modify.create_and_insert_tuids(rev)
                             else:
-                                file_to_modify = apply_diff_backwards(file_to_modify, parsed_diffs[i])
-                            file_to_modify.create_and_insert_tuids()
+                                Log.note("Going backwards")
+                                file_to_modify = apply_diff_backwards(file_to_modify, parsed_diffs[rev])
+
+                                Log.note(str(revision))
+                                Log.note(str(next_rev))
+                                file_to_modify.create_and_insert_tuids(next_rev)
+                            file_to_modify.reset_new_lines()
 
                         tmp_res = file_to_modify.lines_to_annotation()
                         ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
@@ -1019,11 +1031,7 @@ class TUIDService:
                 # revision is too far away (can't be sure
                 # if it's past). Unless we are told that we are
                 # going forward.
-                if going_forward or not remaining_frontiers:
-                    latest_rev = revision
-                else:
-                    latest_rev = old_frontier
-                latestFileMod_inserts[file] = (file, latest_rev)
+                latestFileMod_inserts[file] = (file, revision)
 
             Log.note("Updating DB tables `latestFileMod` and `annotations`...")
 
@@ -1219,11 +1227,11 @@ class TUIDService:
         existing_tuids_tmp = {
             str((file, revision, line)): tuid
             for tuid, file, revision, line in transaction.query(
-            "SELECT tuid, file, revision, line FROM temporal"
-            " WHERE file IN " + sql_iso(sql_list(map(quote_value, file_names))) +
-            " AND revision IN " + sql_iso(sql_list(map(quote_value, revs_to_find))) +
-            " AND line IN " + sql_iso(sql_list(map(quote_value, lines_to_find)))
-        ).data
+                "SELECT tuid, file, revision, line FROM temporal"
+                " WHERE file IN " + sql_iso(sql_list(map(quote_value, file_names))) +
+                " AND revision IN " + sql_iso(sql_list(map(quote_value, revs_to_find))) +
+                " AND line IN " + sql_iso(sql_list(map(quote_value, lines_to_find)))
+            ).data
         }
 
         # Recompute existing tuids based on line_origins
@@ -1468,7 +1476,7 @@ class TUIDService:
                         Log.note("Moving frontier {{frontier}} forward to {{cset}}.", frontier=prev_cset, cset=cset)
 
                     # Update files
-                    self.get_tuids_from_files(files, cset, going_forward=True)
+                    self.get_tuids_from_files(files, cset)
 
                     ran_changesets = True
                     prev_cset = cset
