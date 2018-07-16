@@ -21,7 +21,7 @@ class TuidLine(Line):
         self.tuid = tuidmap.tuid
 
     def __str__(self):
-        return "{" + str(self.tuid) + ": " + str(self.line) + "}"
+        return "TuidLine{tuid=" + str(self.tuid) + ": line=" + str(self.line) + "}"
 
 
 class AnnotateFile(SourceFile):
@@ -56,8 +56,6 @@ class AnnotateFile(SourceFile):
 
     def create_and_insert_tuids(self, revision):
         self.replace_line_with_tuidline()
-        Log.note("hereo")
-        Log.note(revision)
 
         line_origins = []
         all_new_lines = []
@@ -67,11 +65,8 @@ class AnnotateFile(SourceFile):
                 all_new_lines.append(line_obj.line)
             line_origins.append(line_entry)
 
-        Log.note("all: {{all}}", all=str(all_new_lines))
         with self.tuid_service.conn.transaction() as t:
             # Get the new lines, excluding those that have existing tuids
-            tuided_lines = []
-
             existing_tuids = {
                 line: tuid
                 for tuid, file, revision, line in t.query(
@@ -94,19 +89,11 @@ class AnnotateFile(SourceFile):
                         "INSERT INTO temporal (tuid, file, revision, line) VALUES " +
                         sql_list(quote_set(entry) for entry in insert_entries)
                     )
-
-                    if 41 in all_new_lines:
-                        Log.note("tuided_lines: {{tuided_lines}}", tuided_lines=str(insert_entries))
                 except Exception as e:
                     Log.warning("Failed to insert new tuids {{cause}}", cause=e)
 
             fmt_inserted_lines = {line: tuid for tuid, _, _, line in insert_entries}
             for line_obj in self.lines:
-                if line_obj.line == 41:
-                    Log.note(str(existing_tuids))
-                    Log.note(str(fmt_inserted_lines))
-                    Log.note(str(all_new_lines))
-                    Log.note(str(insert_entries))
                 if line_obj.line in existing_tuids:
                     line_obj.tuid = existing_tuids[line_obj.line]
                 if line_obj.line in fmt_inserted_lines:

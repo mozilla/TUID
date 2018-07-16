@@ -30,7 +30,7 @@ class Line:
         return self
 
     def __str__(self):
-        return "{" + str(self.line) + "}"
+        return "Line{line=" + str(self.line) + "}"
 
 
 class SourceFile:
@@ -94,7 +94,6 @@ def apply_diff(file, diff):
     '''
     # Ignore merges, they have duplicate entries.
     if diff['merge']:
-        Log.note("Merge diff")
         return file
     if file.filename.lstrip('/') == 'dev/null':
         file.lines = []
@@ -116,14 +115,10 @@ def apply_diff(file, diff):
         f_diff = f_proc['changes']
         for change in f_diff:
             if change.action == '+':
-                if change.line + 1 == 41:
-                    Log.note("adding")
                 file.add_one(
                     Line(change.line + 1, is_new_line=True, filename=file.filename)
                 )
             elif change.action == '-':
-                if change.line + 1 == 41:
-                    Log.note("removing")
                 file.remove_one(change.line + 1)
         break
     return file
@@ -157,5 +152,4 @@ def apply_diff_backwards(file, diff):
         new_f_proc['changes'] = new_changes[::-1]
         new_diffs.append(new_f_proc)
 
-    Log.note("applying backwards")
     return apply_diff(file, {'diffs': new_diffs, 'merge': diff['merge']})

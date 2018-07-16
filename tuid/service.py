@@ -913,7 +913,6 @@ class TUIDService:
         anns_to_get = []
         total = len(frontier_list)
         tmp_results = {}
-        Log.note(str(revision))
 
         with self.conn.transaction() as transaction:
             for count, (file, old_frontier) in enumerate(frontier_list):
@@ -950,6 +949,7 @@ class TUIDService:
                             # Reverse the list, we apply the frontier
                             # diff first when going backwards.
                             csets_to_proc = csets_to_proc[::-1]
+                            Log.note("Applying diffs backwards...")
 
                         tmp_res = self.destringify_tuids(tmp_ann)
                         file_to_modify = AnnotateFile(
@@ -962,16 +962,11 @@ class TUIDService:
                             next_rev = revision
                             if count + 1 < len(csets_to_proc):
                                 _, next_rev = csets_to_proc[count + 1]
-                            Log.note("On diff {{rev}}", rev=rev)
                             if not backwards:
                                 file_to_modify = apply_diff(file_to_modify, parsed_diffs[rev])
                                 file_to_modify.create_and_insert_tuids(rev)
                             else:
-                                Log.note("Going backwards")
                                 file_to_modify = apply_diff_backwards(file_to_modify, parsed_diffs[rev])
-
-                                Log.note(str(revision))
-                                Log.note(str(next_rev))
                                 file_to_modify.create_and_insert_tuids(next_rev)
                             file_to_modify.reset_new_lines()
 

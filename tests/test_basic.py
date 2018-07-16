@@ -322,6 +322,10 @@ def test_many_files_one_revision(service):
     with open('resources/stressfiles.json', 'r') as f:
         files = json.load(f)
     test_file_init = ["widget/cocoa/nsCocoaWindow.mm"]
+    dir = ""
+    tmp = [dir + f for f in files][:10]
+
+    test_file = test_file_init + tmp
     first_front = "739c536d2cd6"
     test_rev = "159e1105bdc7"
 
@@ -329,10 +333,16 @@ def test_many_files_one_revision(service):
     service.clogger.initialize_to_range(first_front, test_rev)
     service.clogger.disable_backfilling = False
 
-    dir = ""
-    tmp = [dir + f for f in files][:10]
+    with service.conn.transaction() as t:
+        t.execute(
+            "DELETE FROM latestFileMod WHERE file IN " +
+            quote_set(test_file)
+        )
+        t.execute(
+            "DELETE FROM annotations WHERE file IN " +
+            quote_set(test_file)
+        )
 
-    test_file = test_file_init + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
     old, _ = service.get_tuids_from_files(test_file,first_front, use_thread=False)
@@ -643,6 +653,7 @@ def test_out_of_order_get_tuids_from_files(service):
     test_result, _ = service.get_tuids_from_files(test_file, rev_middle, use_thread=False)
     # Check that test_result's tuids at line 41 is different from
     # result 2.
+    entered = False
     for (fname, tuids2) in result2:
         if fname not in test_file:
             # If we find another file, this test fails
@@ -651,10 +662,12 @@ def test_out_of_order_get_tuids_from_files(service):
         for (fname_test, tuids_test) in test_result:
             # Check that check_line entries are different
             for count, tmap in enumerate(tuids2):
+                entered = True
                 if tmap.line not in check_lines:
                     assert tmap.tuid == tuids_test[count].tuid
                 else:
                     assert tmap.tuid != tuids_test[count].tuid
+    assert entered
 
 
 def test_out_of_order_going_forward_get_tuids_from_files(service):
@@ -672,18 +685,14 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
 
     check_lines = [41]
 
-    Log.note("on " + rev_initial)
     result1, _ = service.get_tuids_from_files(test_file, rev_initial, going_forward=True, use_thread=False)
-    Log.note("on " + rev_latest)
     result2, _ = service.get_tuids_from_files(test_file, rev_latest, going_forward=True, use_thread=False)
-    Log.note("on " + rev_middle)
     test_result, _ = service.get_tuids_from_files(test_file, rev_middle, going_forward=True, use_thread=False)
-    Log.note("on " + rev_latest2)
     result2, _ = service.get_tuids_from_files(test_file, rev_latest2, going_forward=True, use_thread=False)
+
     # Check that test_result's tuids at line 41 is different from
     # result 2.
-    Log.note(str(test_result))
-    Log.note(str(result2))
+    entered = False
     for (fname, tuids2) in result2:
         if fname not in test_file:
             # If we find another file, this test fails
@@ -692,10 +701,12 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
         for (fname_test, tuids_test) in test_result:
             # Check that check_line entries are different
             for count, tmap in enumerate(tuids2):
+                entered = True
                 if tmap.line not in check_lines:
                     assert tmap.tuid == tuids_test[count].tuid
                 else:
                     assert tmap.tuid != tuids_test[count].tuid
+    assert entered
 
 
 @pytest.mark.first_run
