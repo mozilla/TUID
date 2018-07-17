@@ -9,7 +9,7 @@ from mo_logs import Log
 from mo_threads import Till, Lock, Thread
 from mo_times.durations import MINUTE
 
-DAEMON_WAIT_FOR_PC = 5 * MINUTE # Time until a percent complete log message is emitted.
+DAEMON_WAIT_FOR_PC = 1 * MINUTE # Time until a percent complete log message is emitted.
 
 class PercentCompleteLogger:
 

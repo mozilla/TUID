@@ -64,11 +64,13 @@ class TUIDService:
 
             self.locker = Lock()
             self.request_locker = Lock()
-            self.thread_creation_locker = Lock()
+            self.ann_thread_locker = Lock()
+            self.service_thread_locker = Lock()
             self.num_requests = 0
             self.waiting = 0
             self.threads_waiting = 0
-            self.threads_running = 0
+            self.ann_threads_running = 0
+            self.service_threads_running = 0
             self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
             self.total_locker = Lock()
             self.total_files_requested = 0
@@ -238,8 +240,8 @@ class TUIDService:
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num, repo, please_stop=None):
-        with self.thread_creation_locker:
-            self.threads_running += 1
+        with self.ann_thread_locker:
+            self.ann_threads_running += 1
         url = HG_URL / repo / "json-annotate" / cset / file
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
@@ -279,8 +281,8 @@ class TUIDService:
                 timeout=ANN_WAIT_TIME,
                 url=url
             )
-        with self.thread_creation_locker:
-            self.threads_running -= 1
+        with self.ann_thread_locker:
+            self.ann_threads_running -= 1
         return
 
 
@@ -360,6 +362,22 @@ class TUIDService:
         return
 
 
+    def _add_thread(self):
+        with self.service_thread_locker:
+            self.service_threads_running += 1
+
+
+    def _remove_thread(self):
+        with self.service_thread_locker:
+            self.service_threads_running -= 1
+
+
+    def get_thread_count(self):
+        with self.service_thread_locker:
+            threads_running = self.service_threads_running
+        return threads_running
+
+
     def get_tuids_from_files(
             self,
             files,
@@ -400,6 +418,7 @@ class TUIDService:
         :return: The following tuple which contains:
                     ([list of (file, list(tuids)) tuples], True/False if completed or not)
         """
+        self._add_thread()
         completed = True
 
         if repo is None:
@@ -407,6 +426,7 @@ class TUIDService:
             check = self._check_branch(revision, repo)
             if not check:
                 # Error was already output by _check_branch
+                self._remove_thread()
                 return [(file, []) for file in files], completed
 
         if repo in ('try',):
@@ -415,8 +435,12 @@ class TUIDService:
 
             # Enable the 'try' repo calls with ENABLE_TRY
             if ENABLE_TRY:
-                return self._get_tuids_from_files_try_branch(files, revision), completed
-            return [(file, []) for file in files], completed
+                result = self._get_tuids_from_files_try_branch(files, revision), completed
+            else:
+                result = [(file, []) for file in files], completed
+
+            self._remove_thread()
+            return result
 
         result = []
         revision = revision[:12]
@@ -509,11 +533,11 @@ class TUIDService:
                 using_thread,
                 please_stop=None
             ):
-            try:
-                # Processes the new files and files which need their frontier updated
-                # outside of the main thread as this can take a long time.
-                result = []
+            # Processes the new files and files which need their frontier updated
+            # outside of the main thread as this can take a long time.
 
+            result = []
+            try:
                 latestFileMod_inserts = {}
                 if len(new_files) > 0:
                     # File has never been seen before, get it's initial
@@ -556,10 +580,12 @@ class TUIDService:
                 if using_thread:
                     self.pcdaemon.update_totals(0, len(result))
                 Log.note("Completed work overflow for revision {{cset}}", cset=revision)
-                return result
             except Exception as e:
                 Log.warning("Thread dead becasue of problem", cause=e)
-                return []
+                result = []
+            finally:
+                self._remove_thread()
+                return result
 
         threaded = False
         if use_thread:
@@ -579,6 +605,7 @@ class TUIDService:
             result.extend(
                 update_tuids_in_thread(new_files, frontier_update_list, revision, threaded)
             )
+            self._remove_thread()
 
         self.pcdaemon.update_totals(len(files), len(result))
         return result, completed
@@ -1331,14 +1358,14 @@ class TUIDService:
                 continue
 
             # Get all the annotations in parallel and
-            # store in annotated_files.
-            # Prevent too many threads from starting up here.
+            # store in annotated_files and
+            # prevent too many threads from starting up here.
             self.threads_waiting += len(annotations_to_get)
             num_threads = chunk
             timeout = Till(seconds=ANN_WAIT_TIME.seconds)
             while num_threads >= chunk and not timeout:
-                with self.thread_creation_locker:
-                    num_threads = self.threads_running
+                with self.ann_thread_locker:
+                    num_threads = self.ann_threads_running
                     if num_threads <= chunk:
                         break
                 Till(seconds=MAX_THREAD_WAIT_TIME.seconds).wait()
