@@ -911,7 +911,7 @@ class TUIDService:
         ann_inserts = []
         latestFileMod_inserts = {}
         anns_to_get = []
-        total = len(frontier_list)
+        total = len(file_to_frontier)
         tmp_results = {}
 
         with self.conn.transaction() as transaction:
@@ -933,8 +933,20 @@ class TUIDService:
                     else:
                         # File was modified, apply it's diffs
                         csets_to_proc = diffs_to_frontier[file_to_frontier[file]]
-                        backwards = False
-                        _, first_rev = csets_to_proc[0]
+                        tmp_res = self.destringify_tuids(tmp_ann)
+                        file_to_modify = AnnotateFile(
+                            file,
+                            [TuidLine(tuidmap, filename=file) for tuidmap in tmp_res],
+                            tuid_service=self
+                        )
+
+                        if revision == csets_to_proc[0]:
+                            backwards = True
+
+                            # Reverse the list, we apply the frontier
+                            # diff first when going backwards.
+                            csets_to_proc = csets_to_proc[::-1]
+                            Log.note("Applying diffs backwards...")
 
                         # Going either forward or backwards requires
                         # us to remove the first revision, which is
@@ -943,31 +955,21 @@ class TUIDService:
                         # going forward.
                         csets_to_proc = csets_to_proc[1:]
 
-                        if revision == first_rev:
-                            backwards = True
-
-                            # Reverse the list, we apply the frontier
-                            # diff first when going backwards.
-                            csets_to_proc = csets_to_proc[::-1]
-                            Log.note("Applying diffs backwards...")
-
-                        tmp_res = self.destringify_tuids(tmp_ann)
-                        file_to_modify = AnnotateFile(
-                            file,
-                            [TuidLine(tuidmap, filename=file) for tuidmap in tmp_res],
-                            tuid_service=self
-                        )
-
+                        # Apply the diffs
                         for count, (_, rev) in enumerate(csets_to_proc):
+
+                            # Use next revision when going backwards
+                            # to add new lines correctly.
                             next_rev = revision
                             if count + 1 < len(csets_to_proc):
                                 _, next_rev = csets_to_proc[count + 1]
-                            if not backwards:
-                                file_to_modify = apply_diff(file_to_modify, parsed_diffs[rev])
-                                file_to_modify.create_and_insert_tuids(rev)
-                            else:
+
+                            if backwards:
                                 file_to_modify = apply_diff_backwards(file_to_modify, parsed_diffs[rev])
                                 file_to_modify.create_and_insert_tuids(next_rev)
+                            else:
+                                file_to_modify = apply_diff(file_to_modify, parsed_diffs[rev])
+                                file_to_modify.create_and_insert_tuids(rev)
                             file_to_modify.reset_new_lines()
 
                         tmp_res = file_to_modify.lines_to_annotation()
@@ -1056,14 +1058,6 @@ class TUIDService:
                         continue
 
                     try:
-                        for rev, filename, tuids_ann in recomputed_inserts:
-                            tmp_ann = self.destringify_tuids(tuids_ann)
-                            for tuid_map in tmp_ann:
-                                if tuid_map is None or tuid_map.tuid is None or tuid_map.line is None:
-                                    Log.warning(
-                                        "None value encountered in annotation insertion in {{rev}} for {{file}}: {{tuids}}" ,
-                                        rev=rev, file=filename, tuids=str(tuid_map)
-                                    )
                         self.insert_annotations(transaction, recomputed_inserts)
                     except Exception as e:
                         Log.error("Error inserting into annotations table: {{inserting}}", inserting=recomputed_inserts, cause=e)
