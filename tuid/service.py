@@ -19,17 +19,22 @@ from mo_kwargs import override
 from mo_logs import Log
 from mo_math.randoms import Random
 from mo_threads import Till, Thread, Lock
-from mo_times.durations import SECOND, DAY
+from mo_times.durations import SECOND, HOUR, DAY
 from pyLibrary.env import http
 from pyLibrary.meta import cache
 from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value, quote_list
 from tuid import sql
+from tuid.pclogger import PercentCompleteLogger
 from tuid.util import MISSING, TuidMap
 
 DEBUG = False
+ANNOTATE_DEBUG = False
 VERIFY_TUIDS = True
 RETRY = {"times": 3, "sleep": 5, "http": True}
+ANN_WAIT_TIME = 5 * HOUR
+MAX_CONCURRENT_ANN_REQUESTS = 10
+MAX_ANN_REQUESTS_WAIT_TIME = 5 * SECOND
 SQL_ANN_BATCH_SIZE = 5
 SQL_BATCH_SIZE = 500
 FILES_TO_PROCESS_THRESH = 5
@@ -57,7 +62,13 @@ class TUIDService:
                 self.init_db()
 
             self.locker = Lock()
+            self.request_locker = Lock()
+            self.num_requests = 0
             self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
+            self.total_locker = Lock()
+            self.total_files_requested = 0
+            self.total_tuids_mapped = 0
+            self.pcdaemon = PercentCompleteLogger()
         except Exception as e:
             Log.error("can not setup service", cause=e)
 
@@ -226,12 +237,34 @@ class TUIDService:
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
 
-        # Ensure we get the annotate before continuing
-        try:
-            annotated_files[thread_num] = http.get_json(url, retry=RETRY)
-        except Exception as e:
-            annotated_files[thread_num] = []
-            Log.warning("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
+        # Wait until there is room to request
+        num_requests = MAX_CONCURRENT_ANN_REQUESTS
+        timeout = Till(seconds=ANN_WAIT_TIME.seconds)
+        while num_requests >= MAX_CONCURRENT_ANN_REQUESTS and not timeout:
+            with self.request_locker:
+                num_requests = self.num_requests
+                if num_requests < MAX_CONCURRENT_ANN_REQUESTS:
+                    self.num_requests += 1
+                    break
+            if ANNOTATE_DEBUG:
+                Log.note("Waiting to request annotation at {{rev}} for file: {{file}}", rev=cset, file=file)
+            Till(seconds=MAX_ANN_REQUESTS_WAIT_TIME.seconds).wait()
+
+        annotated_files[thread_num] = []
+        if not timeout:
+            try:
+                annotated_files[thread_num] = http.get_json(url, retry=RETRY)
+            except Exception as e:
+                Log.warning("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
+            finally:
+                with self.request_locker:
+                    self.num_requests -= 1
+        else:
+            Log.warning(
+                "Timeout {{timeout}} exceeded waiting for annotation: {{url}}",
+                timeout=ANN_WAIT_TIME,
+                url=url
+            )
         return
 
 
@@ -454,6 +487,7 @@ class TUIDService:
                 new_files,
                 frontier_update_list,
                 revision,
+                using_thread,
                 please_stop=None
             ):
             try:
@@ -497,6 +531,8 @@ class TUIDService:
                     )
                     result.extend(tmp)
 
+                if using_thread:
+                    self.pcdaemon.update_totals(0, len(result))
                 Log.note("Completed work overflow for revision {{cset}}", cset=revision)
                 return result
             except Exception as e:
@@ -515,13 +551,14 @@ class TUIDService:
             Log.note("Incomplete response given")
             Thread.run(
                 'get_tuids_from_files (' + Random.base64(9) + ")",
-                update_tuids_in_thread, new_files, frontier_update_list, revision
+                update_tuids_in_thread, new_files, frontier_update_list, revision, threaded
             )
         else:
             result.extend(
-                update_tuids_in_thread(new_files, frontier_update_list, revision)
+                update_tuids_in_thread(new_files, frontier_update_list, revision, threaded)
             )
 
+        self.pcdaemon.update_totals(len(files), len(result))
         return result, completed
 
 
@@ -1335,6 +1372,15 @@ class TUIDService:
         for fcount, annotated_object in enumerate(annotated_files):
             file = files[fcount]
 
+            # TODO: Replace old empty annotation if a new one is found
+            # TODO: at the same revision and if it is not empty as well.
+            # Make sure we are not adding the same thing another thread
+            # added.
+            tmp_ann = self._get_annotation(revision, file, transaction=transaction)
+            if tmp_ann != None:
+                results.append((file, self.destringify_tuids(tmp_ann)))
+                continue
+
             # If it's not defined at this revision, we need to add it in
             errored = False
             if isinstance(annotated_object, (text_type, str)):
@@ -1410,20 +1456,50 @@ class TUIDService:
             new_line_origins = {}
             if len(new_lines) > 0:
                 try:
+                    '''
+                        HG Annotate Bug, Issue #58:
+                        Here is where we assign the new tuids for the first
+                        time we see duplicate entries - they are left
+                        in `new_line_origins` after duplicates are found.
+                        We only remove it from the lines to insert. In future
+                        requests, `existing_tuids` above will handle duplicating
+                        tuids for the entries if needed.
+                    '''
                     new_line_origins = {
                         line_num: (self.tuid(),) + line_origins[line_num - 1]
                         for line_num in new_lines
                     }
 
-                    transaction.execute(
-                        "INSERT INTO temporal (tuid, file, revision, line)"
-                        " VALUES " +
-                        sql_list(
-                            sql_iso(
-                                sql_list(map(quote_value, (tuid, f, rev, line_num)))
-                            ) for tuid, f, rev, line_num in list(new_line_origins.values())
+                    duplicate_lines = {
+                        line_num+1: line
+                        for line_num, line in enumerate(line_origins)
+                        if line in line_origins[:line_num]
+                    }
+                    if len(duplicate_lines) > 0:
+                        Log.note(
+                            "Duplicates found in {{file}} at {{cset}}: {{dupes}}",
+                            file=file,
+                            cset=revision,
+                            dupes=str(duplicate_lines)
                         )
-                    )
+                        lines_to_insert = [
+                            line
+                            for line_num, line in new_line_origins.items()
+                            if line_num not in duplicate_lines
+                        ]
+                    else:
+                        lines_to_insert = new_line_origins.values()
+
+                    for _, part_of_insert in jx.groupby(lines_to_insert, size=SQL_BATCH_SIZE):
+                        transaction.execute(
+                            "INSERT INTO temporal (tuid, file, revision, line)"
+                            " VALUES " +
+                            sql_list(
+                                sql_iso(
+                                    sql_list(map(quote_value, (tuid, f, rev, line_num)))
+                                ) for tuid, f, rev, line_num in list(part_of_insert)
+                            )
+                        )
 
                     # Format so we don't have to use [0] to get at the tuid
                     new_line_origins = {line_num: new_line_origins[line_num][0] for line_num in new_line_origins}
@@ -1441,23 +1517,15 @@ class TUIDService:
                 else:
                     tuids.append(TuidMap(new_line_origins[line_num], line_num))
 
-            # TODO: Replace old empty annotation if a new one is found
-            # TODO: at the same revision and if it is not empty as well.
-            # Make sure we are not adding the same thing another thread
-            # added.
-            tmp_ann = self._get_annotation(revision, file, transaction=transaction)
-            if tmp_ann == None:
-                self.insert_annotations(
-                    transaction,
-                    [(
-                        revision,
-                        file,
-                        self.stringify_tuids(tuids)
-                    )]
-                )
-                results.append((file, tuids))
-            else:
-                results.append((file, self.destringify_tuids(tmp_ann)))
+            self.insert_annotations(
+                transaction,
+                [(
+                    revision,
+                    file,
+                    self.stringify_tuids(tuids)
+                )]
+            )
+            results.append((file, tuids))
 
         return results
 
