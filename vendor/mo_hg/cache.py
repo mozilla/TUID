@@ -27,9 +27,9 @@ HG_REQUEST_PER_SECOND = 10
 CACHE_RETENTION = 10 * MINUTE
 
 
-class RateLimiter(object):
+class Cache(object):
     """
-    ...AND CACHE
+    For Caching hg.mo requests
     """
 
     def __init__(self, rate=None, amortization_period=None, db=None):
