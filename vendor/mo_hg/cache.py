@@ -21,6 +21,7 @@ from mo_times import Date, SECOND, MINUTE
 from pyLibrary.env import http
 from pyLibrary.sql.sqlite import Sqlite, quote_value, quote_list
 
+APP_NAME = "HG Cache"
 CONCURRENCY = 1
 AMORTIZATION_PERIOD = SECOND
 HG_REQUEST_PER_SECOND = 10
@@ -32,22 +33,22 @@ class Cache(object):
     For Caching hg.mo requests
     """
 
-    def __init__(self, rate=None, amortization_period=None, db=None):
+    def __init__(self, rate=None, amortization_period=None, database=None):
         self.amortization_period = coalesce(amortization_period.seconds, AMORTIZATION_PERIOD.seconds)
         self.rate = coalesce(rate, HG_REQUEST_PER_SECOND)
         self.cache_locker = Lock()
         self.cache = {}  # MAP FROM url TO (ready, headers, response, timestamp) PAIR
         self.workers = []
-        self.todo = Queue("hg relay todo")
-        self.requests = Queue("hg relay requests", max=self.rate * self.amortization_period)
-        self.db = Sqlite(db)
+        self.todo = Queue(APP_NAME+" todo")
+        self.requests = Queue(APP_NAME+" requests", max=self.rate * self.amortization_period)
+        self.db = Sqlite(database)
 
         self.threads = [
-            Thread.run("hg relay worker" + text_type(i), self._worker)
+            Thread.run(APP_NAME+" worker" + text_type(i), self._worker)
             for i in range(CONCURRENCY)
         ]
-        self.limiter = Thread.run("hg relay limiter", self._rate_limiter)
-        self.cleaner = Thread.run("hg relay cleaner", self._cache_cleaner)
+        self.limiter = Thread.run(APP_NAME+" limiter", self._rate_limiter)
+        self.cleaner = Thread.run(APP_NAME+" cleaner", self._cache_cleaner)
 
     def _rate_limiter(self, please_stop):
         max_requests = self.requests.max

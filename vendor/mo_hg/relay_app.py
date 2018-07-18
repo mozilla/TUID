@@ -15,11 +15,13 @@ import os
 import flask
 from flask import Flask, Response
 
-from mo_hg.cache import HGCache
+from mo_hg.cache import Cache
 from mo_json import value2json
 from mo_logs import Log, constants, startup, Except
 from mo_logs.strings import unicode2utf8
 from pyLibrary.env.flask_wrappers import cors_wrapper
+
+APP_NAME = "HG Relay"
 
 
 class RelayApp(Flask):
@@ -29,7 +31,7 @@ class RelayApp(Flask):
         try:
             Flask.run(self, *args, **kwargs)
         except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
-            Log.warning("HG Relay service shutdown!", cause=e)
+            Log.warning(APP_NAME + " service shutdown!", cause=e)
         finally:
             Log.stop()
 
@@ -71,13 +73,17 @@ def relay_post(path):
         )
 
 
+def add(any_flask_app):
+    global cache
+
+    cache = Cache(config.cache)
+    any_flask_app.add_url_rule(str('/<path:path>'), None, relay_get, methods=[str('GET')])
+    any_flask_app.add_url_rule(str('/<path:path>'), None, relay_post, methods=[str('POST')])
+
+
 if __name__ in ("__main__",):
-    Log.note("Starting hg relay Service App...")
+    Log.note("Starting " + APP_NAME + " Service App...")
     flask_app = RelayApp(__name__)
-    flask_app.add_url_rule(str('/'), None, relay_get, defaults={'path': ''}, methods=[str('GET')])
-    flask_app.add_url_rule(str('/'), None, relay_post, defaults={'path': ''}, methods=[str('POST')])
-    flask_app.add_url_rule(str('/<path:path>'), None, relay_get, methods=[str('GET')])
-    flask_app.add_url_rule(str('/<path:path>'), None, relay_post, methods=[str('POST')])
 
     try:
         config = startup.read_settings(
@@ -86,11 +92,11 @@ if __name__ in ("__main__",):
         constants.set(config.constants)
         Log.start(config.debug)
 
-        cache = HGCache(config.cache)
-        Log.note("Started HG Relay Service")
+        add(flask_app)
+        Log.note("Started " + APP_NAME + " Service")
     except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
         try:
-            Log.error("Serious problem with HG Relay service construction!  Shutdown!", cause=e)
+            Log.error("Serious problem with " + APP_NAME + " service construction!  Shutdown!", cause=e)
         finally:
             Log.stop()
 
@@ -99,5 +105,3 @@ if __name__ in ("__main__",):
             config.flask.port += config.args.process_num
         Log.note("Running Flask...")
         flask_app.run(**config.flask)
-
-
