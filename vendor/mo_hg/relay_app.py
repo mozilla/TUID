@@ -4,8 +4,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Author: Kyle Lahnakoski (kyle@lahnakoski.com)
-#
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
@@ -79,6 +77,8 @@ def add(any_flask_app):
     cache = Cache(config.cache)
     any_flask_app.add_url_rule(str('/<path:path>'), None, relay_get, methods=[str('GET')])
     any_flask_app.add_url_rule(str('/<path:path>'), None, relay_post, methods=[str('POST')])
+    any_flask_app.add_url_rule(str('/'), None, relay_get, methods=[str('GET')])
+    any_flask_app.add_url_rule(str('/'), None, relay_post, methods=[str('POST')])
 
 
 if __name__ in ("__main__",):
