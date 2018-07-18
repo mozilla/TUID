@@ -23,7 +23,7 @@ from mo_times.durations import SECOND, DAY
 from pyLibrary.env import http
 from pyLibrary.meta import cache
 from pyLibrary.sql import sql_list, sql_iso
-from pyLibrary.sql.sqlite import quote_value
+from pyLibrary.sql.sqlite import quote_value, quote_list
 from tuid import sql
 from tuid.util import MISSING, TuidMap
 
@@ -148,7 +148,7 @@ class TUIDService:
 
         transaction.execute(
             "INSERT INTO annotations (revision, file, annotation) VALUES " +
-            sql_list(sql_iso(sql_list(map(quote_value, row))) for row in data)
+            sql_list(quote_list(row) for row in data)
         )
 
 
@@ -447,10 +447,7 @@ class TUIDService:
                 for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
                     transaction.execute(
                         "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                        sql_list(
-                            sql_iso(sql_list(map(quote_value, i)))
-                            for i in inserts_list
-                        )
+                        sql_list(quote_list(i) for i in inserts_list)
                     )
 
         def update_tuids_in_thread(
@@ -487,10 +484,7 @@ class TUIDService:
                         for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
                             transaction.execute(
                                 "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                                sql_list(
-                                    sql_iso(sql_list(map(quote_value, i)))
-                                    for i in inserts_list
-                                )
+                                sql_list(quote_list(i) for i in inserts_list)
                             )
 
                 # If we have files that need to have their frontier updated, do that now
@@ -594,7 +588,7 @@ class TUIDService:
                 transaction.execute(
                     "INSERT INTO temporal (tuid, revision, file, line)"
                     " VALUES " +
-                    sql_list(sql_iso(sql_list(map(quote_value, tp))) for tp in inserts_list)
+                    sql_list(quote_list(tp) for tp in inserts_list)
                 )
 
         return new_ann, file
@@ -1193,7 +1187,7 @@ class TUIDService:
                 for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
                     transaction.execute(
                         "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                        sql_list(sql_iso(sql_list(map(quote_value, i))) for i in inserts_list)
+                        sql_list(quote_list(i) for i in inserts_list)
                     )
 
             anns_added_by_other_thread = {}
@@ -1393,9 +1387,9 @@ class TUIDService:
                 str((file, revision, line)): tuid
                 for tuid, file, revision, line in transaction.query(
                     "SELECT tuid, file, revision, line FROM temporal"
-                    " WHERE file IN " + sql_iso(sql_list(map(quote_value, file_names))) +
-                    " AND revision IN " + sql_iso(sql_list(map(quote_value, revs_to_find))) +
-                    " AND line IN " + sql_iso(sql_list(map(quote_value, lines_to_find)))
+                    " WHERE file IN " + quote_list(file_names) +
+                    " AND revision IN " + quote_list(revs_to_find) +
+                    " AND line IN " + quote_list(lines_to_find)
                 ).data
             }
 

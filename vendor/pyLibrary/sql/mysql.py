@@ -626,10 +626,6 @@ def quote_column(column_name, table=None):
         return SQL(sql_alias(column_name.value, quote_column(column_name.name)))
 
 
-def quote_list(value):
-    return sql_iso(sql_list(map(quote_value, value)))
-
-
 def quote_sql(value, param=None):
     """
     USED TO EXPAND THE PARAMETERS TO THE SQL() OBJECT
@@ -645,7 +641,7 @@ def quote_sql(value, param=None):
         elif isinstance(value, Mapping):
             return quote_value(json_encode(value))
         elif hasattr(value, '__iter__'):
-            return sql_iso(sql_list(map(quote_value, value)))
+            return quote_list(value)
         else:
             return text_type(value)
     except Exception as e:
