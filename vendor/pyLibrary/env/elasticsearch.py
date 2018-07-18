@@ -33,7 +33,7 @@ from mo_times import Date, Timer, MINUTE
 from pyLibrary import convert
 from pyLibrary.env import http
 
-DEBUG_METADATA_UPDATE = True
+DEBUG_METADATA_UPDATE = False
 
 ES_STRUCT = ["object", "nested"]
 ES_NUMERIC_TYPES = ["long", "integer", "double", "float"]
@@ -73,13 +73,15 @@ class Index(Features):
         alias=None,
         explore_metadata=True,  # PROBING THE CLUSTER FOR METADATA IS ALLOWED
         read_only=True,
-        tjson=None,  # STORED AS TYPED JSON
+        typed=None,  # STORED AS TYPED JSON
         timeout=None,  # NUMBER OF SECONDS TO WAIT FOR RESPONSE, OR SECONDS TO WAIT FOR DOWNLOAD (PASSED TO requests)
         consistency="one",  # ES WRITE CONSISTENCY (https://www.elastic.co/guide/en/elasticsearch/reference/1.7/docs-index_.html#index-consistency)
         debug=False,  # DO NOT SHOW THE DEBUG STATEMENTS
         cluster=None,
         kwargs=None
     ):
+        if kwargs.tjson != None:
+            Log.error("used `typed` parameter, not `tjson`")
         if index==None:
             Log.error("not allowed")
 
@@ -113,20 +115,20 @@ class Index(Features):
 
         props = self.get_properties()
         if not props:
-            tjson = coalesce(kwargs.tjson, True)  # TYPED JSON IS DEFAULT
+            typed = coalesce(kwargs.typed, True)  # TYPED JSON IS DEFAULT
         elif props[EXISTS_TYPE]:
-            if tjson is False:
-                Log.error("expecting tjson parameter to match properties of {{index}}", index=index)
-            elif tjson == None:
-                tjson = kwargs.tjson = True
+            if typed is False:
+                Log.error("expecting typed parameter to match properties of {{index}}", index=index)
+            elif typed == None:
+                typed = kwargs.typed = True
         else:
-            if tjson is True:
-                Log.error("expecting tjson parameter to match properties of {{index}}", index=index)
-            elif tjson == None:
-                tjson = kwargs.tjson = False
+            if typed is True:
+                Log.error("expecting typed parameter to match properties of {{index}}", index=index)
+            elif typed == None:
+                typed = kwargs.typed = False
 
         if not read_only:
-            if tjson:
+            if typed:
                 from pyLibrary.env.typed_inserter import TypedInserter
 
                 self.encode = TypedInserter(self, id_column).typed_encode
@@ -343,13 +345,13 @@ class Index(Features):
                     if len(fails) <= 3:
                         cause = [
                             Except(
-                                template="{{status}} {{error}} (and {{some}} others) while loading line id={{id}} into index {{index|quote}} (typed={{tjson}}):\n{{line}}",
+                                template="{{status}} {{error}} (and {{some}} others) while loading line id={{id}} into index {{index|quote}} (typed={{typed}}):\n{{line}}",
                                 status=items[i].index.status,
                                 error=items[i].index.error,
                                 some=len(fails) - 1,
                                 line=strings.limit(lines[i * 2 + 1], 500 if not self.debug else 100000),
                                 index=self.settings.index,
-                                tjson=self.settings.tjson,
+                                typed=self.settings.typed,
                                 id=items[i].index._id
                             )
                             for i in fails
@@ -357,13 +359,13 @@ class Index(Features):
                     else:
                         i=fails[0]
                         cause = Except(
-                            template="{{status}} {{error}} (and {{some}} others) while loading line id={{id}} into index {{index|quote}} (typed={{tjson}}):\n{{line}}",
+                            template="{{status}} {{error}} (and {{some}} others) while loading line id={{id}} into index {{index|quote}} (typed={{typed}}):\n{{line}}",
                             status=items[i].index.status,
                             error=items[i].index.error,
                             some=len(fails) - 1,
                             line=strings.limit(lines[i * 2 + 1], 500 if not self.debug else 100000),
                             index=self.settings.index,
-                            tjson=self.settings.tjson,
+                            typed=self.settings.typed,
                             id=items[i].index._id
                         )
                     Log.error("Problems with insert", cause=cause)
@@ -512,9 +514,9 @@ class Cluster(object):
 
     @override
     def __new__(cls, host, port=9200, kwargs=None):
-        if not isinstance(port, int):
+        if not Math.is_integer(port):
             Log.error("port must be integer")
-        cluster = known_clusters.get((host, port))
+        cluster = known_clusters.get((host, int(port)))
         if cluster:
             return cluster
 
@@ -549,9 +551,11 @@ class Cluster(object):
         schema=None,
         limit_replicas=None,
         read_only=False,
-        tjson=None,
+        typed=None,
         kwargs=None
     ):
+        if kwargs.tjson != None:
+            Log.error("used `typed` parameter, not `tjson`")
         best = self.get_best_matching_index(index, alias)
         if not best:
             output = self.create_index(kwargs=kwargs, schema=schema, limit_replicas=limit_replicas)
@@ -567,24 +571,26 @@ class Cluster(object):
         meta = self.get_metadata()
         type, about = _get_best_type_from_mapping(meta.indices[index].mappings)
 
-        if tjson == None:
-            tjson = True
+        if typed == None:
+            typed = True
             columns = parse_properties(index, ".", about.properties)
             if len(columns) > 0:
-                tjson = any(
+                typed = any(
                     c.names["."].startswith(TYPE_PREFIX) or
                     c.names["."].find("." + TYPE_PREFIX) != -1
                     for c in columns
                 )
-            kwargs.tjson = tjson
+            kwargs.typed = typed
 
         return Index(kwargs=kwargs, cluster=self)
 
     @override
-    def get_index(self, index, type, alias=None, tjson=None, read_only=True, kwargs=None):
+    def get_index(self, index, type, alias=None, typed=None, read_only=True, kwargs=None):
         """
         TESTS THAT THE INDEX EXISTS BEFORE RETURNING A HANDLE
         """
+        if kwargs.tjson != None:
+            Log.error("used `typed` parameter, not `tjson`")
         if read_only:
             # GET EXACT MATCH, OR ALIAS
             aliases = wrap(self.get_aliases())
@@ -697,9 +703,11 @@ class Cluster(object):
         limit_replicas=None,
         limit_replicas_warning=True,
         read_only=False,
-        tjson=True,
+        typed=True,
         kwargs=None
     ):
+        if kwargs.tjson != None:
+            Log.error("used `typed` parameter, not `tjson`")
         if not alias:
             alias = kwargs.alias = kwargs.index
             index = kwargs.index = proto_name(alias, create_timestamp)
@@ -718,7 +726,7 @@ class Cluster(object):
         for k, m in list(schema.mappings.items()):
             m.date_detection = False  # DISABLE DATE DETECTION
 
-            if tjson:
+            if typed:
                 m = schema.mappings[k] = wrap(add_typed_annotations(m))
 
             m.date_detection = False  # DISABLE DATE DETECTION
@@ -823,22 +831,19 @@ class Cluster(object):
             for new_index_name, new_meta in self._metadata.indices.items():
                 old_index = old_indices[new_index_name]
                 if not old_index:
-                    if DEBUG_METADATA_UPDATE:
-                        Log.note("New index found {{index}} at {{time}}", index=new_index_name, time=now)
+                    DEBUG_METADATA_UPDATE and Log.note("New index found {{index}} at {{time}}", index=new_index_name, time=now)
                     self.index_last_updated[new_index_name] = now
                 else:
                     for type_name, new_about in new_meta.mappings.items():
                         old_about = old_index.mappings[type_name]
                         diff = diff_schema(new_about.properties, old_about.properties)
                         if diff:
-                            if DEBUG_METADATA_UPDATE:
-                                Log.note("More columns found in {{index}} at {{time}}", index=new_index_name, time=now)
+                            DEBUG_METADATA_UPDATE and Log.note("More columns found in {{index}} at {{time}}", index=new_index_name, time=now)
                             self.index_last_updated[new_index_name] = now
             for old_index_name, old_meta in old_indices.items():
                 new_index = self._metadata.indices[old_index_name]
                 if not new_index:
-                    if DEBUG_METADATA_UPDATE:
-                        Log.note("Old index lost: {{index}} at {{time}}", index=new_index_name, time=now)
+                    DEBUG_METADATA_UPDATE and Log.note("Old index lost: {{index}} at {{time}}", index=new_index_name, time=now)
                     self.index_last_updated[old_index_name] = now
         self.info = wrap(self.get("/", stream=False))
         self._version = self.info.version.number
@@ -1260,6 +1265,7 @@ def parse_properties(parent_index_name, parent_name, esProperties):
                 es_column=column_name,
                 names={".": jx_name},
                 nested_path=ROOT_PATH,
+                cardinality=0 if not property.store else None,
                 es_type=property.type
             ))
             if property.index_name and name != property.index_name:
@@ -1268,6 +1274,7 @@ def parse_properties(parent_index_name, parent_name, esProperties):
                     es_column=column_name,
                     names={".": jx_name},
                     nested_path=ROOT_PATH,
+                    cardinality=0 if property.store else None,
                     es_type=property.type
                 ))
         elif property.enabled == None or property.enabled == False:
@@ -1276,6 +1283,7 @@ def parse_properties(parent_index_name, parent_name, esProperties):
                 es_column=column_name,
                 names={".": jx_name},
                 nested_path=ROOT_PATH,
+                cardinality=0 if property.store else None,
                 es_type="source" if property.enabled == False else "object"
             ))
         else:
@@ -1525,6 +1533,7 @@ es_type_to_json_type = {
     "keyword": "string",
     "float": "number",
     "double": "number",
+    "long": "number",
     "integer": "number",
     "object": "object",
     "nested": "nested",

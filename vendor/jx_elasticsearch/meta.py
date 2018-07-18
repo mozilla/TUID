@@ -35,11 +35,14 @@ from pyLibrary.env import elasticsearch
 from pyLibrary.env.elasticsearch import es_type_to_json_type, _get_best_type_from_mapping
 
 MAX_COLUMN_METADATA_AGE = 12 * HOUR
-ENABLE_META_SCAN = False
+ENABLE_META_SCAN = True
 DEBUG = False
 TOO_OLD = 2*HOUR
 OLD_METADATA = MINUTE
 TEST_TABLE_PREFIX = "testing"  # USED TO TURN OFF COMPLAINING ABOUT TEST INDEXES
+
+
+known_clusters = {}  # MAP FROM id(Cluster) TO ElasticsearchMetadata INSTANCE
 
 
 class ElasticsearchMetadata(Namespace):
@@ -48,11 +51,12 @@ class ElasticsearchMetadata(Namespace):
     """
 
     def __new__(cls, *args, **kwargs):
-        if jx_base_meta.singlton:
-            return jx_base_meta.singlton
-        else:
-            jx_base_meta.singlton = object.__new__(cls)
-            return jx_base_meta.singlton
+        es_cluster = elasticsearch.Cluster(kwargs['kwargs'])
+        output = known_clusters.get(id(es_cluster))
+        if output is None:
+            output = object.__new__(cls)
+            known_clusters[id(es_cluster)] = output
+        return output
 
     @override
     def __init__(self, host, index, sql_file='metadata.sqlite', alias=None, name=None, port=9200, kwargs=None):
@@ -63,6 +67,7 @@ class ElasticsearchMetadata(Namespace):
         self.settings = kwargs
         self.default_name = coalesce(name, alias, index)
         self.es_cluster = elasticsearch.Cluster(kwargs=kwargs)
+
         self.index_does_not_exist = set()
         self.todo = Queue("refresh metadata", max=100000, unique=True)
 
@@ -136,6 +141,12 @@ class ElasticsearchMetadata(Namespace):
 
     def _parse_properties(self, alias, mapping, meta):
         abs_columns = elasticsearch.parse_properties(alias, None, mapping.properties)
+        if any(c.cardinality == 0 for c in abs_columns):
+            Log.warning(
+                "Some columns are not stored {{names}}",
+                names=[c.names['.'] for c in abs_columns if c.cardinality == 0]
+            )
+
         with Timer("upserting {{num}} columns", {"num": len(abs_columns)}, debug=DEBUG):
             # LIST OF EVERY NESTED PATH
             query_paths = [[c.es_column] for c in abs_columns if c.es_type == "nested"]
@@ -511,7 +522,6 @@ class Snowflake(object):
         self.alias = alias
         self.namespace = namespace
 
-
     def get_schema(self, query_path):
         return Schema(query_path, self)
 
@@ -544,12 +554,15 @@ class Schema(jx_base.Schema):
     def __init__(self, query_path, snowflake):
         if not isinstance(snowflake.query_paths[0], list):
             Log.error("Snowflake query paths should be a list of string tuples (well, technically, a list of lists of strings)")
-        self.query_path = [
-            p
-            for p in snowflake.query_paths
-            if untype_path(p[0]) == query_path
-        ][0]
-        self.snowflake = snowflake
+        try:
+            self.query_path = [
+                p
+                for p in snowflake.query_paths
+                if untype_path(p[0]) == query_path
+            ][0]
+            self.snowflake = snowflake
+        except Exception as e:
+            Log.error("logic error", cause=e)
 
     def leaves(self, column_name):
         """
