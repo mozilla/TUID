@@ -45,8 +45,6 @@ GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE file=? and revision=? and line
 GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and file=?"
 GET_LATEST_MODIFICATION = "SELECT revision FROM latestFileMod WHERE file=?"
 
-HG_URL = URL('https://hg.mozilla.org/')
-
 
 class TUIDService:
 
@@ -57,6 +55,7 @@ class TUIDService:
 
             self.conn = conn if conn else sql.Sql(self.config.database.name)
             self.hg_cache = HgMozillaOrg(kwargs=self.config.hg_cache, use_cache=True) if self.config.hg_cache else Null
+            self.hg_url = URL(hg.url)
 
             if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
@@ -233,7 +232,7 @@ class TUIDService:
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num, repo, please_stop=None):
-        url = HG_URL / repo / "json-annotate" / cset / file
+        url = self.hg_url / repo / "json-annotate" / cset / file
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
 
@@ -287,7 +286,7 @@ class TUIDService:
         :return: list of (file, list(tuids)) tuples
         """
         result = []
-        URL_TO_FILES = HG_URL / self.config.hg.branch / 'json-info' / revision
+        URL_TO_FILES = self.hg_url / self.config.hg.branch / 'json-info' / revision
         try:
             mozobject = http.get_json(url=URL_TO_FILES, retry=RETRY)
         except Exception as e:
@@ -311,7 +310,7 @@ class TUIDService:
         '''
 
         # Get a changelog
-        clog_url = HG_URL / branch / 'json-log' / revision
+        clog_url = self.hg_url / branch / 'json-log' / revision
         try:
             Log.note("Searching through changelog {{url}}", url=clog_url)
             clog_obj = http.get_json(clog_url, retry=RETRY)
@@ -682,7 +681,7 @@ class TUIDService:
         curr_rev = revision
         mc_revision = ''
         while not found_mc_patch:
-            jsonrev_url = HG_URL / repo / 'json-rev' / curr_rev
+            jsonrev_url = self.hg_url / repo / 'json-rev' / curr_rev
             try:
                 Log.note("Searching through changelog {{url}}", url=jsonrev_url)
                 clog_obj = http.get_json(jsonrev_url, retry=RETRY)
@@ -892,11 +891,11 @@ class TUIDService:
         Log.note("Searching for frontier(s): {{frontier}} ", frontier=str(list(remaining_frontiers)))
         Log.note(
             "Running on revision with HG URL: {{url}}",
-            url=HG_URL / self.config.hg.branch / 'rev' / revision
+            url=self.hg_url / self.config.hg.branch / 'rev' / revision
         )
         while remaining_frontiers:
             # Get a changelog
-            clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
+            clog_url = self.hg_url / self.config.hg.branch / 'json-log' / final_rev
             try:
                 Log.note("Searching through changelog {{url}}", url=clog_url)
                 clog_obj = http.get_json(clog_url, retry=RETRY)
@@ -1568,10 +1567,10 @@ class TUIDService:
                 final_rev = ''
                 found_last_frontier = False
                 Log.note("Searching for frontier: {{frontier}} ", frontier=frontier)
-                Log.note("HG URL: {{url}}", url=HG_URL / self.config.hg.branch / 'rev' / frontier)
+                Log.note("HG URL: {{url}}", url=self.hg_url / self.config.hg.branch / 'rev' / frontier)
                 while not found_last_frontier:
                     # Get a changelog
-                    clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
+                    clog_url = self.hg_url / self.config.hg.branch / 'json-log' / final_rev
                     try:
                         clog_obj = http.get_json(clog_url, retry=RETRY)
                     except Exception as e:
