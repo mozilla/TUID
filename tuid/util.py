@@ -14,7 +14,7 @@ from pyLibrary.sql.sqlite import quote_value
 HG_URL = URL('https://hg.mozilla.org/')
 
 
-class TuidLine(Line):
+class TuidLine(Line, object):
 
     def __init__(self, tuidmap, **kwargs):
         super(TuidLine, self).__init__(tuidmap.line, **kwargs)
@@ -24,7 +24,7 @@ class TuidLine(Line):
         return "TuidLine{tuid=" + str(self.tuid) + ": line=" + str(self.line) + "}"
 
 
-class AnnotateFile(SourceFile):
+class AnnotateFile(SourceFile, object):
 
     def __init__(self, filename, lines, tuid_service=None):
         super(AnnotateFile, self).__init__(filename, lines)
