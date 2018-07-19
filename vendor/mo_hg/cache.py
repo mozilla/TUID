@@ -115,7 +115,7 @@ class Cache(object):
         """
         if path.endswith("/tip"):
             return False
-        if any(k in path for k in ["/json-annotate/", "/json-info/", "/json-log/", "/json-rev/", "/rev/", "/raw-rev/", "/raw-file/", "/json-pushes"]):
+        if any(k in path for k in ["/json-annotate/", "/json-info/", "/json-log/", "/json-rev/", "/rev/", "/raw-rev/", "/raw-file/", "/json-pushes", "/pushloghtml", "/file/"]):
             return True
 
         return False
