@@ -940,6 +940,7 @@ class TUIDService:
                             tuid_service=self
                         )
 
+                        backwards = False
                         if revision == csets_to_proc[0]:
                             backwards = True
 
