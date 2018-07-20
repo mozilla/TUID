@@ -941,7 +941,7 @@ class TUIDService:
                         )
 
                         backwards = False
-                        if revision == csets_to_proc[0]:
+                        if len(csets_to_proc) >= 1 and revision == csets_to_proc[0][1]:
                             backwards = True
 
                             # Reverse the list, we apply the frontier
