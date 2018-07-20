@@ -10,14 +10,21 @@ from mo_threads import Till, Lock, Thread
 from mo_times.durations import MINUTE
 
 DAEMON_WAIT_FOR_PC = 1 * MINUTE # Time until a percent complete log message is emitted.
+DAEMON_WAIT_FOR_THREADS = 1 * MINUTE # Time until a percent complete log message is emitted.
 
-class PercentCompleteLogger:
+class StatsLogger:
 
     def __init__(self):
         self.total_locker = Lock()
         self.total_files_requested = 0
         self.total_tuids_mapped = 0
-        Thread.run("pc-daemon", self.run_daemon)
+
+        self.threads_locker = Lock()
+        self.waiting = 0
+        self.threads_waiting = 0
+
+        Thread.run("pc-daemon", self.run_pc_daemon)
+        Thread.run("threads-daemon", self.run_threads_daemon)
 
 
     def update_totals(self, num_files_req, num_tuids_mapped):
@@ -32,7 +39,7 @@ class PercentCompleteLogger:
             self.total_tuids_mapped = 0
 
 
-    def run_daemon(self, please_stop=None):
+    def run_pc_daemon(self, please_stop=None):
         while not please_stop:
             try:
                 with self.total_locker:
@@ -46,5 +53,29 @@ class PercentCompleteLogger:
                             percent=mapped/requested
                         )
                 (Till(seconds=DAEMON_WAIT_FOR_PC.seconds) | please_stop).wait()
+            except Exception as e:
+                Log.warning("Unexpected error in pc-daemon: {{cause}}", cause=e)
+
+
+    def update_threads_waiting(self, val):
+        with self.threads_locker:
+            self.threads_waiting += val
+
+
+    def update_anns_waiting(self, val):
+        with self.threads_locker:
+            self.waiting += val
+
+
+    def run_threads_daemon(self, please_stop=None):
+        while not please_stop:
+            try:
+                with self.threads_locker:
+                    Log.note(
+                        "Currently {{waiting}} waiting to get annotation, and {{threads}} waiting to be created.",
+                        waiting=self.waiting,
+                        threads=self.threads_waiting
+                    )
+                (Till(seconds=DAEMON_WAIT_FOR_THREADS.seconds) | please_stop).wait()
             except Exception as e:
                 Log.warning("Unexpected error in pc-daemon: {{cause}}", cause=e)
