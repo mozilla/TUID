@@ -1,3 +1,5 @@
+boto
+google_compute_engine
 requests
 pytest
 mo-future

@@ -11,7 +11,6 @@ from __future__ import division
 from __future__ import unicode_literals
 
 from mo_logs import Log
-from pyLibrary.sql import sqlite
 from pyLibrary.sql.sqlite import quote_value, Sqlite
 
 DEBUG = False
@@ -42,6 +41,13 @@ class Sql:
 
     def transaction(self):
         return Transaction(self.db.transaction())
+
+    @property
+    def pending_transactions(self):
+        """
+        :return: NUMBER OF TRANSACTIONS IN THE QUEUE
+        """
+        return len(self.db.available_transactions)
 
 
 class Transaction():

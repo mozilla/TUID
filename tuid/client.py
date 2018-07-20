@@ -14,6 +14,7 @@ from mo_dots import wrap, coalesce
 from mo_json import json2value, value2json
 from mo_kwargs import override
 from mo_logs import Log
+from mo_threads import Till
 from mo_times import Timer, Date
 from pyLibrary import aws
 from pyLibrary.env import http
@@ -21,13 +22,14 @@ from pyLibrary.sql import sql_iso, sql_list
 from pyLibrary.sql.sqlite import Sqlite, quote_value
 
 DEBUG = True
-
+SLEEP_ON_ERROR = 30
 
 class TuidClient(object):
 
     @override
     def __init__(self, endpoint, push_queue=None, timeout=30, db=None, kwargs=None):
         self.enabled = True
+        self.num_bad_requests = 0
         self.endpoint = endpoint
         self.timeout = timeout
         self.push_queue = aws.Queue(push_queue) if push_queue else None
@@ -49,21 +51,23 @@ class TuidClient(object):
         )
         """)
 
-    def get_tuid(self, revision, file, branch='mozilla-central'):
+    def get_tuid(self, branch, revision, file):
         """
+        :param branch: BRANCH TO FIND THE REVISION/FILE
         :param revision: THE REVISION NUNMBER
         :param file: THE FULL PATH TO A SINGLE FILE
         :return: A LIST OF TUIDS
         """
-        service_response = wrap(self.get_tuids(revision, [file], branch=branch))
+        service_response = wrap(self.get_tuids(branch, revision, [file]))
         for f, t in service_response.items():
             return t
 
-    def get_tuids(self, revision, files, branch='mozilla-central'):
+    def get_tuids(self, branch, revision, files):
         """
         GET TUIDS FROM ENDPOINT, AND STORE IN DB
-        :param revision:
-        :param files:
+        :param branch: BRANCH TO FIND THE REVISION/FILE
+        :param revision: THE REVISION NUNMBER
+        :param files: THE FULL PATHS TO THE FILES
         :return: MAP FROM FILENAME TO TUID LIST
         """
 
@@ -77,13 +81,13 @@ class TuidClient(object):
             debug=DEBUG,
             silent=not self.enabled
         ):
-            try:
-                response = self.db.query(
-                    "SELECT file, tuids FROM tuid WHERE revision=" + quote_value(revision) +
-                    " AND file in " + sql_iso(sql_list(map(quote_value, files)))
-                )
-                found = {file: json2value(tuids) for file, tuids in response.data}
+            response = self.db.query(
+                "SELECT file, tuids FROM tuid WHERE revision=" + quote_value(revision) +
+                " AND file IN " + sql_iso(sql_list(map(quote_value, files)))
+            )
+            found = {file: json2value(tuids) for file, tuids in response.data}
 
+            try:
                 remaining = set(files) - set(found.keys())
                 new_response = None
                 if remaining:
@@ -91,7 +95,8 @@ class TuidClient(object):
                         "from": "files",
                         "where": {"and": [
                             {"eq": {"revision": revision}},
-                            {"in": {"path": remaining}}
+                            {"in": {"path": remaining}},
+                            {"eq": {"branch": branch}}
                         ]},
                         "branch": branch,
                         "meta": {
@@ -108,7 +113,7 @@ class TuidClient(object):
                             Log.note("no recorded tuid request")
 
                     if not self.enabled:
-                        return None
+                        return found
 
                     new_response = http.post_json(
                         self.endpoint,
@@ -117,18 +122,22 @@ class TuidClient(object):
                     )
 
                     with self.db.transaction() as transaction:
-                        transaction.execute(
-                            "INSERT INTO tuid (revision, file, tuids) VALUES " + sql_list(
-                                sql_iso(sql_list(map(quote_value, (revision, r.path, value2json(r.tuids)))))
-                                for r in new_response.data
-                            )
+                        command = "INSERT INTO tuid (revision, file, tuids) VALUES " + sql_list(
+                            sql_iso(sql_list(map(quote_value, (revision, r.path, value2json(r.tuids)))))
+                            for r in new_response.data
+                            if r.tuids != None
                         )
+                        if not command.endswith(" VALUES "):
+                            transaction.execute(command)
+                    self.num_bad_requests = 0
 
                 found.update({r.path: r.tuids for r in new_response.data} if new_response else {})
                 return found
 
             except Exception as e:
-                if self.enabled:
-                    Log.warning("TUID service has problems.", cause=e)
-                self.enabled = False
-                return None
+                self.num_bad_requests += 1
+                Till(seconds=SLEEP_ON_ERROR).wait()
+                if self.enabled and self.num_bad_requests >= 3:
+                    self.enabled = False
+                    Log.error("TUID service has problems.", cause=e)
+                return found

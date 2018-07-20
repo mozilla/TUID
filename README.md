@@ -17,6 +17,8 @@ More details can be gleaned from the [motivational document](https://github.com/
 
 ## Running tests
 
+Running any tests requires access to an Elastic Search cluster for `mo_hg` on localhost:9201.
+
 After cloning the repo into `~/TUID`:
 
 **Linux**
@@ -63,6 +65,14 @@ port 5000.
 The web service was designed to be part of a larger service. You can assign a 
 route that points to the `tuid_endpoint()` method, and avoid the Flask
 server construction.
+
+## Starting the web service
+
+First, the server needs to be setup, which can be done by running
+the server setup script `resources/scripts/setup_server.sh`, and then the
+app can be setup using `resources/scripts/prod_app.sh`. If an error is
+encountered when running `sudo supervisorctl`, try restarting it by
+running the few commands in the server setup script.
 
 ## Using the web service
 

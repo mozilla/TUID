@@ -23,8 +23,7 @@ from pyLibrary.env import http
 
 from tuid import sql
 from tuid.client import TuidClient
-from tuid.service import TUIDService
-
+from tuid.service import TUIDService, HG_URL
 
 RETRY = {"times": 3, "sleep": 5}
 
@@ -69,7 +68,7 @@ try:
     final_rev = ''
     while len(csets) < rev_count:
         # Get a changelog
-        clog_url = 'https://hg.mozilla.org/mozilla-central/json-log/' + final_rev
+        clog_url = HG_URL /'mozilla-central' / 'json-log' / final_rev
         try:
             Log.note("Searching through changelog {{url}}", url=clog_url)
             clog_obj = http.get_json(clog_url, retry=RETRY)

@@ -12,12 +12,13 @@ import json
 
 import pytest
 
+from mo_dots import Null
 from mo_logs import Log, Except
+from mo_threads import Thread, Till
 from mo_times import Timer
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, sql_iso
-from pyLibrary.sql.sqlite import quote_value, Sqlite
-from tuid import sql
+from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR
 from tuid.service import TUIDService
 from tuid.util import map_to_array
 
@@ -27,10 +28,10 @@ _service = None
 def service(config, new_db):
     global _service
     if new_db == 'yes':
-        return TUIDService(conn=sql.Sql(":memory:"), kwargs=config.tuid)
+        return TUIDService(database=Null, kwargs=config.tuid)
     elif new_db == 'no':
         if _service is None:
-            _service = TUIDService(conn=sql.Sql("resources/test.db"), kwargs=config.tuid)
+            _service = TUIDService(kwargs=config.tuid)
         return _service
     else:
         Log.error("expecting 'yes' or 'no'")
@@ -38,9 +39,8 @@ def service(config, new_db):
 
 def test_transactions(service):
     # This should pass
-    with service.conn.transaction():
-        old = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838", commit=False)
-        new = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62", commit=False)
+    old = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838", commit=False)
+    new = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62", commit=False)
 
     assert len(old) == len(new)
 
@@ -69,17 +69,108 @@ def test_transactions(service):
     assert not latestTestMods
 
 
+#@pytest.mark.skipif(True, reason="Broken transaction test.")
+def test_transactions2(service):
+    inserting = [('testing_transaction2_1', '1'), ('testing_transaction2_2', '2')]
+
+    with service.conn.transaction() as t:
+        # Make a change
+        t.execute(
+            "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+            sql_list(sql_iso(sql_list(map(quote_value, i))) for i in inserting)
+        )
+
+        try:
+            # Query for one change
+            query_res1 = service.conn.get("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_1',))
+            assert False
+        except Exception as e:
+            assert DOUBLE_TRANSACTION_ERROR in e
+
+        # Query for the other change
+        query_res2 = t.get("SELECT revision FROM latestFileMod WHERE file=?", ('testing_transaction2_2',))
+
+    assert query_res2[0][0] == '2'
+
+
+@pytest.mark.first_run
+def test_duplicate_ann_node_entries(service):
+    # This test ensures that we can handle duplicate annotation
+    # node entries.
+
+    # After the first call with the following
+    # file we should have no duplicate tuids.
+    rev = '8eab40c27903'
+    files = ['browser/base/content/browser.xul']
+    file, tuids = service.get_tuids(files, rev)[0]
+    tuids_arr = map_to_array(tuids)
+    known_duplicate_lines = [[650, 709], [651, 710]]
+    for first_duped_line, second_duped_line in known_duplicate_lines:
+        assert tuids_arr[first_duped_line-1] != tuids_arr[second_duped_line-1]
+
+    # Second call on a future _unknown_ annotation will give us
+    # duplicate entries.
+    future_rev = 'e02ce918e160'
+    file, tuids = service.get_tuids(files, future_rev)[0]
+    tuids_arr = map_to_array(tuids)
+    for first_duped_line, second_duped_line in known_duplicate_lines:
+        assert tuids_arr[first_duped_line-1] == tuids_arr[second_duped_line-1]
+
+
 def test_tryrepo_tuids(service):
     test_file = ["dom/base/nsWrapperCache.cpp", "testing/mochitest/baselinecoverage/browser_chrome/browser.ini"]
     test_revision = "0f4946791ddb"
 
     found_file = False
-    result = service.get_tuids_from_files(test_file, test_revision, repo='try')
+    result, _ = service.get_tuids_from_files(test_file, test_revision, repo='try')
     for file, tuids in result:
         if file == 'testing/mochitest/baselinecoverage/browser_chrome/browser.ini':
             found_file = True
             assert len(tuids) == 3
     assert found_file
+
+
+def test_multithread_service(service):
+    num_tests = 10
+    timeout_seconds = 60
+    revision = "d63ed14ed622"
+    test_file = ["devtools/server/tests/browser/browser_markers-docloading-03.js"]
+
+    # Call service on multiple threads at once
+    tuided_files = [None] * num_tests
+    threads = [
+        Thread.run(str(i), service.mthread_testing_get_tuids_from_files, test_file, revision, tuided_files, i)
+        for i, a in enumerate(tuided_files)
+    ]
+    too_long = Till(seconds=timeout_seconds)
+    for t in threads:
+        t.join(till=too_long)
+    assert not too_long
+
+    # All returned results should be the same.
+    expected_filename, expected_tuids = tuided_files[0][0]
+    for result in tuided_files[1:]:
+        assert len(result) == len(test_file)  # get_tuid returns a list of (file, tuids) tuples
+        filename, tuids = result[0]
+        assert filename == expected_filename
+        assert set(tuids) == set(expected_tuids)
+
+    # Check that we can get the same result after these
+    # calls.
+    tuids, _ = service.get_tuids_from_files(test_file, revision, use_thread=False)
+    assert len(tuids[0][1]) == 41
+
+    for tuid_count, mapping in enumerate(tuids[0][1]):
+        if mapping.tuid != tuided_files[0][0][1][tuid_count].tuid:   # Use first result
+            # All lines should have a mapping
+            assert False
+
+    # Double check to make sure we have no None values.
+    for mapping in tuids[0][1]:
+        if mapping.tuid is None:  # Use first result
+            # All lines should have a mapping
+            assert False
+
 
 def test_new_then_old(service):
     # delete database then run this test
@@ -106,6 +197,7 @@ def test_tuids_on_changed_file(service):
 
     # assertAlmostEqual PERFORMS A STRUCURAL COMPARISION
     assert same_lines == old_lines
+
 
 def test_removed_lines(service):
     # THE FILE HAS FOUR LINES REMOVED
@@ -236,13 +328,13 @@ def test_many_files_one_revision(service):
     test_file = test_file_init + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    old = service.get_tuids_from_files(test_file,first_front)
+    old, _ = service.get_tuids_from_files(test_file,first_front, use_thread=False)
     print("old:")
     for el in old:
         print(el[0])
         print("     "+el[0]+":"+str(len(el[1])))
 
-    new = service.get_tuids_from_files(test_file,test_rev)
+    new, _ = service.get_tuids_from_files(test_file,test_rev, use_thread=False)
     print("new:")
     for el in new:
         print("     "+el[0]+":"+str(len(el[1])))
@@ -250,7 +342,9 @@ def test_many_files_one_revision(service):
 
 def test_one_addition_many_files(service):
     # Get current annotation
-    _, curr_tuids = service.get_tuids_from_files(["widget/cocoa/nsCocoaWindow.mm"], '159e1105bdc7')[0]
+    result, _ = service.get_tuids_from_files(["widget/cocoa/nsCocoaWindow.mm"], '159e1105bdc7')
+
+    _, curr_tuids = result[0]
     curr_tuid_array = map_to_array(curr_tuids)
 
     # remove line 2148, add eleven lines
@@ -266,7 +360,7 @@ def test_one_addition_many_files(service):
     test_file = test_file_change + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    tuid_response = service.get_tuids_from_files(test_file,test_rev)
+    tuid_response, _ = service.get_tuids_from_files(test_file,test_rev, use_thread=False)
     print("new:")
     for filename, tuids in tuid_response:
         print("     "+filename+":"+str(len(tuids)))
@@ -278,7 +372,7 @@ def test_one_addition_many_files(service):
         for new_tuid, curr_tuid in zip(new_tuid_array, expected_tuid_array):
             if curr_tuid == -1:
                 continue
-            assert(new_tuid, curr_tuid)
+            assert new_tuid == curr_tuid
 
 
 def test_one_http_call_required(service):
@@ -425,13 +519,21 @@ def test_one_http_call_required(service):
     # SETUP
     proc_files = files[-10:] + [k for k in changed_files] # Useful in testing
     Log.note("Number of files to process: {{flen}}", flen=len(files))
-    first_f_n_tuids = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "d63ed14ed622")
+    first_f_n_tuids, _ = service.get_tuids_from_files(
+        ['/dom/base/Link.cpp']+proc_files,
+        "d63ed14ed622",
+        use_thread=False
+    )
 
     # THIS NEXT CALL SHOULD BE FAST, DESPITE THE LACK OF LOCAL CACHE
     start = http.request_count
     timer = Timer("get next revision")
     with timer:
-        f_n_tuids = service.get_tuids_from_files(['/dom/base/Link.cpp']+proc_files, "14dc6342ec50")
+        f_n_tuids, _ = service.get_tuids_from_files(
+            ['/dom/base/Link.cpp']+proc_files,
+            "14dc6342ec50",
+            use_thread=False
+        )
     num_http_calls = http.request_count - start
 
     #assert num_http_calls <= 2
@@ -491,10 +593,9 @@ def test_out_of_order_get_tuids_from_files(service):
     test_file = ["dom/base/nsWrapperCache.cpp"]
     check_lines = [41]
 
-    result1 = service.get_tuids_from_files(test_file, rev_initial)
-    result2 = service.get_tuids_from_files(test_file, rev_latest)
-    test_result = service.get_tuids_from_files(test_file, rev_middle)
-
+    result1, _ = service.get_tuids_from_files(test_file, rev_initial, use_thread=False)
+    result2, _ = service.get_tuids_from_files(test_file, rev_latest, use_thread=False)
+    test_result, _ = service.get_tuids_from_files(test_file, rev_middle, use_thread=False)
     # Check that test_result's tuids at line 41 is different from
     # result 2.
     for (fname, tuids2) in result2:
@@ -519,11 +620,10 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
     test_file = ["dom/base/nsWrapperCache.cpp"]
     check_lines = [41]
 
-    result1 = service.get_tuids_from_files(test_file, rev_initial, going_forward=True)
-    result2 = service.get_tuids_from_files(test_file, rev_latest, going_forward=True)
-    test_result = service.get_tuids_from_files(test_file, rev_middle, going_forward=True)
-    result2 = service.get_tuids_from_files(test_file, rev_latest2, going_forward=True)
-
+    result1, _ = service.get_tuids_from_files(test_file, rev_initial, going_forward=True, use_thread=False)
+    result2, _ = service.get_tuids_from_files(test_file, rev_latest, going_forward=True, use_thread=False)
+    test_result, _ = service.get_tuids_from_files(test_file, rev_middle, going_forward=True, use_thread=False)
+    result2, _ = service.get_tuids_from_files(test_file, rev_latest2, going_forward=True, use_thread=False)
     # Check that test_result's tuids at line 41 is different from
     # result 2.
     for (fname, tuids2) in result2:
@@ -538,6 +638,166 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
                     assert tmap.tuid == tuids_test[count].tuid
                 else:
                     assert tmap.tuid != tuids_test[count].tuid
+
+
+@pytest.mark.first_run
+def test_threaded_service_call(service):
+    # Will fail on second runs using the same dataset as it's
+    # checking threading capabilities.
+    timeout_seconds = 1
+    mc_revision = "04cc917f68c5"
+    test_file = [
+        "browser/components/payments/test/browser/browser_host_name.js",
+        "/browser/components/extensions/test/browser/browser_ext_omnibox.js",
+        "/browser/components/extensions/test/browser/browser_ext_pageAction_popup_resize.js",
+        "/browser/components/extensions/test/browser/browser_ext_popup_background.js",
+        "/browser/components/extensions/test/browser/browser_ext_popup_corners.js",
+        "/toolkit/components/reader/test/browser_readerMode_with_anchor.js",
+    ]
+
+    res, completed = service.get_tuids_from_files(test_file, mc_revision, going_forward=True)
+    assert not completed
+    assert all([len(tuids) == 0 for file, tuids in res])
+
+    while not completed:
+        # Wait a bit to let them process
+        Till(seconds=timeout_seconds).wait()
+
+        # Try getting them again
+        res, completed = service.get_tuids_from_files(test_file, mc_revision, going_forward=True)
+
+    assert completed
+    assert all([len(tuids) > 0 for file, tuids in res])
+
+
+def test_try_rev_then_mc(service):
+    try_revision = "f29e9ee9401c"
+    mc_revision = "04cc917f68c5"
+    test_file = ["browser/components/payments/test/browser/browser_host_name.js"]
+    file_length = 34
+
+    res1, _ = service.get_tuids_from_files(test_file, try_revision, going_forward=True, use_thread=False)
+    assert len(res1[0][1]) == 0
+
+    res2, _ = service.get_tuids_from_files(test_file, mc_revision, going_forward=True, use_thread=False)
+    assert len(res2[0][1]) == file_length
+
+    for tuid_map in res2[0][1]:
+        if tuid_map.tuid is None:
+            assert False
+
+
+def test_merged_changes(service):
+    old_rev = '316e5fab18f1'
+    new_rev = '06d10d09e6ee'
+    test_files = [
+        "js/src/wasm/WasmTextToBinary.cpp"
+    ]
+    old_tuids, _ = service.get_tuids_from_files(test_files, old_rev, use_thread=False)
+    new_tuids, _ = service.get_tuids_from_files(test_files, new_rev, use_thread=False)
+
+    lines_added = {
+        "js/src/wasm/WasmTextToBinary.cpp": [1668, 1669, 1670, 1671]
+    }
+    completed = 0
+    for file, old_file_tuids in old_tuids:
+        if file in lines_added:
+            assert len(old_file_tuids) == 5461
+
+            for new_file, tmp_tuids in new_tuids:
+                new_file_tuids = []
+                if new_file == file:
+                    for tuid_map in tmp_tuids:
+                        if tuid_map.line in lines_added[file]:
+                            new_file_tuids.append(tuid_map.tuid)
+
+                    assert len(tmp_tuids) == 5461
+
+                    # No tuids from the new should be in the old
+                    # so this intersection should always be empty.
+                    assert len(set(new_file_tuids) & set([t.tuid for t in old_file_tuids])) <= 0
+                    completed += 1
+
+                    break
+    assert completed == len(lines_added.keys())
+
+
+@pytest.mark.skip(
+    reason="Very long to get diffs. It tests across multiple merges to ensure TUIDs are stable."
+)
+def test_very_distant_files(service):
+    new_rev = "6e8e861540e6"
+    old_rev = "1e2c9151a09e"
+    test_files = [
+        "docshell/base/nsDocShell.cpp"
+    ]
+
+    with service.conn.transaction() as t:
+        t.execute("DELETE FROM annotations WHERE revision = " + quote_value(new_rev))
+        for file in test_files:
+            t.execute(
+                "UPDATE latestFileMod SET revision = " + quote_value(old_rev) +
+                " WHERE file = " + quote_value(file)
+            )
+
+    old_tuids, _ = service.get_tuids_from_files(test_files, old_rev, use_thread=False, max_csets_proc=10000)
+    new_tuids, _ = service.get_tuids_from_files(test_files, new_rev, use_thread=False, max_csets_proc=10000)
+
+    lines_moved = {
+        "docshell/base/nsDocShell.cpp": {1028: 1026, 1097: 1029}
+    }
+    lines_added = {
+        "docshell/base/nsDocShell.cpp": [2770]
+    }
+
+    Log.note("Check output manually for any abnormalities as well.")
+
+    completed = 0
+    for file, old_file_tuids in old_tuids:
+        if file in lines_moved:
+            old_moved_tuids = {}
+            print("OLD:")
+            for tuid_map in old_file_tuids:
+                print(str(tuid_map.line) + ":" + str(tuid_map.tuid))
+                if tuid_map.line in lines_moved[file].keys():
+                    old_moved_tuids[tuid_map.line] = tuid_map.tuid
+
+            assert len(old_moved_tuids) == len(lines_moved[file].keys())
+
+            print("\n\nNEW:")
+            new_moved_tuids = {}
+            for new_file, tmp_tuids in new_tuids:
+                if new_file == file:
+                    tmp_lines = [lines_moved[file][line] for line in lines_moved[file]]
+                    for tuid_map in tmp_tuids:
+                        print(str(tuid_map.line) + ":" + str(tuid_map.tuid))
+                        if tuid_map.line in tmp_lines:
+                            new_moved_tuids[tuid_map.line] = tuid_map.tuid
+                    break
+
+            assert len(new_moved_tuids) == len(old_moved_tuids)
+            for line_moved in old_moved_tuids:
+                old_tuid = old_moved_tuids[line_moved]
+                new_line = lines_moved[file][line_moved]
+                assert new_line in new_moved_tuids
+                assert old_tuid == new_moved_tuids[new_line]
+            completed += 1
+
+        if file in lines_added:
+            for new_file, tmp_tuids in new_tuids:
+                new_file_tuids = []
+                if new_file == file:
+                    for tuid_map in tmp_tuids:
+                        if tuid_map.line in lines_added[file]:
+                            new_file_tuids.append(tuid_map.tuid)
+
+                    # No tuids from the new should be in the old
+                    # so this intersection should always be empty.
+                    assert len(set(new_file_tuids) & set([t.tuid for t in old_file_tuids])) <= 0
+                    completed += 1
+
+                    break
+    assert completed == len(lines_moved.keys()) + len(lines_added.keys())
 
 
 @pytest.mark.skip(reason="Never completes")

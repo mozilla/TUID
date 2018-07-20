@@ -11,7 +11,7 @@ from __future__ import unicode_literals
 from mo_dots import Data
 from mo_threads import Signal, Thread
 from pyLibrary.sql import sqlite, sql_iso
-from pyLibrary.sql.sqlite import Sqlite, quote_value
+from pyLibrary.sql.sqlite import Sqlite, quote_value, DOUBLE_TRANSACTION_ERROR
 
 sqlite.DEBUG = True
 
@@ -26,6 +26,22 @@ def test_interleaved_transactions():
         _perform(b, i)
 
     _teardown(db, threads)
+
+
+def test_transactionqueries():
+    db = Sqlite()
+    db.query("CREATE TABLE my_table (value TEXT)")
+
+    with db.transaction() as t:
+        t.execute("INSERT INTO my_table (value) VALUES ('a')")
+        try:
+            result1 = db.query("SELECT * FROM my_table")
+            assert False
+        except Exception as e:
+            assert DOUBLE_TRANSACTION_ERROR in e
+        result2 = t.query("SELECT * FROM my_table")
+
+    assert result2.data[0][0] == 'a'
 
 
 def test_two_commands():
