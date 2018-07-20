@@ -67,15 +67,21 @@ class AnnotateFile(SourceFile, object):
 
         with self.tuid_service.conn.transaction() as t:
             # Get the new lines, excluding those that have existing tuids
-            existing_tuids = {
-                line: tuid
-                for tuid, file, revision, line in t.query(
-                    "SELECT tuid, file, revision, line FROM temporal"
-                    " WHERE file = " + quote_value(self.filename)+
-                    " AND revision = " + quote_value(revision) +
-                    " AND line IN " + quote_set(all_new_lines)
-                ).data
-            }
+            existing_tuids = {}
+            if len(all_new_lines) > 0:
+                try:
+                    existing_tuids = {
+                        line: tuid
+                        for tuid, file, revision, line in t.query(
+                            "SELECT tuid, file, revision, line FROM temporal"
+                            " WHERE file = " + quote_value(self.filename)+
+                            " AND revision = " + quote_value(revision) +
+                            " AND line IN " + quote_set(all_new_lines)
+                        ).data
+                    }
+                except Exception as e:
+                    Log.note("Trying to find new lines: {{newl}}", newl=all_new_lines)
+                    Log.error("Error encountered:", cause=e)
 
             insert_entries = []
             insert_lines = set(all_new_lines) - set(existing_tuids.keys())
@@ -94,13 +100,14 @@ class AnnotateFile(SourceFile, object):
 
             fmt_inserted_lines = {line: tuid for tuid, _, _, line in insert_entries}
             for line_obj in self.lines:
+                # If a tuid already exists for this line,
+                # replace, otherwise, use the newly created one.
                 if line_obj.line in existing_tuids:
                     line_obj.tuid = existing_tuids[line_obj.line]
-                if line_obj.line in fmt_inserted_lines:
+                elif line_obj.line in fmt_inserted_lines:
                     line_obj.tuid = fmt_inserted_lines[line_obj.line]
-                if line_obj.tuid:
-                    continue
-                else:
+
+                if not line_obj.tuid:
                     Log.warning(
                         "Cannot find TUID at {{file}} and {{rev}}for: {{line}}",
                         file=self.filename,
