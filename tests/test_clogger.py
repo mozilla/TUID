@@ -62,20 +62,24 @@ def test_tipfilling(clogger):
         current_tip = t.get_one("SELECT max(revnum) AS revnum, revision FROM csetLog")[1]
         t.execute("DELETE FROM csetLog")
 
+    clogger.disable_tipfilling = False
+
+    Log.note("Searching for {{curr}}", curr=current_tip)
     new_tip = None
     while num_trys > 0:
         # Make sure tipfilling doesn't start until we are
         # in this loop.
-        clogger.disable_tipfilling = False
         new_tip = clogger.conn.get_one("SELECT max(revnum) AS revnum, revision FROM csetLog")
         if new_tip:
+            Log.note("Found {{new}}", new=new_tip[1])
             if current_tip == new_tip[1]:
                 new_tip = new_tip[1]
                 break
-        num_trys -= 1
-        Till(seconds=wait_time).wait()
+        else:
+            Log.note("No tips found")
+            num_trys -= 1
+            Till(seconds=wait_time).wait()
 
-    assert num_trys > 0
     assert current_tip == new_tip
 
 
