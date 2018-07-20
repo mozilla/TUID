@@ -25,7 +25,7 @@ from tuid import service
 
 _ = service
 _ = hg_mozilla_org
-
+SKIP_TRY_REQUESTS = True
 
 def one_request(request, please_stop):
     and_op = request.where['and']
@@ -62,6 +62,11 @@ def queue_consumer(pull_queue, please_stop=None):
         if not request:
             Log.note("Nothing in queue, pausing for 5 seconds...")
             (please_stop | Till(seconds=5)).wait()
+            continue
+
+        if SKIP_TRY_REQUESTS and 'try' in request.where['and'].eq.branch:
+            Log.note("Skipping try revision.")
+            queue.commit()
             continue
 
         now = Date.now().unix
