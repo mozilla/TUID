@@ -28,6 +28,7 @@ OVERVIEW = None
 QUERY_SIZE_LIMIT = 10 * 1000 * 1000
 EXPECTING_QUERY = b"expecting query\r\n"
 TOO_BUSY = 10
+TOO_MANY_THREADS = 25
 
 class TUIDApp(Flask):
 
@@ -99,6 +100,9 @@ def tuid_endpoint(path):
         elif service.conn.pending_transactions > TOO_BUSY:  # CHECK IF service IS VERY BUSY
             # TODO:  BE SURE TO UPDATE STATS TOO
             Log.note("Too many open transactions")
+            response, completed = [], False
+        elif service.get_thread_count() > TOO_MANY_THREADS:
+            Log.note("Too many threads open")
             response, completed = [], False
         else:
             # RETURN TUIDS
