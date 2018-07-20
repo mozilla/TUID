@@ -80,7 +80,7 @@ class AnnotateFile(SourceFile, object):
                         ).data
                     }
                 except Exception as e:
-                    Log.note("Trying to find new lines: {{newl}}", newl=all_new_lines)
+                    Log.note("Trying to find new lines: {{newl}}", newl=str(all_new_lines))
                     Log.error("Error encountered:", cause=e)
 
             insert_entries = []
