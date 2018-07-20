@@ -1028,13 +1028,13 @@ class TUIDService:
                         csets_to_proc = csets_to_proc[1:]
 
                         # Apply the diffs
-                        for count, (_, rev) in enumerate(csets_to_proc):
+                        for diff_count, (_, rev) in enumerate(csets_to_proc):
 
                             # Use next revision when going backwards
                             # to add new lines correctly.
                             next_rev = revision
-                            if count + 1 < len(csets_to_proc):
-                                _, next_rev = csets_to_proc[count + 1]
+                            if diff_count + 1 < len(csets_to_proc):
+                                _, next_rev = csets_to_proc[diff_count + 1]
 
                             if backwards:
                                 file_to_modify = apply_diff_backwards(file_to_modify, parsed_diffs[rev])
@@ -1049,7 +1049,7 @@ class TUIDService:
                         Log.note(
                             "Frontier update - modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} "
                             "| {{rev}}|{{file}} ",
-                            count=count,
+                            count=count+1,
                             total=total,
                             file=file,
                             rev=revision,
@@ -1064,7 +1064,7 @@ class TUIDService:
                         Log.note(
                             "Frontier update - readded: {{count}}/{{total}} - {{percent|percent(decimal=0)}} "
                             "| {{rev}}|{{file}} ",
-                            count=count,
+                            count=count+1,
                             total=total,
                             file=file,
                             rev=revision,
@@ -1078,7 +1078,7 @@ class TUIDService:
                         Log.note(
                             "Frontier update - not modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} "
                             "| {{rev}}|{{file}} ",
-                            count=count,
+                            count=count+1,
                             total=total,
                             file=file,
                             rev=revision,

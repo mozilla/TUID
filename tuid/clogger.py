@@ -50,7 +50,7 @@ UPDATE_VERY_OLD_FRONTIERS = False
 
 
 class Clogger:
-    def __init__(self, conn=None, tuid_service=None, start_workers=True, kwargs=None):
+    def __init__(self, conn=None, tuid_service=None, start_workers=True, new_table=False, kwargs=None):
         try:
             self.config = kwargs
             self.conn = conn if conn else sql.Sql(self.config.database.name)
@@ -61,6 +61,10 @@ class Clogger:
             )
             self.rev_locker = Lock()
             self.working_locker = Lock()
+
+            if new_table:
+                with self.conn.transaction() as t:
+                    t.execute("DROP TABLE IF EXISTS csetLog")
 
             self.init_db()
             self.next_revnum = coalesce(self.conn.get_one("SELECT max(revnum)+1 FROM csetLog")[0], 1)

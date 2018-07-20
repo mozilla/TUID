@@ -34,10 +34,10 @@ def clogger(config, new_db):
     global _conn
     _conn = sql.Sql(config.tuid.database.name)
     if new_db == 'yes':
-        return Clogger(conn=_conn, kwargs=config)
+        return Clogger(conn=_conn, new_table=True, kwargs=config)
     elif new_db == 'no':
         if _clogger is None:
-            _clogger = Clogger(conn=_conn, kwargs=config)
+            _clogger = Clogger(conn=_conn, new_table=True, kwargs=config)
         return _clogger
     else:
         Log.error("expecting 'yes' or 'no'")
@@ -64,22 +64,17 @@ def test_tipfilling(clogger):
 
     clogger.disable_tipfilling = False
 
-    Log.note("Searching for {{curr}}", curr=current_tip)
     new_tip = None
     while num_trys > 0:
-        # Make sure tipfilling doesn't start until we are
-        # in this loop.
         new_tip = clogger.conn.get_one("SELECT max(revnum) AS revnum, revision FROM csetLog")
         if new_tip:
-            Log.note("Found {{new}}", new=new_tip[1])
             if current_tip == new_tip[1]:
                 new_tip = new_tip[1]
                 break
-        else:
-            Log.note("No tips found")
-            num_trys -= 1
-            Till(seconds=wait_time).wait()
+        num_trys -= 1
+        Till(seconds=wait_time).wait()
 
+    assert num_trys > 0
     assert current_tip == new_tip
 
 
@@ -191,6 +186,7 @@ def test_maintenance_and_deletion(clogger):
         _, tail_cset = clogger.get_tail(t)
 
     clogger.csets_todo_backwards.add((extra_to_add, True))
+    clogger.disable_backfilling = False
     new_tail = None
     tmp_num_trys = 0
     while tmp_num_trys < num_trys:
