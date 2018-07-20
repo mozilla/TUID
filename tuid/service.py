@@ -27,8 +27,9 @@ from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
 from tuid.statslogger import StatsLogger
-from tuid.clogger import Clogger
 from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL
+
+import tuid.clogger
 
 DEBUG = False
 ANNOTATE_DEBUG = False
@@ -52,7 +53,7 @@ GET_LATEST_MODIFICATION = "SELECT revision FROM latestFileMod WHERE file=?"
 class TUIDService:
 
     @override
-    def __init__(self, database, hg, hg_cache=None, conn=None, clogger=None, kwargs=None):
+    def __init__(self, database, hg, hg_cache=None, conn=None, clogger=None, start_workers=True, kwargs=None):
         try:
             self.config = kwargs
 
@@ -73,8 +74,14 @@ class TUIDService:
             self.total_locker = Lock()
             self.total_files_requested = 0
             self.total_tuids_mapped = 0
+
             self.statsdaemon = StatsLogger()
-            self.clogger = clogger if clogger else Clogger(conn=self.conn, tuid_service=self, kwargs=kwargs)
+            self.clogger = clogger if clogger else tuid.clogger.Clogger(
+                conn=self.conn,
+                tuid_service=self,
+                start_workers=start_workers,
+                kwargs=kwargs
+            )
         except Exception as e:
             Log.error("can not setup service", cause=e)
 

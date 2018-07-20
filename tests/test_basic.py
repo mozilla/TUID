@@ -28,11 +28,10 @@ _service = None
 def service(config, new_db):
     global _service
     if new_db == 'yes':
-        return TUIDService(database=Null, kwargs=config.tuid)
+        return TUIDService(database=Null, start_workers=False, kwargs=config.tuid)
     elif new_db == 'no':
         if _service is None:
-            _service = TUIDService(kwargs=config.tuid)
-            _service.clogger.disable_all()
+            _service = TUIDService(kwargs=config.tuid, start_workers=False)
         return _service
     else:
         Log.error("expecting 'yes' or 'no'")
@@ -106,7 +105,6 @@ def test_duplicate_ann_node_entries(service):
     file, tuids = service.get_tuids(files, rev)[0]
     tuids_arr = map_to_array(tuids)
     known_duplicate_lines = [[650, 709], [651, 710]]
-    print(tuids)
     for first_duped_line, second_duped_line in known_duplicate_lines:
         assert tuids_arr[first_duped_line-1] != tuids_arr[second_duped_line-1]
 
@@ -332,6 +330,7 @@ def test_many_files_one_revision(service):
     service.clogger.disable_all()
     service.clogger.initialize_to_range(first_front, test_rev)
     service.clogger.disable_backfilling = False
+    service.clogger.start_backfilling()
 
     with service.conn.transaction() as t:
         t.execute(
@@ -371,6 +370,7 @@ def test_one_addition_many_files(service):
     service.clogger.disable_all()
     service.clogger.initialize_to_range(old_rev, test_rev)
     service.clogger.disable_backfilling = False
+    service.clogger.start_backfilling()
 
     with service.conn.transaction() as t:
         t.execute(
@@ -552,6 +552,7 @@ def test_one_http_call_required(service):
     service.clogger.disable_all()
     service.clogger.initialize_to_range("d63ed14ed622", "14dc6342ec50")
     service.clogger.disable_backfilling = False
+    service.clogger.start_backfilling()
 
     # SETUP
     proc_files = ['/dom/base/Link.cpp'] + files[-10:] + [k for k in changed_files] # Useful in testing

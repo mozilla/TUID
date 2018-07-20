@@ -50,7 +50,7 @@ UPDATE_VERY_OLD_FRONTIERS = False
 
 
 class Clogger:
-    def __init__(self, conn=None, tuid_service=None, kwargs=None):
+    def __init__(self, conn=None, tuid_service=None, start_workers=True, kwargs=None):
         try:
             self.config = kwargs
             self.conn = conn if conn else sql.Sql(self.config.database.name)
@@ -92,18 +92,38 @@ class Clogger:
                 )
 
             Log.note(
-                "Table is filled with atleast {{minim}} entries. Starting workers...",
+                "Table is filled with atleast {{minim}} entries.",
                 minim=MINIMUM_PERMANENT_CSETS
             )
 
-            Thread.run('clogger-tip', self.fill_forward_continuous)
-            Thread.run('clogger-backfill', self.fill_backward_with_list)
-            Thread.run('clogger-maintenance', self.csetLog_maintenance)
-            Thread.run('clogger-deleter', self.csetLog_deleter)
-
-            Log.note("Started clogger workers.")
+            if start_workers:
+                self.start_workers()
         except Exception as e:
             Log.warning("Cannot setup clogger: {{cause}}", cause=str(e))
+
+    # TODO: Make these starters check if there is already a worker running.
+    def start_backfilling(self):
+        Thread.run('clogger-backfill', self.fill_backward_with_list)
+
+
+    def start_tipfillling(self):
+        Thread.run('clogger-tip', self.fill_forward_continuous)
+
+
+    def start_maintenance(self):
+        Thread.run('clogger-maintenance', self.csetLog_maintenance)
+
+
+    def start_deleter(self):
+        Thread.run('clogger-deleter', self.csetLog_deleter)
+
+
+    def start_workers(self):
+        self.start_tipfillling()
+        self.start_backfilling()
+        self.start_maintenance()
+        self.start_deleter()
+        Log.note("Started clogger workers.")
 
 
     def init_db(self):
