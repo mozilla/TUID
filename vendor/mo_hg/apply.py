@@ -7,8 +7,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
-import copy
-
+from mo_dots import wrap
 from mo_logs import Log
 
 
@@ -136,12 +135,14 @@ def apply_diff_backwards(file, diff):
     '''
     new_diffs = []
     for f_proc in diff['diffs']:
-        new_f_proc = copy.deepcopy(f_proc)
-        new_f_proc['old'].name = f_proc['new'].name
-        new_f_proc['new'].name = f_proc['old'].name
+        new_f_proc = wrap({
+            'old': {'name': f_proc['new'].name},
+            'new': {'name': f_proc['old'].name},
+            'changes': []
+        })
 
         new_changes = []
-        f_diff =  new_f_proc['changes']
+        f_diff =  f_proc['changes'].copy()
         for change in f_diff:
             if change.action == '+':
                 change.action = '-'
