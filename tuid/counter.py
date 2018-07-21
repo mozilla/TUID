@@ -9,6 +9,7 @@
 from __future__ import division
 from __future__ import unicode_literals
 
+from mo_logs import Log
 from mo_threads import Lock
 
 
@@ -44,3 +45,34 @@ class ManyCounter(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         with self.parent.locker:
             self.parent.value -= self.increment
+
+
+class Semaphore(object):
+
+    def __init__(self, max):
+        self.lock = Lock()
+        self.max = max
+        self.remaining = max
+
+    def __call__(self, timeout):
+        return SemaphoreContext(self, timeout)
+
+
+class SemaphoreContext(object):
+
+    def __init__(self, parent, timeout):
+        self.parent = parent
+        self.timeout = timeout
+
+    def __enter__(self):
+        with self.parent.lock:
+            while not self.timeout:
+                if self.parent.remaining:
+                    self.parent.remaining -= 1
+                    return self
+                self.parent.lock.wait(self.timeout)
+        Log.error("Timeout")
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        with self.parent.lock:
+            self.parent.remaining += 1
