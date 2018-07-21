@@ -25,6 +25,7 @@ from pyLibrary.meta import cache
 from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
+from tuid.counter import Counter, Semaphore
 from tuid.statslogger import StatsLogger
 from tuid.util import MISSING, TuidMap
 
@@ -63,12 +64,9 @@ class TUIDService:
                 self.init_db()
 
             self.locker = Lock()
-            self.request_locker = Lock()
-            self.ann_thread_locker = Lock()
-            self.service_thread_locker = Lock()
-            self.num_requests = 0
-            self.ann_threads_running = 0
-            self.service_threads_running = 0
+            self.num_requests = Semaphore(MAX_CONCURRENT_ANN_REQUESTS)
+            self.ann_threads_running = Counter()
+            self.service_threads_running = Counter()
             self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
             self.total_locker = Lock()
             self.total_files_requested = 0
@@ -238,45 +236,17 @@ class TUIDService:
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num, repo, please_stop=None):
-        with self.ann_thread_locker:
-            self.ann_threads_running += 1
-        url = HG_URL / repo / "json-annotate" / cset / file
-        if DEBUG:
-            Log.note("HG: {{url}}", url=url)
+        with self.ann_threads_running:
+            url = HG_URL / repo / "json-annotate" / cset / file
+            DEBUG and Log.note("HG: {{url}}", url=url)
 
-        # Wait until there is room to request
-        self.statsdaemon.update_anns_waiting(1)
-        num_requests = MAX_CONCURRENT_ANN_REQUESTS
-        timeout = Till(seconds=ANN_WAIT_TIME.seconds)
-        while num_requests >= MAX_CONCURRENT_ANN_REQUESTS and not timeout:
-            with self.request_locker:
-                num_requests = self.num_requests
-                if num_requests < MAX_CONCURRENT_ANN_REQUESTS:
-                    self.num_requests += 1
-                    break
-            if ANNOTATE_DEBUG:
-                Log.note("Waiting to request annotation at {{rev}} for file: {{file}}", rev=cset, file=file)
-            Till(seconds=MAX_ANN_REQUESTS_WAIT_TIME.seconds).wait()
-        self.statsdaemon.update_anns_waiting(-1)
-
-        annotated_files[thread_num] = []
-        if not timeout:
+            # Wait until there is room to request
             try:
-                annotated_files[thread_num] = http.get_json(url, retry=RETRY)
+                with self.statsdaemon.waiting:
+                    with self.num_requests(timeout=Till(seconds=ANN_WAIT_TIME.seconds)):
+                        annotated_files[thread_num] = http.get_json(url, retry=RETRY)
             except Exception as e:
-                Log.warning("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
-            finally:
-                with self.request_locker:
-                    self.num_requests -= 1
-        else:
-            Log.warning(
-                "Timeout {{timeout}} exceeded waiting for annotation: {{url}}",
-                timeout=ANN_WAIT_TIME,
-                url=url
-            )
-        with self.ann_thread_locker:
-            self.ann_threads_running -= 1
-        return
+                Log.warning("Problem getting annoation: {{url}}", url=url, cause=e)
 
 
     def get_diffs(self, csets, repo=None):
@@ -355,22 +325,6 @@ class TUIDService:
         return
 
 
-    def _add_thread(self):
-        with self.service_thread_locker:
-            self.service_threads_running += 1
-
-
-    def _remove_thread(self):
-        with self.service_thread_locker:
-            self.service_threads_running -= 1
-
-
-    def get_thread_count(self):
-        with self.service_thread_locker:
-            threads_running = self.service_threads_running
-        return threads_running
-
-
     def get_tuids_from_files(
             self,
             files,
@@ -411,197 +365,193 @@ class TUIDService:
         :return: The following tuple which contains:
                     ([list of (file, list(tuids)) tuples], True/False if completed or not)
         """
-        self._add_thread()
-        completed = True
+        with self.service_threads_running:
+            completed = True
 
-        if repo is None:
-            repo = self.config.hg.branch
-            check = self._check_branch(revision, repo)
-            if not check:
-                # Error was already output by _check_branch
-                self._remove_thread()
-                return [(file, []) for file in files], completed
+            if repo is None:
+                repo = self.config.hg.branch
+                check = self._check_branch(revision, repo)
+                if not check:
+                    # Error was already output by _check_branch
+                    return [(file, []) for file in files], completed
 
-        if repo in ('try',):
-            # We don't need to keep latest file revisions
-            # and other related things for this condition.
+            if repo in ('try',):
+                # We don't need to keep latest file revisions
+                # and other related things for this condition.
 
-            # Enable the 'try' repo calls with ENABLE_TRY
-            if ENABLE_TRY:
-                result = self._get_tuids_from_files_try_branch(files, revision), completed
-            else:
-                result = [(file, []) for file in files], completed
+                # Enable the 'try' repo calls with ENABLE_TRY
+                if ENABLE_TRY:
+                    result = self._get_tuids_from_files_try_branch(files, revision), completed
+                else:
+                    result = [(file, []) for file in files], completed
 
-            self._remove_thread()
-            return result
-
-        result = []
-        revision = revision[:12]
-        files = [file.lstrip('/') for file in files]
-        frontier_update_list = []
-
-        total = len(files)
-        latestFileMod_inserts = {}
-        new_files = []
-
-        log_existing_files = []
-        for count, file in enumerate(files):
-            # Go through all requested files and
-            # either update their frontier or add
-            # them to the DB through an initial annotation.
-
-            if DEBUG:
-                Log.note(" {{percent|percent(decimal=0)}}|{{file}}", file=file, percent=count / total)
-
-            with self.conn.transaction() as t:
-                latest_rev = self._get_latest_revision(file, transaction=t)
-                already_ann = self._get_annotation(revision, file, transaction=t)
-
-            # Check if the file has already been collected at
-            # this revision and get the result if so
-            if already_ann:
-                result.append((file,self.destringify_tuids(already_ann)))
-                if going_forward:
-                    latestFileMod_inserts[file] = (file, revision)
-                log_existing_files.append('exists|' + file)
-                continue
-            elif already_ann == '':
-                result.append((file,[]))
-                if going_forward:
-                    latestFileMod_inserts[file] = (file, revision)
-                log_existing_files.append('removed|' + file)
-                continue
-
-            if (latest_rev and latest_rev[0] != revision):
-                # File has a frontier, let's update it
-                if DEBUG:
-                    Log.note("Will update frontier for file {{file}}.", file=file)
-                frontier_update_list.append((file, latest_rev[0]))
-            elif latest_rev == revision:
-                with self.conn.transaction() as t:
-                    t.execute("DELETE FROM latestFileMod WHERE file = " + quote_value(file))
-                new_files.append(file)
-                Log.note(
-                    "Missing annotation for existing frontier - readding: "
-                    "{{rev}}|{{file}} ",
-                    file=file, rev=revision
-                )
-            else:
-                Log.note(
-                    "Frontier update - adding: "
-                    "{{rev}}|{{file}} ",
-                    file=file, rev=revision
-                )
-                new_files.append(file)
-
-        if DEBUG:
-            Log.note(
-                "Frontier update - already exist in DB: "
-                "{{rev}} || {{file_list}} ",
-                file_list=str(log_existing_files), rev=revision
-            )
-        else:
-            Log.note(
-                "Frontier update - already exist in DB for {{rev}}: "
-                    "{{count}}/{{total}} | {{percent|percent}}",
-                count=str(len(log_existing_files)), total=str(len(files)),
-                rev=revision, percent=len(log_existing_files)/len(files)
-            )
-
-        if len(latestFileMod_inserts) > 0:
-            with self.conn.transaction() as transaction:
-                for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
-                    transaction.execute(
-                        "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                        sql_list(
-                            sql_iso(sql_list(map(quote_value, i)))
-                            for i in inserts_list
-                        )
-                    )
-
-        def update_tuids_in_thread(
-                new_files,
-                frontier_update_list,
-                revision,
-                using_thread,
-                please_stop=None
-            ):
-            # Processes the new files and files which need their frontier updated
-            # outside of the main thread as this can take a long time.
-
-            result = []
-            try:
-                latestFileMod_inserts = {}
-                if len(new_files) > 0:
-                    # File has never been seen before, get it's initial
-                    # annotation to work from in the future.
-                    tmp_res = self.get_tuids(new_files, revision, commit=False)
-                    if tmp_res:
-                        result.extend(tmp_res)
-                    else:
-                        Log.note("Error occured for files " + str(new_files) + " in revision " + revision)
-
-                    # If this file has not been seen before,
-                    # add it to the latest modifications, else
-                    # it's already in there so update its past
-                    # revisions.
-                    for file in new_files:
-                        latestFileMod_inserts[file] = (file, revision)
-
-                Log.note("Finished updating frontiers. Updating DB table `latestFileMod`...")
-                if len(latestFileMod_inserts) > 0:
-                    with self.conn.transaction() as transaction:
-                        for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
-                            transaction.execute(
-                                "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                                sql_list(
-                                    sql_iso(sql_list(map(quote_value, i)))
-                                    for i in inserts_list
-                                )
-                            )
-
-                # If we have files that need to have their frontier updated, do that now
-                if len(frontier_update_list) > 0:
-                    tmp = self._update_file_frontiers(
-                        frontier_update_list,
-                        revision,
-                        going_forward=going_forward,
-                        max_csets_proc=max_csets_proc
-                    )
-                    result.extend(tmp)
-
-                if using_thread:
-                    self.statsdaemon.update_totals(0, len(result))
-                Log.note("Completed work overflow for revision {{cset}}", cset=revision)
-            except Exception as e:
-                Log.warning("Thread dead becasue of problem", cause=e)
-                result = []
-            finally:
-                self._remove_thread()
                 return result
 
-        threaded = False
-        if use_thread:
-            # If there are too many files to process, start a thread to do
-            # that work and return completed as False.
-            if (len(new_files) + len(frontier_update_list) > FILES_TO_PROCESS_THRESH):
-                threaded = True
+            result = []
+            revision = revision[:12]
+            files = [file.lstrip('/') for file in files]
+            frontier_update_list = []
 
-        if threaded:
-            completed = False
-            Log.note("Incomplete response given")
-            Thread.run(
-                'get_tuids_from_files (' + Random.base64(9) + ")",
-                update_tuids_in_thread, new_files, frontier_update_list, revision, threaded
-            )
-        else:
-            result.extend(
-                update_tuids_in_thread(new_files, frontier_update_list, revision, threaded)
-            )
-            self._remove_thread()
+            total = len(files)
+            latestFileMod_inserts = {}
+            new_files = []
 
-        self.statsdaemon.update_totals(len(files), len(result))
-        return result, completed
+            log_existing_files = []
+            for count, file in enumerate(files):
+                # Go through all requested files and
+                # either update their frontier or add
+                # them to the DB through an initial annotation.
+
+                if DEBUG:
+                    Log.note(" {{percent|percent(decimal=0)}}|{{file}}", file=file, percent=count / total)
+
+                with self.conn.transaction() as t:
+                    latest_rev = self._get_latest_revision(file, transaction=t)
+                    already_ann = self._get_annotation(revision, file, transaction=t)
+
+                # Check if the file has already been collected at
+                # this revision and get the result if so
+                if already_ann:
+                    result.append((file,self.destringify_tuids(already_ann)))
+                    if going_forward:
+                        latestFileMod_inserts[file] = (file, revision)
+                    log_existing_files.append('exists|' + file)
+                    continue
+                elif already_ann == '':
+                    result.append((file,[]))
+                    if going_forward:
+                        latestFileMod_inserts[file] = (file, revision)
+                    log_existing_files.append('removed|' + file)
+                    continue
+
+                if (latest_rev and latest_rev[0] != revision):
+                    # File has a frontier, let's update it
+                    if DEBUG:
+                        Log.note("Will update frontier for file {{file}}.", file=file)
+                    frontier_update_list.append((file, latest_rev[0]))
+                elif latest_rev == revision:
+                    with self.conn.transaction() as t:
+                        t.execute("DELETE FROM latestFileMod WHERE file = " + quote_value(file))
+                    new_files.append(file)
+                    Log.note(
+                        "Missing annotation for existing frontier - readding: "
+                        "{{rev}}|{{file}} ",
+                        file=file, rev=revision
+                    )
+                else:
+                    Log.note(
+                        "Frontier update - adding: "
+                        "{{rev}}|{{file}} ",
+                        file=file, rev=revision
+                    )
+                    new_files.append(file)
+
+            if DEBUG:
+                Log.note(
+                    "Frontier update - already exist in DB: "
+                    "{{rev}} || {{file_list}} ",
+                    file_list=str(log_existing_files), rev=revision
+                )
+            else:
+                Log.note(
+                    "Frontier update - already exist in DB for {{rev}}: "
+                        "{{count}}/{{total}} | {{percent|percent}}",
+                    count=str(len(log_existing_files)), total=str(len(files)),
+                    rev=revision, percent=len(log_existing_files)/len(files)
+                )
+
+            if len(latestFileMod_inserts) > 0:
+                with self.conn.transaction() as transaction:
+                    for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
+                        transaction.execute(
+                            "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+                            sql_list(
+                                sql_iso(sql_list(map(quote_value, i)))
+                                for i in inserts_list
+                            )
+                        )
+
+            def update_tuids_in_thread(
+                    new_files,
+                    frontier_update_list,
+                    revision,
+                    using_thread,
+                    please_stop=None
+                ):
+                # Processes the new files and files which need their frontier updated
+                # outside of the main thread as this can take a long time.
+
+                result = []
+                try:
+                    latestFileMod_inserts = {}
+                    if len(new_files) > 0:
+                        # File has never been seen before, get it's initial
+                        # annotation to work from in the future.
+                        tmp_res = self.get_tuids(new_files, revision, commit=False)
+                        if tmp_res:
+                            result.extend(tmp_res)
+                        else:
+                            Log.note("Error occured for files " + str(new_files) + " in revision " + revision)
+
+                        # If this file has not been seen before,
+                        # add it to the latest modifications, else
+                        # it's already in there so update its past
+                        # revisions.
+                        for file in new_files:
+                            latestFileMod_inserts[file] = (file, revision)
+
+                    Log.note("Finished updating frontiers. Updating DB table `latestFileMod`...")
+                    if len(latestFileMod_inserts) > 0:
+                        with self.conn.transaction() as transaction:
+                            for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
+                                transaction.execute(
+                                    "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
+                                    sql_list(
+                                        sql_iso(sql_list(map(quote_value, i)))
+                                        for i in inserts_list
+                                    )
+                                )
+
+                    # If we have files that need to have their frontier updated, do that now
+                    if len(frontier_update_list) > 0:
+                        tmp = self._update_file_frontiers(
+                            frontier_update_list,
+                            revision,
+                            going_forward=going_forward,
+                            max_csets_proc=max_csets_proc
+                        )
+                        result.extend(tmp)
+
+                    if using_thread:
+                        self.statsdaemon.update_totals(0, len(result))
+                    Log.note("Completed work overflow for revision {{cset}}", cset=revision)
+                except Exception as e:
+                    Log.warning("Thread dead becasue of problem", cause=e)
+                    result = []
+                finally:
+                    return result
+
+            threaded = False
+            if use_thread:
+                # If there are too many files to process, start a thread to do
+                # that work and return completed as False.
+                if (len(new_files) + len(frontier_update_list) > FILES_TO_PROCESS_THRESH):
+                    threaded = True
+
+            if threaded:
+                completed = False
+                Log.note("Incomplete response given")
+                Thread.run(
+                    'get_tuids_from_files (' + Random.base64(9) + ")",
+                    update_tuids_in_thread, new_files, frontier_update_list, revision, threaded
+                )
+            else:
+                result.extend(
+                    update_tuids_in_thread(new_files, frontier_update_list, revision, threaded)
+                )
+
+            self.statsdaemon.update_totals(len(files), len(result))
+            return result, completed
 
 
     def _apply_diff(self, transaction, annotation, diff, cset, file):
@@ -1353,16 +1303,14 @@ class TUIDService:
             # Get all the annotations in parallel and
             # store in annotated_files and
             # prevent too many threads from starting up here.
-            self.statsdaemon.update_threads_waiting(len(annotations_to_get))
-            num_threads = chunk
-            timeout = Till(seconds=ANN_WAIT_TIME.seconds)
-            while num_threads >= chunk and not timeout:
-                with self.ann_thread_locker:
-                    num_threads = self.ann_threads_running
+            with self.statsdaemon.threads_waiting(len(annotations_to_get)):
+                num_threads = chunk
+                timeout = Till(seconds=ANN_WAIT_TIME.seconds)
+                while num_threads >= chunk and not timeout:
+                    num_threads = self.ann_threads_running.value
                     if num_threads <= chunk:
                         break
-                Till(seconds=MAX_THREAD_WAIT_TIME.seconds).wait()
-            self.statsdaemon.update_threads_waiting(-len(annotations_to_get))
+                    Till(seconds=MAX_THREAD_WAIT_TIME.seconds).wait()
 
             if timeout:
                 Log.warning(
