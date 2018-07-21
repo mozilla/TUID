@@ -19,7 +19,7 @@ import memory_profiler
 from datetime import datetime
 
 DAEMON_WAIT_FOR_PC = 1 * MINUTE # Time until a percent complete log message is emitted.
-DAEMON_WAIT_FOR_THREADS = 1 * MINUTE # Time until a percent complete log message is emitted.
+DAEMON_WAIT_FOR_THREADS = 1 * MINUTE # Time until a thread count log message is emitted.
 DAEMON_MEMORY_LOG_INTERVAL = 10 * MINUTE # Time until the memory is logged.
 
 class StatsLogger:
