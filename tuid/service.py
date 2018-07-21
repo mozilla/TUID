@@ -64,9 +64,8 @@ class TUIDService:
                 self.init_db()
 
             self.locker = Lock()
-            self.request_locker = Lock()
             self.service_thread_locker = Lock()
-            self.num_requests = 0
+            self.num_requests = Counter()
             self.ann_threads_running = Counter()
             self.service_threads_running = 0
             self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
@@ -238,7 +237,7 @@ class TUIDService:
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num, repo, please_stop=None):
-        with ann_threads_running:
+        with self.ann_threads_running:
             url = HG_URL / repo / "json-annotate" / cset / file
             if DEBUG:
                 Log.note("HG: {{url}}", url=url)
@@ -248,11 +247,9 @@ class TUIDService:
             num_requests = MAX_CONCURRENT_ANN_REQUESTS
             timeout = Till(seconds=ANN_WAIT_TIME.seconds)
             while num_requests >= MAX_CONCURRENT_ANN_REQUESTS and not timeout:
-                with self.request_locker:
-                    num_requests = self.num_requests
-                    if num_requests < MAX_CONCURRENT_ANN_REQUESTS:
-                        self.num_requests += 1
-                        break
+                num_requests = self.num_requests.value
+                if num_requests < MAX_CONCURRENT_ANN_REQUESTS:
+                    break
                 if ANNOTATE_DEBUG:
                     Log.note("Waiting to request annotation at {{rev}} for file: {{file}}", rev=cset, file=file)
                 Till(seconds=MAX_ANN_REQUESTS_WAIT_TIME.seconds).wait()
@@ -260,13 +257,11 @@ class TUIDService:
 
             annotated_files[thread_num] = []
             if not timeout:
-                try:
-                    annotated_files[thread_num] = http.get_json(url, retry=RETRY)
-                except Exception as e:
-                    Log.warning("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
-                finally:
-                    with self.request_locker:
-                        self.num_requests -= 1
+                with self.num_requests:
+                    try:
+                        annotated_files[thread_num] = http.get_json(url, retry=RETRY)
+                    except Exception as e:
+                        Log.warning("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
             else:
                 Log.warning(
                     "Timeout {{timeout}} exceeded waiting for annotation: {{url}}",
