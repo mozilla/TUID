@@ -36,6 +36,7 @@ ANN_WAIT_TIME = 5 * HOUR
 MAX_CONCURRENT_ANN_REQUESTS = 5
 MAX_ANN_REQUESTS_WAIT_TIME = 5 * SECOND
 MAX_THREAD_WAIT_TIME = 5 * SECOND
+WORK_OVERFLOW_BATCH_SIZE = 3
 SQL_ANN_BATCH_SIZE = 5
 SQL_BATCH_SIZE = 500
 FILES_TO_PROCESS_THRESH = 5
@@ -312,6 +313,12 @@ class TUIDService:
 
 
     @cache(duration=DAY)
+    def get_clog(self, clog_url):
+        clog_obj = http.get_json(clog_url, retry=RETRY)
+        return clog_obj
+
+
+    @cache(duration=DAY)
     def _check_branch(self, revision, branch):
         '''
         Used to find out if the revision is in the given branch.
@@ -325,7 +332,7 @@ class TUIDService:
         clog_url = HG_URL / branch / 'json-log' / revision
         try:
             Log.note("Searching through changelog {{url}}", url=clog_url)
-            clog_obj = http.get_json(clog_url, retry=RETRY)
+            clog_obj = self.get_clog(clog_url)
             if isinstance(clog_obj, (text_type, str)):
                 Log.note(
                     "Revision {{cset}} does not exist in the {{branch}} branch",
@@ -570,14 +577,16 @@ class TUIDService:
                     )
                     result.extend(tmp)
 
-                if using_thread:
-                    self.statsdaemon.update_totals(0, len(result))
-                Log.note("Completed work overflow for revision {{cset}}", cset=revision)
             except Exception as e:
                 Log.warning("Thread dead becasue of problem", cause=e)
-                result = []
+                result = [[] for _ in range(len(new_files) + len(frontier_update_list))]
             finally:
                 self._remove_thread()
+
+                if using_thread:
+                    self.statsdaemon.update_totals(0, len(result))
+
+                Log.note("Completed work overflow for revision {{cset}}", cset=revision)
                 return result
 
         threaded = False
@@ -590,10 +599,22 @@ class TUIDService:
         if threaded:
             completed = False
             Log.note("Incomplete response given")
-            Thread.run(
-                'get_tuids_from_files (' + Random.base64(9) + ")",
-                update_tuids_in_thread, new_files, frontier_update_list, revision, threaded
-            )
+
+            thread_count = 0
+            prev_ind = 0
+            curr_ind = 0
+            while curr_ind <= len(frontier_update_list) or curr_ind <= len(new_files):
+                thread_count += 1
+                prev_ind = curr_ind
+                curr_ind += WORK_OVERFLOW_BATCH_SIZE
+                recomputed_new = new_files[prev_ind:curr_ind]
+                recomputed_frontier_updates = frontier_update_list[prev_ind:curr_ind]
+                Thread.run(
+                    'get_tuids_from_files (' + Random.base64(9) + ")",
+                    update_tuids_in_thread, recomputed_new, recomputed_frontier_updates, revision, threaded
+                )
+            for _ in range(1, thread_count): # Skip the first thread
+                self._add_thread()
         else:
             result.extend(
                 update_tuids_in_thread(new_files, frontier_update_list, revision, threaded)
@@ -727,7 +748,7 @@ class TUIDService:
             jsonrev_url = HG_URL / repo / 'json-rev' / curr_rev
             try:
                 Log.note("Searching through changelog {{url}}", url=jsonrev_url)
-                clog_obj = http.get_json(jsonrev_url, retry=RETRY)
+                clog_obj = self.get_clog(jsonrev_url)
                 if isinstance(clog_obj, (text_type, str)):
                     Log.error(
                         "Revision {{cset}} does not exist in the {{branch}} branch",
@@ -941,7 +962,7 @@ class TUIDService:
             clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
             try:
                 Log.note("Searching through changelog {{url}}", url=clog_url)
-                clog_obj = http.get_json(clog_url, retry=RETRY)
+                clog_obj = self.get_clog(clog_url)
                 if isinstance(clog_obj, (text_type, str)):
                     Log.error(
                         "Revision {{cset}} does not exist in the {{branch}} branch",
@@ -1652,7 +1673,7 @@ class TUIDService:
                     # Get a changelog
                     clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
                     try:
-                        clog_obj = http.get_json(clog_url, retry=RETRY)
+                        clog_obj = self.get_clog(clog_url)
                     except Exception as e:
                         Log.error("Unexpected error getting changset-log for {{url}}", url=clog_url, error=e)
 
