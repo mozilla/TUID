@@ -12,4 +12,5 @@ toposort
 whatthepatch
 flask
 beautifulsoup4
+memory_profiler
 
