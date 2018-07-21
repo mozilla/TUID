@@ -25,6 +25,7 @@ from pyLibrary.meta import cache
 from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
+from tuid.counter import Counter
 from tuid.statslogger import StatsLogger
 from tuid.util import MISSING, TuidMap
 
@@ -64,10 +65,9 @@ class TUIDService:
 
             self.locker = Lock()
             self.request_locker = Lock()
-            self.ann_thread_locker = Lock()
             self.service_thread_locker = Lock()
             self.num_requests = 0
-            self.ann_threads_running = 0
+            self.ann_threads_running = Counter()
             self.service_threads_running = 0
             self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
             self.total_locker = Lock()
@@ -238,45 +238,42 @@ class TUIDService:
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num, repo, please_stop=None):
-        with self.ann_thread_locker:
-            self.ann_threads_running += 1
-        url = HG_URL / repo / "json-annotate" / cset / file
-        if DEBUG:
-            Log.note("HG: {{url}}", url=url)
+        with ann_threads_running:
+            url = HG_URL / repo / "json-annotate" / cset / file
+            if DEBUG:
+                Log.note("HG: {{url}}", url=url)
 
-        # Wait until there is room to request
-        self.statsdaemon.update_anns_waiting(1)
-        num_requests = MAX_CONCURRENT_ANN_REQUESTS
-        timeout = Till(seconds=ANN_WAIT_TIME.seconds)
-        while num_requests >= MAX_CONCURRENT_ANN_REQUESTS and not timeout:
-            with self.request_locker:
-                num_requests = self.num_requests
-                if num_requests < MAX_CONCURRENT_ANN_REQUESTS:
-                    self.num_requests += 1
-                    break
-            if ANNOTATE_DEBUG:
-                Log.note("Waiting to request annotation at {{rev}} for file: {{file}}", rev=cset, file=file)
-            Till(seconds=MAX_ANN_REQUESTS_WAIT_TIME.seconds).wait()
-        self.statsdaemon.update_anns_waiting(-1)
-
-        annotated_files[thread_num] = []
-        if not timeout:
-            try:
-                annotated_files[thread_num] = http.get_json(url, retry=RETRY)
-            except Exception as e:
-                Log.warning("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
-            finally:
+            # Wait until there is room to request
+            self.statsdaemon.update_anns_waiting(1)
+            num_requests = MAX_CONCURRENT_ANN_REQUESTS
+            timeout = Till(seconds=ANN_WAIT_TIME.seconds)
+            while num_requests >= MAX_CONCURRENT_ANN_REQUESTS and not timeout:
                 with self.request_locker:
-                    self.num_requests -= 1
-        else:
-            Log.warning(
-                "Timeout {{timeout}} exceeded waiting for annotation: {{url}}",
-                timeout=ANN_WAIT_TIME,
-                url=url
-            )
-        with self.ann_thread_locker:
-            self.ann_threads_running -= 1
-        return
+                    num_requests = self.num_requests
+                    if num_requests < MAX_CONCURRENT_ANN_REQUESTS:
+                        self.num_requests += 1
+                        break
+                if ANNOTATE_DEBUG:
+                    Log.note("Waiting to request annotation at {{rev}} for file: {{file}}", rev=cset, file=file)
+                Till(seconds=MAX_ANN_REQUESTS_WAIT_TIME.seconds).wait()
+            self.statsdaemon.update_anns_waiting(-1)
+
+            annotated_files[thread_num] = []
+            if not timeout:
+                try:
+                    annotated_files[thread_num] = http.get_json(url, retry=RETRY)
+                except Exception as e:
+                    Log.warning("Unexpected error while trying to get annotate for {{url}}", url=url, cause=e)
+                finally:
+                    with self.request_locker:
+                        self.num_requests -= 1
+            else:
+                Log.warning(
+                    "Timeout {{timeout}} exceeded waiting for annotation: {{url}}",
+                    timeout=ANN_WAIT_TIME,
+                    url=url
+                )
+            return
 
 
     def get_diffs(self, csets, repo=None):
@@ -1357,10 +1354,9 @@ class TUIDService:
             num_threads = chunk
             timeout = Till(seconds=ANN_WAIT_TIME.seconds)
             while num_threads >= chunk and not timeout:
-                with self.ann_thread_locker:
-                    num_threads = self.ann_threads_running
-                    if num_threads <= chunk:
-                        break
+                num_threads = self.ann_threads_running.value
+                if num_threads <= chunk:
+                    break
                 Till(seconds=MAX_THREAD_WAIT_TIME.seconds).wait()
             self.statsdaemon.update_threads_waiting(-len(annotations_to_get))
 
