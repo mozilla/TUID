@@ -18,6 +18,9 @@ class Counter(object):
         self.locker = Lock()
         self.value = 0
 
+    def __call__(self, num):
+        return ManyCounter(self, num)
+
     def __enter__(self):
         with self.locker:
             self.value += 1
@@ -26,5 +29,18 @@ class Counter(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         with self.locker:
             self.value -= 1
+
+
+class ManyCounter(object):
+    def __init__(self, parent, increment):
+        self.parent = parent
+        self.increment = increment
+
+    def __enter__(self):
+        with self.parent.locker:
+            self.parent.value += self.increment
         return self
 
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        with self.parent.locker:
+            self.parent.value -= self.increment

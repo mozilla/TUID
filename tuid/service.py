@@ -242,17 +242,16 @@ class TUIDService:
                 Log.note("HG: {{url}}", url=url)
 
             # Wait until there is room to request
-            self.statsdaemon.update_anns_waiting(1)
-            num_requests = MAX_CONCURRENT_ANN_REQUESTS
-            timeout = Till(seconds=ANN_WAIT_TIME.seconds)
-            while num_requests >= MAX_CONCURRENT_ANN_REQUESTS and not timeout:
-                num_requests = self.num_requests.value
-                if num_requests < MAX_CONCURRENT_ANN_REQUESTS:
-                    break
-                if ANNOTATE_DEBUG:
-                    Log.note("Waiting to request annotation at {{rev}} for file: {{file}}", rev=cset, file=file)
-                Till(seconds=MAX_ANN_REQUESTS_WAIT_TIME.seconds).wait()
-            self.statsdaemon.update_anns_waiting(-1)
+            with self.statsdaemon.waiting:
+                num_requests = MAX_CONCURRENT_ANN_REQUESTS
+                timeout = Till(seconds=ANN_WAIT_TIME.seconds)
+                while num_requests >= MAX_CONCURRENT_ANN_REQUESTS and not timeout:
+                    num_requests = self.num_requests.value
+                    if num_requests < MAX_CONCURRENT_ANN_REQUESTS:
+                        break
+                    if ANNOTATE_DEBUG:
+                        Log.note("Waiting to request annotation at {{rev}} for file: {{file}}", rev=cset, file=file)
+                    Till(seconds=MAX_ANN_REQUESTS_WAIT_TIME.seconds).wait()
 
             annotated_files[thread_num] = []
             if not timeout:
@@ -1324,15 +1323,14 @@ class TUIDService:
             # Get all the annotations in parallel and
             # store in annotated_files and
             # prevent too many threads from starting up here.
-            self.statsdaemon.update_threads_waiting(len(annotations_to_get))
-            num_threads = chunk
-            timeout = Till(seconds=ANN_WAIT_TIME.seconds)
-            while num_threads >= chunk and not timeout:
-                num_threads = self.ann_threads_running.value
-                if num_threads <= chunk:
-                    break
-                Till(seconds=MAX_THREAD_WAIT_TIME.seconds).wait()
-            self.statsdaemon.update_threads_waiting(-len(annotations_to_get))
+            with self.statsdaemon.threads_waiting(len(annotations_to_get)):
+                num_threads = chunk
+                timeout = Till(seconds=ANN_WAIT_TIME.seconds)
+                while num_threads >= chunk and not timeout:
+                    num_threads = self.ann_threads_running.value
+                    if num_threads <= chunk:
+                        break
+                    Till(seconds=MAX_THREAD_WAIT_TIME.seconds).wait()
 
             if timeout:
                 Log.warning(

@@ -18,6 +18,8 @@ import tracemalloc
 import memory_profiler
 from datetime import datetime
 
+from tuid.counter import Counter
+
 DAEMON_WAIT_FOR_PC = 1 * MINUTE # Time until a percent complete log message is emitted.
 DAEMON_WAIT_FOR_THREADS = 1 * MINUTE # Time until a thread count log message is emitted.
 DAEMON_MEMORY_LOG_INTERVAL = 10 * MINUTE # Time until the memory is logged.
@@ -29,9 +31,8 @@ class StatsLogger:
         self.total_files_requested = 0
         self.total_tuids_mapped = 0
 
-        self.threads_locker = Lock()
-        self.waiting = 0
-        self.threads_waiting = 0
+        self.waiting = Counter()
+        self.threads_waiting = Counter()
 
         Thread.run("pc-daemon", self.run_pc_daemon)
         Thread.run("threads-daemon", self.run_threads_daemon)
@@ -67,26 +68,14 @@ class StatsLogger:
             except Exception as e:
                 Log.warning("Unexpected error in pc-daemon: {{cause}}", cause=e)
 
-
-    def update_threads_waiting(self, val):
-        with self.threads_locker:
-            self.threads_waiting += val
-
-
-    def update_anns_waiting(self, val):
-        with self.threads_locker:
-            self.waiting += val
-
-
     def run_threads_daemon(self, please_stop=None):
         while not please_stop:
             try:
-                with self.threads_locker:
-                    Log.note(
-                        "Currently {{waiting}} waiting to get annotation, and {{threads}} waiting to be created.",
-                        waiting=self.waiting,
-                        threads=self.threads_waiting
-                    )
+                Log.note(
+                    "Currently {{waiting}} waiting to get annotation, and {{threads}} waiting to be created.",
+                    waiting=self.waiting.value,
+                    threads=self.threads_waiting.value
+                )
                 (Till(seconds=DAEMON_WAIT_FOR_THREADS.seconds) | please_stop).wait()
             except Exception as e:
                 Log.warning("Unexpected error in pc-daemon: {{cause}}", cause=e)
