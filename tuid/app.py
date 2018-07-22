@@ -108,7 +108,7 @@ def tuid_endpoint(path):
             response, completed = [], False
         elif (service.statsdaemon.get_free_memory() >> 20) < FREE_MEMORY_LIMIT:
             if (service.statsdaemon.get_free_memory() >> 20) < MEMORY_KILL_THRESHOLD:
-                Log.note("Less than {{mem}} Mb left...", mem=MEMORY_KILL_THRESHOLD)
+                Log.warning("Only {{mem}} Mb left of memory...", mem=str(service.statsdaemon.get_free_memory() >> 20))
                 # TODO: Find a way to kill the server
             Log.note("Out of memory")
             response, completed = [], False
