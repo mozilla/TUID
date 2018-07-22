@@ -28,7 +28,8 @@ OVERVIEW = None
 QUERY_SIZE_LIMIT = 10 * 1000 * 1000
 EXPECTING_QUERY = b"expecting query\r\n"
 TOO_BUSY = 10
-TOO_MANY_THREADS = 500
+TOO_MANY_THREADS = 5
+FREE_MEMORY_LIMIT = 750 # Mb
 
 class TUIDApp(Flask):
 
@@ -103,6 +104,9 @@ def tuid_endpoint(path):
             response, completed = [], False
         elif service.get_thread_count() > TOO_MANY_THREADS:
             Log.note("Too many threads open")
+            response, completed = [], False
+        elif (service.statsdaemon.get_free_memory() >> 20) < FREE_MEMORY_LIMIT:
+            Log.note("Out of memory")
             response, completed = [], False
         else:
             # RETURN TUIDS

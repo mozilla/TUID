@@ -16,11 +16,12 @@ import linecache
 import os
 import tracemalloc
 import memory_profiler
+import psutil
 from datetime import datetime
 
 DAEMON_WAIT_FOR_PC = 1 * MINUTE # Time until a percent complete log message is emitted.
 DAEMON_WAIT_FOR_THREADS = 1 * MINUTE # Time until a thread count log message is emitted.
-DAEMON_MEMORY_LOG_INTERVAL = 10 * MINUTE # Time until the memory is logged.
+DAEMON_MEMORY_LOG_INTERVAL = 2 * MINUTE # Time until the memory is logged.
 
 class StatsLogger:
 
@@ -93,10 +94,6 @@ class StatsLogger:
 
 
     def display_top(self, snapshot, key_type='lineno', limit=20):
-        snapshot = snapshot.filter_traces((
-            tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
-            tracemalloc.Filter(False, "<unknown>"),
-        ))
         top_stats = snapshot.statistics(key_type)
 
         Log.note("Top {{num}} lines", num=limit)
@@ -124,6 +121,11 @@ class StatsLogger:
         Log.note("Total allocated size: {{size}} KiB", size=round(total / 1024, 1))
 
 
+    def get_free_memory(self):
+        tmp = psutil.virtual_memory()
+        return tmp.free
+
+
     def run_memory_daemon(self, please_stop):
         tracemalloc.start()
         old_max = 0
@@ -135,15 +137,20 @@ class StatsLogger:
                 max_rss = max(memory_profiler.memory_usage())
                 if max_rss > old_max:
                     old_max = max_rss
-                    snapshot = tracemalloc.take_snapshot()
+                    #snapshot = tracemalloc.take_snapshot()
                     Log.note(
-                        "{{currtime}} max-RSS {{maxrss}}",
-                        currtime=datetime.now(),
+                        "TUID Process - max-RSS {{maxrss}}",
                         maxrss=max_rss
                     )
 
-                if snapshot is not None:
-                    Log.note("Displaying snapshot...")
-                    self.display_top(snapshot)
+                mem = psutil.virtual_memory()
+                Log.note(
+                    "TUID Process - complete memory info: {{mem}}",
+                    mem=str(mem)
+                )
+
+                #if snapshot is not None:
+                #    Log.note("Displaying snapshot...")
+                #    self.display_top(snapshot)
             except Exception as e:
                 Log.warning("Error encountered while trying to log memory: {{cause}}", cause=e)
