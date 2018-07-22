@@ -17,7 +17,7 @@ from mo_logs import Log, Except
 from mo_threads import Thread, Till
 from mo_times import Timer
 from pyLibrary.env import http
-from pyLibrary.sql import sql_list, sql_iso
+from pyLibrary.sql import sql_list, sql_iso, quote_set
 from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR
 from tuid.service import TUIDService
 from tuid.util import map_to_array
@@ -28,10 +28,10 @@ _service = None
 def service(config, new_db):
     global _service
     if new_db == 'yes':
-        return TUIDService(database=Null, kwargs=config.tuid)
+        return TUIDService(database=Null, start_workers=False, kwargs=config.tuid)
     elif new_db == 'no':
         if _service is None:
-            _service = TUIDService(kwargs=config.tuid)
+            _service = TUIDService(kwargs=config.tuid, start_workers=False)
         return _service
     else:
         Log.error("expecting 'yes' or 'no'")
@@ -320,12 +320,28 @@ def test_many_files_one_revision(service):
     with open('resources/stressfiles.json', 'r') as f:
         files = json.load(f)
     test_file_init = ["widget/cocoa/nsCocoaWindow.mm"]
-    first_front = "739c536d2cd6"
-    test_rev = "159e1105bdc7"
     dir = ""
     tmp = [dir + f for f in files][:10]
 
     test_file = test_file_init + tmp
+    first_front = "739c536d2cd6"
+    test_rev = "159e1105bdc7"
+
+    service.clogger.disable_all()
+    service.clogger.initialize_to_range(first_front, test_rev)
+    service.clogger.disable_backfilling = False
+    service.clogger.start_backfilling()
+
+    with service.conn.transaction() as t:
+        t.execute(
+            "DELETE FROM latestFileMod WHERE file IN " +
+            quote_set(test_file)
+        )
+        t.execute(
+            "DELETE FROM annotations WHERE file IN " +
+            quote_set(test_file)
+        )
+
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
     old, _ = service.get_tuids_from_files(test_file,first_front, use_thread=False)
@@ -341,8 +357,33 @@ def test_many_files_one_revision(service):
 
 
 def test_one_addition_many_files(service):
+    old_rev = '159e1105bdc7'
+    test_rev = "58eb13b394f4"  # 11 Lines added, 1 removed
+
+    with open('resources/stressfiles.json', 'r') as f:
+        files = json.load(f)
+    test_file_change = ["widget/cocoa/nsCocoaWindow.mm"]
+    dir = ""
+    tmp = [dir + f for f in files][:1]  # TEST WITH SOME OTHER NUMBER OF FILES
+    test_file = test_file_change + tmp
+
+    service.clogger.disable_all()
+    service.clogger.initialize_to_range(old_rev, test_rev)
+    service.clogger.disable_backfilling = False
+    service.clogger.start_backfilling()
+
+    with service.conn.transaction() as t:
+        t.execute(
+            "DELETE FROM latestFileMod WHERE file IN " +
+            quote_set(test_file)
+        )
+        t.execute(
+            "DELETE FROM annotations WHERE file IN " +
+            quote_set(test_file)
+        )
+
     # Get current annotation
-    result, _ = service.get_tuids_from_files(["widget/cocoa/nsCocoaWindow.mm"], '159e1105bdc7')
+    result, _ = service.get_tuids_from_files(test_file_change, old_rev)
 
     _, curr_tuids = result[0]
     curr_tuid_array = map_to_array(curr_tuids)
@@ -350,17 +391,9 @@ def test_one_addition_many_files(service):
     # remove line 2148, add eleven lines
     expected_tuid_array = curr_tuid_array[:2147] + ([-1] * 11) + curr_tuid_array[2148:]
 
-    with open('resources/stressfiles.json', 'r') as f:
-        files = json.load(f)
-    test_file_change = ["widget/cocoa/nsCocoaWindow.mm"]
-    test_rev = "58eb13b394f4"  # 11 Lines added, 1 removed
-    dir = ""
-    tmp = [dir + f for f in files][:1]  # TEST WITH SOME OTHER NUMBER OF FILES
-
-    test_file = test_file_change + tmp
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
-    tuid_response, _ = service.get_tuids_from_files(test_file,test_rev, use_thread=False)
+    tuid_response, _ = service.get_tuids_from_files(test_file, test_rev, use_thread=False)
     print("new:")
     for filename, tuids in tuid_response:
         print("     "+filename+":"+str(len(tuids)))
@@ -516,11 +549,27 @@ def test_one_http_call_required(service):
         "dom/media/MediaManager.cpp": 1
     }
 
+    service.clogger.disable_all()
+    service.clogger.initialize_to_range("d63ed14ed622", "14dc6342ec50")
+    service.clogger.disable_backfilling = False
+    service.clogger.start_backfilling()
+
     # SETUP
-    proc_files = files[-10:] + [k for k in changed_files] # Useful in testing
+    proc_files = ['/dom/base/Link.cpp'] + files[-10:] + [k for k in changed_files] # Useful in testing
+
+    with service.conn.transaction() as t:
+        t.execute(
+            "DELETE FROM latestFileMod WHERE file IN " +
+            quote_set(proc_files)
+        )
+        t.execute(
+            "DELETE FROM annotations WHERE file IN " +
+            quote_set(proc_files)
+        )
+
     Log.note("Number of files to process: {{flen}}", flen=len(files))
     first_f_n_tuids, _ = service.get_tuids_from_files(
-        ['/dom/base/Link.cpp']+proc_files,
+        proc_files,
         "d63ed14ed622",
         use_thread=False
     )
@@ -530,7 +579,7 @@ def test_one_http_call_required(service):
     timer = Timer("get next revision")
     with timer:
         f_n_tuids, _ = service.get_tuids_from_files(
-            ['/dom/base/Link.cpp']+proc_files,
+            proc_files,
             "14dc6342ec50",
             use_thread=False
         )
@@ -539,7 +588,7 @@ def test_one_http_call_required(service):
     #assert num_http_calls <= 2
     assert timer.duration.seconds < 30
 
-    assert len(proc_files)+1 == len(f_n_tuids)
+    assert len(proc_files) == len(f_n_tuids)
 
     # Check removed files
     for (fname, tuids) in f_n_tuids:
@@ -591,6 +640,13 @@ def test_out_of_order_get_tuids_from_files(service):
     rev_latest = "4e9446f9e8f0"
     rev_middle = "9b7db28b360d"
     test_file = ["dom/base/nsWrapperCache.cpp"]
+    service.clogger.disable_all()
+    service.clogger.initialize_to_range(rev_initial, rev_latest)
+    test_file = ["dom/base/nsWrapperCache.cpp"]
+    with service.conn.transaction() as t:
+        t.execute("DELETE FROM latestFileMod WHERE file=" + quote_value(test_file[0]))
+        t.execute("DELETE FROM annotations WHERE file=" + quote_value(test_file[0]))
+
     check_lines = [41]
 
     result1, _ = service.get_tuids_from_files(test_file, rev_initial, use_thread=False)
@@ -598,6 +654,7 @@ def test_out_of_order_get_tuids_from_files(service):
     test_result, _ = service.get_tuids_from_files(test_file, rev_middle, use_thread=False)
     # Check that test_result's tuids at line 41 is different from
     # result 2.
+    entered = False
     for (fname, tuids2) in result2:
         if fname not in test_file:
             # If we find another file, this test fails
@@ -606,10 +663,12 @@ def test_out_of_order_get_tuids_from_files(service):
         for (fname_test, tuids_test) in test_result:
             # Check that check_line entries are different
             for count, tmap in enumerate(tuids2):
+                entered = True
                 if tmap.line not in check_lines:
                     assert tmap.tuid == tuids_test[count].tuid
                 else:
                     assert tmap.tuid != tuids_test[count].tuid
+    assert entered
 
 
 def test_out_of_order_going_forward_get_tuids_from_files(service):
@@ -617,15 +676,24 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
     rev_latest = "4e9446f9e8f0"
     rev_latest2 = "9dfb7673f106393b79226"
     rev_middle = "9b7db28b360d"
+
+    service.clogger.disable_all()
+    service.clogger.initialize_to_range(rev_initial, rev_latest2)
     test_file = ["dom/base/nsWrapperCache.cpp"]
+    with service.conn.transaction() as t:
+        t.execute("DELETE FROM latestFileMod WHERE file=" + quote_value(test_file[0]))
+        t.execute("DELETE FROM annotations WHERE file=" + quote_value(test_file[0]))
+
     check_lines = [41]
 
     result1, _ = service.get_tuids_from_files(test_file, rev_initial, going_forward=True, use_thread=False)
     result2, _ = service.get_tuids_from_files(test_file, rev_latest, going_forward=True, use_thread=False)
     test_result, _ = service.get_tuids_from_files(test_file, rev_middle, going_forward=True, use_thread=False)
     result2, _ = service.get_tuids_from_files(test_file, rev_latest2, going_forward=True, use_thread=False)
+
     # Check that test_result's tuids at line 41 is different from
     # result 2.
+    entered = False
     for (fname, tuids2) in result2:
         if fname not in test_file:
             # If we find another file, this test fails
@@ -634,10 +702,12 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
         for (fname_test, tuids_test) in test_result:
             # Check that check_line entries are different
             for count, tmap in enumerate(tuids2):
+                entered = True
                 if tmap.line not in check_lines:
                     assert tmap.tuid == tuids_test[count].tuid
                 else:
                     assert tmap.tuid != tuids_test[count].tuid
+    assert entered
 
 
 @pytest.mark.first_run
@@ -693,6 +763,12 @@ def test_merged_changes(service):
     test_files = [
         "js/src/wasm/WasmTextToBinary.cpp"
     ]
+    service.clogger.disable_all()
+    service.clogger.initialize_to_range(old_rev, new_rev)
+    with service.conn.transaction() as t:
+        t.execute("DELETE FROM latestFileMod WHERE file=" + quote_value(test_files[0]))
+        t.execute("DELETE FROM annotations WHERE file=" + quote_value(test_files[0]))
+
     old_tuids, _ = service.get_tuids_from_files(test_files, old_rev, use_thread=False)
     new_tuids, _ = service.get_tuids_from_files(test_files, new_rev, use_thread=False)
 
@@ -731,6 +807,8 @@ def test_very_distant_files(service):
     test_files = [
         "docshell/base/nsDocShell.cpp"
     ]
+    service.clogger.disable_all()
+    service.clogger.initialize_to_range(old_rev, new_rev)
 
     with service.conn.transaction() as t:
         t.execute("DELETE FROM annotations WHERE revision = " + quote_value(new_rev))
