@@ -11,15 +11,15 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import os
-
 import flask
-from flask import Flask, Response
+from flask import Flask, Response, request
 
 from mo_dots import listwrap, coalesce, unwraplist
 from mo_json import value2json, json2value
 from mo_logs import Log, constants, startup, Except
 from mo_logs.strings import utf82unicode, unicode2utf8
 from mo_times import Timer, Date
+from pyLibrary.env import http
 from pyLibrary.env.flask_wrappers import cors_wrapper
 from tuid.service import TUIDService
 from tuid.util import map_to_array
@@ -29,7 +29,8 @@ QUERY_SIZE_LIMIT = 10 * 1000 * 1000
 EXPECTING_QUERY = b"expecting query\r\n"
 TOO_BUSY = 10
 TOO_MANY_THREADS = 5
-FREE_MEMORY_LIMIT = 750 # Mb
+FREE_MEMORY_LIMIT = 1500 # Mb
+MEMORY_KILL_THRESHOLD = 750 # Mb
 
 class TUIDApp(Flask):
 
@@ -106,6 +107,9 @@ def tuid_endpoint(path):
             Log.note("Too many threads open")
             response, completed = [], False
         elif (service.statsdaemon.get_free_memory() >> 20) < FREE_MEMORY_LIMIT:
+            if (service.statsdaemon.get_free_memory() >> 20) < MEMORY_KILL_THRESHOLD:
+                Log.note("Less than {{mem}} Mb left...", mem=MEMORY_KILL_THRESHOLD)
+                # TODO: Find a way to kill the server
             Log.note("Out of memory")
             response, completed = [], False
         else:
@@ -180,12 +184,22 @@ def _default(path):
         }
     )
 
+'''
+# TODO: Remove once memory issues are resolved.
+@cors_wrapper
+def shutdown_server():
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError('Not running with the Werkzeug Server')
+    func()
+'''
 
 if __name__ in ("__main__",):
     Log.note("Starting TUID Service App...")
     flask_app = TUIDApp(__name__)
     flask_app.add_url_rule(str('/'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
     flask_app.add_url_rule(str('/<path:path>'), None, tuid_endpoint, methods=[str('GET'), str('POST')])
+    #flask_app.add_url_rule(str('/shutdown'), None, shutdown_server, methods=[str('POST')])
 
     try:
         config = startup.read_settings(
