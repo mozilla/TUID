@@ -28,7 +28,7 @@ OVERVIEW = None
 QUERY_SIZE_LIMIT = 10 * 1000 * 1000
 EXPECTING_QUERY = b"expecting query\r\n"
 TOO_BUSY = 10
-TOO_MANY_THREADS = 25
+TOO_MANY_THREADS = 500
 
 class TUIDApp(Flask):
 
