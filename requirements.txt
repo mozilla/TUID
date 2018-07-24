@@ -13,4 +13,3 @@ whatthepatch
 flask
 beautifulsoup4
 psutil
-copy
