@@ -32,6 +32,9 @@ class StatsLogger:
         self.waiting = 0
         self.threads_waiting = 0
 
+        self.prev_mem = 0
+        self.curr_mem = 0
+
         Thread.run("pc-daemon", self.run_pc_daemon)
         Thread.run("threads-daemon", self.run_threads_daemon)
         Thread.run("memory-daemon", self.run_memory_daemon)
@@ -91,9 +94,37 @@ class StatsLogger:
                 Log.warning("Unexpected error in pc-daemon: {{cause}}", cause=e)
 
 
+    def set_process(self, pid):
+        self.processtolog = psutil.Process(os.getpid())
+
+
+    def get_process_memory(self):
+        return round(self.processtolog.memory_info().rss / (1000 * 1000), 2)
+
+
+    def print_proc_memory_used(self, loc):
+        self.prev_mem = self.curr_mem
+        self.curr_mem = self.get_process_memory()
+        Log.note(
+            "Used memory since last call: {{mem}}",
+            loc=loc,
+            mem=self.curr_mem - self.prev_mem
+        )
+
+
     def get_free_memory(self):
         tmp = psutil.virtual_memory()
-        return tmp.free
+        return tmp.free >> 20
+
+
+    def get_used_memory(self):
+        tmp = psutil.virtual_memory()
+        return tmp.used >> 20
+
+
+    def get_used_memory_percent(self):
+        tmp = psutil.virtual_memory()
+        return tmp.percent
 
 
     def run_memory_daemon(self, please_stop):

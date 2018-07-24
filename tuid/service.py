@@ -9,6 +9,8 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import gc
+import copy
+
 from mo_times import Timer
 from jx_python import jx
 from mo_dots import Null, coalesce, wrap
@@ -154,14 +156,11 @@ class TUIDService:
                 "INSERT INTO temporal (tuid, revision, file, line) VALUES (?, ?, ?, ?)",
                 (-1, rev[:12], file_name, 0)
             )
-            # if commit:
-            #     self.conn.commit()
         return MISSING
 
 
     def insert_annotate_dummy(self, transaction, rev, file_name, commit=True):
         # Inserts annotation dummy: (rev, file, '')
-
         if not self._dummy_annotate_exists(transaction, file_name, rev):
             self.insert_annotations(transaction, [(rev[:12], file_name, '')])
 
@@ -1162,7 +1161,7 @@ class TUIDService:
             tuids = tmp_results[f]
             if f in anns_added_by_other_thread:
                 tuids = anns_added_by_other_thread[f]
-            result.append((f, tuids))
+            result.append((copy.deepcopy(f), copy.deepcopy(tuids)))
         return result
 
 
@@ -1273,6 +1272,9 @@ class TUIDService:
                     )
                 )
 
+            del annotations_to_get[:]
+            del annotated_files[:]
+
         # Help for memory
         gc.collect()
         return results
@@ -1330,6 +1332,7 @@ class TUIDService:
                     ) for tuid, f, rev, line_num in list(part_of_insert)
                 )
             )
+
         return new_line_origins
 
 
@@ -1353,16 +1356,21 @@ class TUIDService:
             ).data
         }
 
+        # Explicitly remove reference cycle
+        del file_names
+        del revs_to_find
+        del lines_to_find
+
         # Recompute existing tuids based on line_origins
         # entry ordering because we can't order them any other way
         # since the `line` entry in the `temporal` table is relative
         # to it's creation date, not the currently requested
         # annotation.
-        existing_tuids = {
-            (line_num + 1): existing_tuids_tmp[str(ann_entry)]
-            for line_num, ann_entry in enumerate(line_origins)
-            if str(ann_entry) in existing_tuids_tmp
-        }
+        existing_tuids = {}
+        for line_num, ann_entry in enumerate(line_origins):
+            if str(ann_entry) in existing_tuids_tmp:
+                existing_tuids[line_num + 1] = copy.deepcopy(existing_tuids_tmp[str(ann_entry)])
+
         new_lines = set([line_num + 1 for line_num, _ in enumerate(line_origins)]) - set(existing_tuids.keys())
         return new_lines, existing_tuids
 
@@ -1393,10 +1401,8 @@ class TUIDService:
         :return: List of TuidMap objects
         '''
         results = []
-
         for fcount, annotated_object in enumerate(annotated_files):
             file = files[fcount]
-
             # TODO: Replace old empty annotation if a new one is found
             # TODO: at the same revision and if it is not empty as well.
             # Make sure we are not adding the same thing another thread
@@ -1448,13 +1454,14 @@ class TUIDService:
                 # If the line added by `cset_len12` is not known
                 # add it. Use the 'abspath' field to determine the
                 # name of the file it was created in (in case it was
-                # changed).
-                line_origins.append((node['abspath'], cset_len12, int(node['targetline'])))
+                # changed). Copy to make sure we don't create a reference
+                # here.
+                line_origins.append(copy.deepcopy((node['abspath'], cset_len12, int(node['targetline']))))
 
             # Update DB with any revisions found in annotated
             # object that are not in the DB.
-            new_lines, existing_tuids = self.get_new_lines(transaction, line_origins)
             new_line_origins = {}
+            new_lines, existing_tuids = self.get_new_lines(transaction, line_origins)
             if len(new_lines) > 0:
                 try:
                     new_line_origins = self.insert_tuids_with_duplicates(
@@ -1465,8 +1472,9 @@ class TUIDService:
                         line_origins
                     )
 
-                    # Format so we don't have to use [0] to get at the tuid
-                    new_line_origins = {line_num: new_line_origins[line_num][0] for line_num in new_line_origins}
+                    # Format so we don't have to use [0] to get at the tuids
+                    for linenum in new_line_origins:
+                        new_line_origins[linenum] = new_line_origins[linenum][0]
                 except Exception as e:
                     # Something broke for this file, ignore it and go to the
                     # next one.
@@ -1481,15 +1489,18 @@ class TUIDService:
                 else:
                     tuids.append(TuidMap(new_line_origins[line_num], line_num))
 
+            str_tuids = self.stringify_tuids(tuids)
+            entry = [(
+                revision,
+                file,
+                str_tuids
+            )]
+
             self.insert_annotations(
                 transaction,
-                [(
-                    revision,
-                    file,
-                    self.stringify_tuids(tuids)
-                )]
+                entry
             )
-            results.append((file, tuids))
+            results.append((copy.deepcopy(file), copy.deepcopy(tuids)))
 
         return results
 
