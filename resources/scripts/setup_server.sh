@@ -100,6 +100,9 @@ sudo pip install supervisor
 cd /usr/bin
 sudo ln -s /usr/bin/supervisorctl supervisorctl
 
+# GET MEMMON
+sudo yum install python-setuptools
+sudo easy_install superlance
 
 # SIMPLE PLACE FOR LOGS
 sudo chown ec2-user:ec2-user -R /data1
