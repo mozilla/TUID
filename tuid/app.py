@@ -106,9 +106,9 @@ def tuid_endpoint(path):
         elif service.get_thread_count() > TOO_MANY_THREADS:
             Log.note("Too many threads open")
             response, completed = [], False
-        elif (service.statsdaemon.get_free_memory() >> 20) < FREE_MEMORY_LIMIT:
-            if (service.statsdaemon.get_free_memory() >> 20) < MEMORY_KILL_THRESHOLD:
-                Log.warning("Only {{mem}} Mb left of memory...", mem=str(service.statsdaemon.get_free_memory() >> 20))
+        elif (service.statsdaemon.get_free_memory()) < FREE_MEMORY_LIMIT:
+            if (service.statsdaemon.get_free_memory()) < MEMORY_KILL_THRESHOLD:
+                Log.warning("Only {{mem}} Mb left of memory...", mem=str(service.statsdaemon.get_free_memory()))
                 # TODO: Find a way to kill the server
             Log.note("Out of memory")
             response, completed = [], False
