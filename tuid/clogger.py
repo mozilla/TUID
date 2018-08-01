@@ -543,23 +543,11 @@ class Clogger:
     def fill_forward_continuous(self, please_stop=None):
         while not please_stop:
             try:
-                waiting_a_bit = False
-                if self.disable_tipfilling:
-                    waiting_a_bit = True
-
-                if not waiting_a_bit:
-                    # If an update was done, check if there are
-                    # more changesets that have arrived just in case,
-                    # otherwise, we wait.
-                    did_an_update = self.update_tip()
-                    if not did_an_update:
-                        waiting_a_bit = True
-
-                if waiting_a_bit:
-                    (please_stop | Till(seconds=CSET_TIP_WAIT_TIME)).wait()
-                    continue
+                while not please_stop and not self.disable_tipfilling and self.update_tip():
+                    pass
+                (please_stop | Till(seconds=CSET_TIP_WAIT_TIME)).wait()
             except Exception as e:
-                Log.warning("Unknown error occurred during tip maintenance:", cause=e)
+                Log.warning("Unknown error occurred during tip filling:", cause=e)
 
 
     def csetLog_maintenance(self, please_stop=None):
