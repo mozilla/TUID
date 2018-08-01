@@ -319,13 +319,13 @@ class TUIDService:
         return results
 
 
-    @cache(duration=DAY)
+    @cache(duration=HOUR)
     def get_clog(self, clog_url):
         clog_obj = http.get_json(clog_url, retry=RETRY)
         return clog_obj
 
 
-    @cache(duration=DAY)
+    @cache(duration=HOUR)
     def _check_branch(self, revision, branch):
         '''
         Used to find out if the revision is in the given branch.
