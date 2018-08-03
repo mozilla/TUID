@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from time import sleep
 
 from mo_dots import Data, unwraplist, Null
-from mo_future import get_ident, start_new_thread, interrupt_main, get_function_name, text_type
+from mo_future import get_ident, start_new_thread, interrupt_main, get_function_name, text_type, allocate_lock
 from mo_logs import Log, Except
 from mo_threads.lock import Lock
 from mo_threads.profiles import CProfiler
@@ -441,7 +441,7 @@ def _interrupt_main_safely():
 
 MAIN_THREAD = MainThread()
 
-ALL_LOCK = Lock("threads ALL_LOCK")
+ALL_LOCK = allocate_lock()
 ALL = dict()
 ALL[get_ident()] = MAIN_THREAD
 
