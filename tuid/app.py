@@ -28,9 +28,8 @@ OVERVIEW = None
 QUERY_SIZE_LIMIT = 10 * 1000 * 1000
 EXPECTING_QUERY = b"expecting query\r\n"
 TOO_BUSY = 10
-TOO_MANY_THREADS = 5
+TOO_MANY_THREADS = 4
 FREE_MEMORY_LIMIT = 750 # Mb
-MEMORY_KILL_THRESHOLD = 250 # Mb
 
 class TUIDApp(Flask):
 
@@ -106,11 +105,21 @@ def tuid_endpoint(path):
         elif service.get_thread_count() > TOO_MANY_THREADS:
             Log.note("Too many threads open")
             response, completed = [], False
-        elif (service.statsdaemon.get_free_memory()) < FREE_MEMORY_LIMIT:
-            if (service.statsdaemon.get_free_memory()) < MEMORY_KILL_THRESHOLD:
-                Log.warning("Only {{mem}} Mb left of memory...", mem=str(service.statsdaemon.get_free_memory()))
-                # TODO: Find a way to kill the server
-            Log.note("Out of memory")
+        elif service.statsdaemon.out_of_memory_restart or\
+            (service.statsdaemon.get_free_memory()) < FREE_MEMORY_LIMIT:
+
+            work_done = service.statsdaemon.get_percent_complete()
+            if work_done == 100:
+                Log.note("Out of memory, attempting to restart service.")
+                return 1
+
+            # If we run out of memory once, don't take anymore requests
+            # and restart the service to prevent a complete machine crash.
+            Log.note(
+                "Out of memory...waiting for {{done}}% of files requested to finish before restarting.",
+                done=100-work_done
+            )
+            service.statsdaemon.out_of_memory_restart = True
             response, completed = [], False
         else:
             # RETURN TUIDS
@@ -184,22 +193,12 @@ def _default(path):
         }
     )
 
-'''
-# TODO: Remove once memory issues are resolved.
-@cors_wrapper
-def shutdown_server():
-    func = request.environ.get('werkzeug.server.shutdown')
-    if func is None:
-        raise RuntimeError('Not running with the Werkzeug Server')
-    func()
-'''
 
 if __name__ in ("__main__",):
     Log.note("Starting TUID Service App...")
     flask_app = TUIDApp(__name__)
     flask_app.add_url_rule(str('/'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
     flask_app.add_url_rule(str('/<path:path>'), None, tuid_endpoint, methods=[str('GET'), str('POST')])
-    #flask_app.add_url_rule(str('/shutdown'), None, shutdown_server, methods=[str('POST')])
 
     try:
         config = startup.read_settings(
