@@ -358,11 +358,13 @@ class RegisterThread(object):
         self.thread = thread
 
     def __enter__(self):
-        ALL[self.thread.id] = self.thread
+        with ALL_LOCK:
+            ALL[self.thread.id] = self.thread
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        del ALL[self.thread.id]
+        with ALL_LOCK:
+            del ALL[self.thread.id]
 
 
 def stop_main_thread(*args):
