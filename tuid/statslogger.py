@@ -24,6 +24,8 @@ DAEMON_MEMORY_LOG_INTERVAL = 2 * MINUTE # Time until the memory is logged.
 class StatsLogger:
 
     def __init__(self):
+        self.out_of_memory_restart = False
+
         self.total_locker = Lock()
         self.total_files_requested = 0
         self.total_tuids_mapped = 0
@@ -38,6 +40,15 @@ class StatsLogger:
         Thread.run("pc-daemon", self.run_pc_daemon)
         Thread.run("threads-daemon", self.run_threads_daemon)
         Thread.run("memory-daemon", self.run_memory_daemon)
+
+
+    def get_percent_complete(self):
+        with self.total_locker:
+            if self.total_files_requested > 0:
+                pc = round(self.total_tuids_mapped / self.total_files_requested, 4)
+            else:
+                pc = 1.0
+        return 100 * pc
 
 
     def update_totals(self, num_files_req, num_tuids_mapped):

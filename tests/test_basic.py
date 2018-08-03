@@ -237,9 +237,8 @@ def test_parallel_get_tuids(service):
 
 
 def test_500_file(service):
-    # this file has no history (nore should it have tuids)
-    # calling hg will return a 500 error
-    tuids = service.get_tuids("/browser/tools/mozscreenshots/mozscreenshots/extension/lib/robot_upperleft.png", "d3ed36f4fb7a")
+    # This file is non existent and should not have tuids
+    tuids = service.get_tuids("/browser/garbage.garbage", "d3ed36f4fb7a")
     assert len(tuids[0][1]) == 0
 
 
