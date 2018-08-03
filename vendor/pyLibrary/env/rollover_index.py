@@ -42,10 +42,12 @@ class RolloverIndex(object):
         rollover_max,        # remove old indexes, do not add old records
         queue_size=10000,    # number of documents to queue in memory
         batch_size=5000,     # number of documents to push at once
-        tjson=None,          # indicate if we are expected typed json
+        typed=None,          # indicate if we are expected typed json
         kwargs=None          # plus additional ES settings
     ):
-        if tjson == None:
+        if kwargs.tjson != None:
+            Log.error
+        if typed == None:
             Log.error("not expected")
 
         self.settings = kwargs

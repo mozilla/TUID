@@ -46,7 +46,7 @@ def _late_import():
     try:
         _json_encoder = get_module("mo_json.encoder").json_encoder
     except Exception:
-        _json_encoder = _json.dumps
+        _json_encoder = lambda value, pretty: _json.dumps(value)
     from mo_logs import Log as _Log
     from mo_logs.exceptions import Except as _Except
     from mo_times.durations import Duration as _Duration
@@ -187,7 +187,7 @@ def tab(value):
     :return:
     """
     if isinstance(value, Mapping):
-        h, d = zip(*wrap(value).leaves())
+        h, d = transpose(*wrap(value).leaves())
         return (
             "\t".join(map(value2json, h)) +
             "\n" +
@@ -484,16 +484,20 @@ _SNIP = "...<snip>..."
 
 @formatter
 def limit(value, length):
-    # LIMIT THE STRING value TO GIVEN LENGTH, CHOPPING OUT THE MIDDLE IF REQUIRED
-    if len(value) <= length:
-        return value
-    elif length < len(_SNIP) * 2:
-        return value[0:length]
-    else:
-        lhs = int(round((length - len(_SNIP)) / 2, 0))
-        rhs = length - len(_SNIP) - lhs
-        return value[:lhs] + _SNIP + value[-rhs:]
-
+    try:
+        # LIMIT THE STRING value TO GIVEN LENGTH, CHOPPING OUT THE MIDDLE IF REQUIRED
+        if len(value) <= length:
+            return value
+        elif length < len(_SNIP) * 2:
+            return value[0:length]
+        else:
+            lhs = int(round((length - len(_SNIP)) / 2, 0))
+            rhs = length - len(_SNIP) - lhs
+            return value[:lhs] + _SNIP + value[-rhs:]
+    except Exception as e:
+        if not _Duration:
+            _late_import()
+        _Log.error("Not expected", cause=e)
 
 @formatter
 def split(value, sep="\n"):
