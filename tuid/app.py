@@ -10,6 +10,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
+import sys
 import os
 import flask
 from flask import Flask, Response, request
@@ -111,7 +112,7 @@ def tuid_endpoint(path):
             work_done = service.statsdaemon.get_percent_complete()
             if work_done == 100:
                 Log.note("Out of memory, attempting to restart service.")
-                return 1
+                sys.exit(1)
 
             # If we run out of memory once, don't take anymore requests
             # and restart the service to prevent a complete machine crash.
