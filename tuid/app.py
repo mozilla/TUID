@@ -30,7 +30,7 @@ QUERY_SIZE_LIMIT = 10 * 1000 * 1000
 EXPECTING_QUERY = b"expecting query\r\n"
 TOO_BUSY = 10
 TOO_MANY_THREADS = 4
-FREE_MEMORY_LIMIT = 99999999 # Mb
+FREE_MEMORY_LIMIT = 1000 # Mb
 
 class TUIDApp(Flask):
 
@@ -111,8 +111,8 @@ def tuid_endpoint(path):
 
             work_done = service.statsdaemon.get_percent_complete()
             if work_done == 100:
-                Log.note("Out of memory, attempting to restart service.")
-                http.post(config.client.endpoint + '/shutdown')
+                Log.note("Out of memory, attempting to restart service. {{mem}} Mb left.", mem=service.statsdaemon.get_free_memory())
+                http.post('http://' + str(config.flask.host) + ":" + str(config.flask.port) + '/shutdown')
 
             # If we run out of memory once, don't take anymore requests
             # and restart the service to prevent a complete machine crash.
@@ -195,19 +195,18 @@ def _default(path):
     )
 
 
-def shutdown_server():
-    func = request.environ.get('werkzeug.server.shutdown')
-    if func is None:
-        raise RuntimeError('Not running with the Werkzeug Server')
-    func()
-
-
 if __name__ in ("__main__",):
     Log.note("Starting TUID Service App...")
     flask_app = TUIDApp(__name__)
     flask_app.add_url_rule(str('/'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
-    flask_app.add_url_rule(str('/shutdown'), None, shutdown_server, methods=[str('GET'), str('POST')])
     flask_app.add_url_rule(str('/<path:path>'), None, tuid_endpoint, methods=[str('GET'), str('POST')])
+
+    @flask_app.route('/shutdown', methods=[str('GET'), str('POST')])
+    def shutdown_server():
+        func = request.environ.get('werkzeug.server.shutdown')
+        if func is None:
+            raise RuntimeError('Not running with the Werkzeug Server')
+        func()
 
     try:
         config = startup.read_settings(
@@ -218,6 +217,7 @@ if __name__ in ("__main__",):
 
         service = TUIDService(config.tuid)
         Log.note("Started TUID Service")
+        Log.note("Current free memory: {{mem}} Mb", mem=service.statsdaemon.get_free_memory())
     except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
         try:
             Log.error("Serious problem with TUID service construction!  Shutdown!", cause=e)
@@ -229,5 +229,4 @@ if __name__ in ("__main__",):
             config.flask.port += config.args.process_num
         Log.note("Running Flask...")
         flask_app.run(**config.flask)
-
 
