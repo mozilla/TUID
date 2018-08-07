@@ -30,7 +30,7 @@ QUERY_SIZE_LIMIT = 10 * 1000 * 1000
 EXPECTING_QUERY = b"expecting query\r\n"
 TOO_BUSY = 10
 TOO_MANY_THREADS = 4
-FREE_MEMORY_LIMIT = 750 # Mb
+FREE_MEMORY_LIMIT = 99999999 # Mb
 
 class TUIDApp(Flask):
 
@@ -112,7 +112,7 @@ def tuid_endpoint(path):
             work_done = service.statsdaemon.get_percent_complete()
             if work_done == 100:
                 Log.note("Out of memory, attempting to restart service.")
-                sys.exit(1)
+                http.post(config.client.endpoint + '/shutdown')
 
             # If we run out of memory once, don't take anymore requests
             # and restart the service to prevent a complete machine crash.
@@ -195,10 +195,18 @@ def _default(path):
     )
 
 
+def shutdown_server():
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError('Not running with the Werkzeug Server')
+    func()
+
+
 if __name__ in ("__main__",):
     Log.note("Starting TUID Service App...")
     flask_app = TUIDApp(__name__)
     flask_app.add_url_rule(str('/'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
+    flask_app.add_url_rule(str('/shutdown'), None, shutdown_server, methods=[str('GET'), str('POST')])
     flask_app.add_url_rule(str('/<path:path>'), None, tuid_endpoint, methods=[str('GET'), str('POST')])
 
     try:
