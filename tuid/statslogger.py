@@ -125,7 +125,7 @@ class StatsLogger:
 
     def get_free_memory(self):
         tmp = psutil.virtual_memory()
-        return tmp.free >> 20
+        return tmp.available >> 20
 
 
     def get_used_memory(self):
