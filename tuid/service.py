@@ -1056,15 +1056,27 @@ class TUIDService:
                             if diff_count + 1 < len(csets_to_proc):
                                 _, next_rev = csets_to_proc[diff_count + 1]
 
+                            rev_to_proc = next_rev
                             if backwards:
                                 file_to_modify = apply_diff_backwards(file_to_modify, parsed_diffs[rev])
-                                file_to_modify.create_and_insert_tuids(next_rev)
                             else:
                                 file_to_modify = apply_diff(file_to_modify, parsed_diffs[rev])
-                                file_to_modify.create_and_insert_tuids(rev)
+                                rev_to_proc = rev
+
+                            try:
+                                file_to_modify.create_and_insert_tuids(rev_to_proc)
+                            except Exception as e:
+                                file_to_modify.failed_file = True
+                                Log.warning(
+                                    "Failed to create and insert tuids - likely due to merge conflict.",
+                                    cause=e
+                                )
+                                break
                             file_to_modify.reset_new_lines()
 
-                        tmp_res = file_to_modify.lines_to_annotation()
+                        if not file_to_modify.failed_file:
+                            tmp_res = file_to_modify.lines_to_annotation()
+
                         ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
                         Log.note(
                             "Frontier update - modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} "

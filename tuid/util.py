@@ -33,6 +33,7 @@ class AnnotateFile(SourceFile, object):
     def __init__(self, filename, lines, tuid_service=None):
         super(AnnotateFile, self).__init__(filename, lines)
         self.tuid_service = tuid_service
+        self.failed_file = False
 
     def annotation_to_lines(self, annotation):
         self.lines = [TuidLine(tuidmap) for tuidmap in annotation]
@@ -84,6 +85,8 @@ class AnnotateFile(SourceFile, object):
                         ).data
                     }
                 except Exception as e:
+                    # Log takes out important output, use print instead
+                    self.failed_file = True
                     print("Trying to find new lines: " + str(all_new_lines))
                     Log.error("Error encountered:", cause=e)
 
@@ -101,6 +104,8 @@ class AnnotateFile(SourceFile, object):
                     )
                 except Exception as e:
                     Log.warning("Failed to insert new tuids {{cause}}", cause=e)
+                    self.failed_file = True
+                    return
 
             fmt_inserted_lines = {line: tuid for tuid, _, _, line in insert_entries}
             for line_obj in self.lines:
@@ -118,6 +123,8 @@ class AnnotateFile(SourceFile, object):
                         rev=revision,
                         line=str(line_obj)
                     )
+                    self.failed_file = True
+                    return
 
 
 def map_to_array(pairs):
