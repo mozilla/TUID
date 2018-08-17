@@ -103,7 +103,11 @@ class AnnotateFile(SourceFile, object):
                         sql_list(quote_set(entry) for entry in insert_entries)
                     )
                 except Exception as e:
-                    Log.warning("Failed to insert new tuids {{cause}}", cause=e)
+                    Log.note(
+                        "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
+                        file=self.filename,
+                        cause=e
+                    )
                     self.failed_file = True
                     return
 
