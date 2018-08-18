@@ -237,6 +237,7 @@ class Clogger:
         '''
         numrevs = self.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
         if numrevs >= SIGNAL_MAINTENACE_CSETS:
+            Log.warning("Must now request starting clog maintenance.")
             return True
         return False
 
@@ -568,6 +569,11 @@ class Clogger:
                     break
                 if self.disable_maintenance:
                     continue
+
+                Log.warning(
+                    "Starting clog maintenance. Since this doesn't start often, "
+                    "we need to explicitly see when it's started with this warning."
+                )
 
                 # Reset signal so we don't request
                 # maintenance infinitely.
