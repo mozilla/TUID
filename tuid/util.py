@@ -9,6 +9,8 @@ from __future__ import division
 from __future__ import unicode_literals
 
 from collections import namedtuple
+
+from jx_python import jx
 from mo_files.url import URL
 from mo_hg.apply import Line, SourceFile
 from mo_logs import Log
@@ -140,7 +142,7 @@ def insert_into_db_chunked(transaction, data, cmd, sql_chunk_size=500):
     for _, inserts_list in jx.groupby(data, size=sql_chunk_size):
         transaction.execute(
             cmd +
-            sql_list(quote_set(entry) for entry in insert_entries)
+            sql_list(quote_set(entry) for entry in inserts_list)
         )
 
 
