@@ -10,7 +10,7 @@ from __future__ import unicode_literals
 
 import gc
 import copy
-import objgraph
+import objgraph.objgraph as objgraph
 
 from mo_times import Timer
 from jx_python import jx

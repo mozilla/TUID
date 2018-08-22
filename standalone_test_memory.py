@@ -29,7 +29,7 @@ def test_annotation_memory():
     import psutil
     import os
     import time
-    import objgraph
+    import objgraph.objgraph as objgraph
     import random
     import gc, pprint
 
@@ -72,7 +72,9 @@ def test_annotation_memory():
         objgraph.show_growth(peak_stats=initial_growth)
 
         tmp = objgraph.by_type('Transaction')
-        objgraph.show_refs(objgraph.by_type('SQL')[-1], filename=str(int(time.time())) + '_forwardrefs.dot')
+        obj = objgraph.by_type('SQL')[-1]
+        objgraph._find_dominator_graph(obj, max_depth=4)
+        objgraph.show_refs(obj, filename=str(int(time.time())) + '_forwardrefs.dot')
         objgraph.show_backrefs(objgraph.by_type('SQL')[-1], filename=str(int(time.time())) + '_backwwardrefs.dot')
         objgraph.show_refs(objgraph.by_type('tuple')[-10], filename=str(int(time.time())) + '_allrefs_dict.dot')
         objgraph.show_refs([res], filename=str(int(time.time())) + '_res_var.dot')
