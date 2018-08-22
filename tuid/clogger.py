@@ -44,8 +44,8 @@ MAX_BACKFILL_CLOGS = 1000 # changeset logs
 CHANGESETS_PER_CLOG = 20 # changesets
 BACKFILL_REVNUM_TIMEOUT = int(MAX_BACKFILL_CLOGS * 2.5) # Assume 2.5 seconds per clog
 MINIMUM_PERMANENT_CSETS = 200 # changesets
-MAXIMUM_NONPERMANENT_CSETS = 10000 # changesets
-SIGNAL_MAINTENACE_CSETS = int(MAXIMUM_NONPERMANENT_CSETS + (0.2 * MAXIMUM_NONPERMANENT_CSETS))
+MAXIMUM_NONPERMANENT_CSETS = 1500 # changesets
+SIGNAL_MAINTENANCE_CSETS = int(MAXIMUM_NONPERMANENT_CSETS + (0.2 * MAXIMUM_NONPERMANENT_CSETS))
 UPDATE_VERY_OLD_FRONTIERS = False
 
 
@@ -237,7 +237,7 @@ class Clogger:
         '''
         numrevs = self.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
         Log.note("Number of csets in csetLog table: {{num}}", num=numrevs)
-        if numrevs >= SIGNAL_MAINTENACE_CSETS:
+        if numrevs >= SIGNAL_MAINTENANCE_CSETS:
             Log.warning("Must now request starting clog maintenance.")
             return True
         return False
