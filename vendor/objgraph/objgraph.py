@@ -836,20 +836,23 @@ def show_chain(*chains, **kw):
                   filter=in_chains, **kw)
 
 
-def get_vertex_edges(objid, mgraph):
-    return mgraph.neighbours(objid)
-
-
-def show_dominators(obj, max_depth=6, extra_ignore=(), filter=None, too_many=10,
+def show_dominator_tree(obj, max_depth=6, extra_ignore=(), filter=None, too_many=30,
                   highlight=None, filename=None, extra_info=None,
                   refcounts=False, shortnames=True, output=None, **kw):
-    objs = _find_dominator_graph(obj, max_depth=max_depth, extra_ignore=extra_ignore, **kw)
-    _show_graph(objs, max_depth=max_depth, extra_ignore=extra_ignore,
-                filter=filter, too_many=too_many, highlight=highlight,
-                edge_func=get_vertex_edges, edge_func_objs=objs, swap_source_target=True,
-                filename=filename, extra_info=extra_info,
-                refcounts=refcounts, shortnames=shortnames,
-                output=output)
+    dominator_trees = _find_dominator_tree(obj, max_depth=max_depth+1, extra_ignore=extra_ignore, **kw)
+    for dominator_tree in dominator_trees:
+        dominator_tree.find_roots(set_graph=True)
+        print(dominator_tree)
+        if not dominator_tree.root:
+            print("Could not find a root, using requested object's id.")
+            dominator_tree.root = id(obj)
+        _show_graph(dominator_tree.root, extra_ignore=extra_ignore,
+                    filter=filter, too_many=too_many, highlight=highlight,
+                    edge_func=dominator_tree.object_neighbours, swap_source_target=True,
+                    filename=filename, extra_info=extra_info,
+                    refcounts=refcounts, shortnames=shortnames,
+                    output=output, id_func=dominator_tree.get_object,
+                    cull_func=is_proper_module)
 
 
 def is_proper_module(obj):
@@ -911,18 +914,24 @@ def _find_chain(obj, predicate, edge_func, max_depth=20, extra_ignore=()):
     return [obj]  # not found
 
 
-def _find_dominator_graph(obj, max_depth=2, max_nodes=100000000, extra_ignore=()):
+def _find_dominator_tree(obj, max_depth=2, max_nodes=4, extra_ignore=()):
     queue = [obj]
     depth = {id(obj): 0}
-    parent = {id(obj): None}
     mgraph = MemoryGraph(None, directed=True)
+    mgraph.add_objects([obj])
 
     ignore = set(extra_ignore)
     ignore.add(id(extra_ignore))
     ignore.add(id(queue))
     ignore.add(id(depth))
-    ignore.add(id(parent))
     ignore.add(id(mgraph))
+    ignore.add(id(mgraph._roots))
+    ignore.add(id(mgraph._graph))
+    ignore.add(id(mgraph._objs_seen))
+    ignore.add(id(mgraph.root))
+    ignore.add(id(mgraph.add))
+    ignore.add(id(mgraph.add_objects))
+    ignore.add(id(mgraph.add_connections))
     ignore.add(id(ignore))
     ignore.add(id(sys._getframe()))   # this function
     ignore.add(id(sys._getframe(1)))  # find_chain/find_backref_chain
@@ -940,10 +949,14 @@ def _find_dominator_graph(obj, max_depth=2, max_nodes=100000000, extra_ignore=()
         tdepth = depth[id(target)]
         if abs(min(depth.values())) + max(depth.values()) < max_depth:
             referrers = gc.get_referrers(target)
+            print(len(referrers))
             mgraph.add_connections([(id(target), id(ref)) for ref in referrers])
+            mgraph.add_objects(referrers)
 
             referents = gc.get_referents(target)
+            print(len(referents))
             mgraph.add_connections([(id(ref), id(target)) for ref in referents])
+            mgraph.add_objects(referents)
 
             ignore.add(id(referrers))
             for source in referrers:
@@ -951,7 +964,6 @@ def _find_dominator_graph(obj, max_depth=2, max_nodes=100000000, extra_ignore=()
                     continue
                 if id(source) not in depth:
                     depth[id(source)] = tdepth + 1
-                    parent[id(source)] = target
                     queue.append(source)
 
             ignore.add(id(referents))
@@ -960,19 +972,20 @@ def _find_dominator_graph(obj, max_depth=2, max_nodes=100000000, extra_ignore=()
                     continue
                 if id(source) not in depth:
                     depth[id(source)] = tdepth - 1
-                    parent[id(source)] = target
                     queue.append(source)
-    print(mgraph)
-    return [obj]  # not found
+
+    return mgraph.dominator_tree()
 
 
 def _show_graph(objs, edge_func, swap_source_target,
-                max_depth=3, extra_ignore=(), filter=None, too_many=10,
+                max_depth=30, extra_ignore=(), filter=None, too_many=10,
                 highlight=None, filename=None, extra_info=None,
                 refcounts=False, shortnames=True, output=None,
-                cull_func=None, edge_func_objs=None):
+                cull_func=None, id_func=None):
     if not _isinstance(objs, (list, tuple)):
         objs = [objs]
+    if id_func:
+        objs = [id_func(objid) for objid in objs]
 
     is_interactive = False
     if filename and output:
@@ -1048,11 +1061,7 @@ def _show_graph(objs, edge_func, swap_source_target,
             continue
         if cull_func is not None and cull_func(target):
             continue
-        if edge_func_objs:
-            neighbours = edge_func(target, objs)
-        else:
-            neighbours = edge_func(target)
-        ignore.add(id(neighbours))
+        neighbours = edge_func(target)
         n = 0
         skipped = 0
         for source in neighbours:
@@ -1075,6 +1084,7 @@ def _show_graph(objs, edge_func, swap_source_target,
                 queue.append(source)
             n += 1
             del source
+        ignore.add(id(neighbours))
         del neighbours
         if skipped > 0:
             h, s, v = _gradient((0, 1, 1), (0, 1, .3), tdepth + 1, max_depth)

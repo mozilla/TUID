@@ -73,7 +73,7 @@ def test_annotation_memory():
 
         tmp = objgraph.by_type('Transaction')
         obj = objgraph.by_type('SQL')[-1]
-        objgraph._find_dominator_graph(obj, max_depth=4)
+        objgraph.show_dominator_tree(obj, max_depth=4, filename=str(int(time.time())) + '_dominatorgraph.dot')
         objgraph.show_refs(obj, filename=str(int(time.time())) + '_forwardrefs.dot')
         objgraph.show_backrefs(objgraph.by_type('SQL')[-1], filename=str(int(time.time())) + '_backwwardrefs.dot')
         objgraph.show_refs(objgraph.by_type('tuple')[-10], filename=str(int(time.time())) + '_allrefs_dict.dot')
