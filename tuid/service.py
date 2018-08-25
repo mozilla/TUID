@@ -608,6 +608,7 @@ class TUIDService:
             thread_count = 0
             prev_ind = 0
             curr_ind = 0
+
             while curr_ind <= len(frontier_update_list) or curr_ind <= len(new_files):
                 thread_count += 1
                 prev_ind = curr_ind

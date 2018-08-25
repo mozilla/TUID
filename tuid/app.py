@@ -110,12 +110,21 @@ def tuid_endpoint(path):
             (service.statsdaemon.get_free_memory()) < FREE_MEMORY_LIMIT:
 
             work_done = service.statsdaemon.get_percent_complete()
-            if work_done == 100:
+
+            # TODO: Determine why the count goes over
+            # TODO: 100% sometimes.
+            if work_done >= 100 and \
+               service.get_thread_count() <= 0 and \
+               service.conn.pending_transactions <= 0:
                 Log.note("Out of memory, attempting to restart service. {{mem}} Mb left.", mem=service.statsdaemon.get_free_memory())
                 try:
                     http.post('http://' + str(config.flask.host) + ":" + str(config.flask.port) + '/shutdown')
                 except Exception as e:
                     Log.note("Already called shutdown.")
+            if service.conn.pending_transactions > 0:
+                Log.note("Waiting for {{num}} transactions to finish.", num=service.conn.pending_transactions)
+            if service.get_thread_count() > 0:
+                Log.note("Waiting for {{num}} threads to finish.", num=service.get_thread_count())
 
             # If we run out of memory once, don't take anymore requests
             # and restart the service to prevent a complete machine crash.
