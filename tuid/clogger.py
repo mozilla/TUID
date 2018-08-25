@@ -22,7 +22,7 @@ from mo_threads import Till, Thread, Lock, Queue, Signal
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, quote_set
 from tuid import sql
-from tuid.util import HG_URL
+from tuid.util import HG_URL, insert_into_db_chunked
 
 # Use import as follows to prevent
 # circular dependency conflict for
@@ -238,7 +238,6 @@ class Clogger:
         numrevs = self.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
         Log.note("Number of csets in csetLog table: {{num}}", num=numrevs)
         if numrevs >= SIGNAL_MAINTENANCE_CSETS:
-            Log.warning("Must now request starting clog maintenance.")
             return True
         return False
 
@@ -683,12 +682,10 @@ class Clogger:
                     # Update table and schedule a deletion
                     if modified:
                         with self.conn.transaction() as t:
-                            t.execute(
-                                "INSERT OR REPLACE INTO csetLog (revnum, revision, timestamp) VALUES " +
-                                sql_list(
-                                    quote_set(cset_entry)
-                                    for cset_entry in new_data2
-                                )
+                            insert_into_db_chunked(
+                                t,
+                                new_data2,
+                                "INSERT OR REPLACE INTO csetLog (revnum, revision, timestamp) VALUES "
                             )
                     if not deleted_data:
                         continue
