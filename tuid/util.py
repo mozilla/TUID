@@ -9,6 +9,8 @@ from __future__ import division
 from __future__ import unicode_literals
 
 from collections import namedtuple
+
+from jx_python import jx
 from mo_files.url import URL
 from mo_hg.apply import Line, SourceFile
 from mo_logs import Log
@@ -33,6 +35,7 @@ class AnnotateFile(SourceFile, object):
     def __init__(self, filename, lines, tuid_service=None):
         super(AnnotateFile, self).__init__(filename, lines)
         self.tuid_service = tuid_service
+        self.failed_file = False
 
     def annotation_to_lines(self, annotation):
         self.lines = [TuidLine(tuidmap) for tuidmap in annotation]
@@ -84,6 +87,8 @@ class AnnotateFile(SourceFile, object):
                         ).data
                     }
                 except Exception as e:
+                    # Log takes out important output, use print instead
+                    self.failed_file = True
                     print("Trying to find new lines: " + str(all_new_lines))
                     Log.error("Error encountered:", cause=e)
 
@@ -95,12 +100,19 @@ class AnnotateFile(SourceFile, object):
                         (self.tuid_service.tuid(),) + line_origins[linenum-1]
                         for linenum in insert_lines
                     ]
-                    t.execute(
-                        "INSERT INTO temporal (tuid, file, revision, line) VALUES " +
-                        sql_list(quote_set(entry) for entry in insert_entries)
+                    insert_into_db_chunked(
+                        t,
+                        insert_entries,
+                        "INSERT INTO temporal (tuid, file, revision, line) VALUES "
                     )
                 except Exception as e:
-                    Log.warning("Failed to insert new tuids {{cause}}", cause=e)
+                    Log.note(
+                        "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
+                        file=self.filename,
+                        cause=e
+                    )
+                    self.failed_file = True
+                    return
 
             fmt_inserted_lines = {line: tuid for tuid, _, _, line in insert_entries}
             for line_obj in self.lines:
@@ -118,6 +130,20 @@ class AnnotateFile(SourceFile, object):
                         rev=revision,
                         line=str(line_obj)
                     )
+                    self.failed_file = True
+                    return
+
+
+def insert_into_db_chunked(transaction, data, cmd, sql_chunk_size=500):
+    # For the `cmd` object, we expect something like (don't forget the whitespace at the end):
+    #   "INSERT INTO temporal (tuid, file, revision, line) VALUES "
+    #
+    # `data` must be a list of tuples.
+    for _, inserts_list in jx.groupby(data, size=sql_chunk_size):
+        transaction.execute(
+            cmd +
+            sql_list(quote_set(entry) for entry in inserts_list)
+        )
 
 
 def map_to_array(pairs):

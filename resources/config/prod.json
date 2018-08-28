@@ -67,7 +67,7 @@
             {
                 "log_type": "ses",
                 "from_address": "klahnakoski@mozilla.com",
-                "to_address": "klahnakoski@mozilla.com",
+                "to_address": "gmierz2@outlook.com",
                 "subject": "[ALERT][STAGING] Problem in TUID Service",
                 "$ref": "file://~/private.json#aws_credentials"
             },

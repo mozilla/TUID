@@ -24,7 +24,7 @@ from mo_times.durations import DAY
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, quote_set
 from tuid import sql
-from tuid.util import HG_URL
+from tuid.util import HG_URL, insert_into_db_chunked
 
 RETRY = {"times": 3, "sleep": 5}
 SQL_CSET_BATCH_SIZE = 500
@@ -39,8 +39,8 @@ MAX_BACKFILL_CLOGS = 1000 # changeset logs
 CHANGESETS_PER_CLOG = 20 # changesets
 BACKFILL_REVNUM_TIMEOUT = int(MAX_BACKFILL_CLOGS * 2.5) # Assume 2.5 seconds per clog
 MINIMUM_PERMANENT_CSETS = 200 # changesets
-MAXIMUM_NONPERMANENT_CSETS = 20000 # changesets
-SIGNAL_MAINTENACE_CSETS = MAXIMUM_NONPERMANENT_CSETS + (0.1 * MAXIMUM_NONPERMANENT_CSETS)
+MAXIMUM_NONPERMANENT_CSETS = 1500 # changesets
+SIGNAL_MAINTENANCE_CSETS = int(MAXIMUM_NONPERMANENT_CSETS + (0.2 * MAXIMUM_NONPERMANENT_CSETS))
 UPDATE_VERY_OLD_FRONTIERS = False
 
 
@@ -231,7 +231,8 @@ class Clogger:
         :return:
         '''
         numrevs = self.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
-        if numrevs >= SIGNAL_MAINTENACE_CSETS:
+        Log.note("Number of csets in csetLog table: {{num}}", num=numrevs)
+        if numrevs >= SIGNAL_MAINTENANCE_CSETS:
             return True
         return False
 
@@ -297,6 +298,7 @@ class Clogger:
 
         # Start a maintenance run if needed
         if self.check_for_maintenance():
+            Log.note("Scheduling maintenance run on clogger.")
             self.maintenance_signal.go()
 
 
@@ -564,6 +566,11 @@ class Clogger:
                 if self.disable_maintenance:
                     continue
 
+                Log.warning(
+                    "Starting clog maintenance. Since this doesn't start often, "
+                    "we need to explicitly see when it's started with this warning."
+                )
+
                 # Reset signal so we don't request
                 # maintenance infinitely.
                 with self.maintenance_signal.lock:
@@ -670,12 +677,10 @@ class Clogger:
                     # Update table and schedule a deletion
                     if modified:
                         with self.conn.transaction() as t:
-                            t.execute(
-                                "INSERT OR REPLACE INTO csetLog (revnum, revision, timestamp) VALUES " +
-                                sql_list(
-                                    quote_set(cset_entry)
-                                    for cset_entry in new_data2
-                                )
+                            insert_into_db_chunked(
+                                t,
+                                new_data2,
+                                "INSERT OR REPLACE INTO csetLog (revnum, revision, timestamp) VALUES "
                             )
                     if not deleted_data:
                         continue

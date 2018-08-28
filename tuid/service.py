@@ -603,6 +603,7 @@ class TUIDService:
             thread_count = 0
             prev_ind = 0
             curr_ind = 0
+
             while curr_ind <= len(frontier_update_list) or curr_ind <= len(new_files):
                 thread_count += 1
                 prev_ind = curr_ind
@@ -716,13 +717,13 @@ class TUIDService:
         for file in files:
             with self.conn.transaction() as t:
                 already_ann = self._get_annotation(revision, file, transaction=t)
-            if already_ann:
-                result.append((file, self.destringify_tuids(already_ann)))
-                log_existing_files.append('exists|' + file)
-                continue
-            elif already_ann[0] == '':
+            if already_ann and already_ann[0] == '':
                 result.append((file, []))
                 log_existing_files.append('removed|' + file)
+                continue
+            elif already_ann:
+                result.append((file, self.destringify_tuids(already_ann)))
+                log_existing_files.append('exists|' + file)
                 continue
             else:
                 files_to_update.append(file)
@@ -744,44 +745,36 @@ class TUIDService:
         diffs_to_get = [] # Will contain diffs in reverse order of application
         curr_rev = revision
         mc_revision = ''
-        while not found_mc_patch:
-            jsonrev_url = self.hg_url / repo / 'json-rev' / curr_rev
-            try:
-                Log.note("Searching through changelog {{url}}", url=jsonrev_url)
-                clog_obj = self.get_clog(jsonrev_url)
-                if isinstance(clog_obj, (text_type, str)):
-                    Log.error(
-                        "Revision {{cset}} does not exist in the {{branch}} branch",
-                        cset=curr_rev, branch=repo
-                    )
-                if 'phase' not in clog_obj:
-                    Log.warning(
-                        "Unexpected error getting changset-log for {{url}}: `phase` entry cannot be found.",
-                        url=jsonrev_url
-                    )
-                    return [(file, []) for file in files]
-            except Exception as e:
-                Log.warning(
-                    "Unexpected error getting changset-log for {{url}}: {{error}}",
-                    url=jsonrev_url, error=e
-                )
-                return [(file, []) for file in files]
+        jsonpushes_url = HG_URL / repo / ("json-pushes?" + "full=1&changeset=" + str(revision))
+        try:
+            pushes_obj = http.get_json(jsonpushes_url, retry=RETRY)
+            if not pushes_obj or len(pushes_obj.keys()) == 0:
+                raise Exception("Nothing found in json-pushes request.")
+            elif len(pushes_obj.keys()) > 1:
+                raise Exception("Too many push numbers found in json-pushes request, cannot handle it.")
+            push_num = list(pushes_obj.keys())[0]
 
-            # When `phase` is public, the patch is (assumed to be)
-            # in any repo other than try.
-            if clog_obj['phase'] == 'public':
-                found_mc_patch = True
-                mc_revision = curr_rev
-                continue
-            elif clog_obj['phase'] == 'draft':
-                diffs_to_get.append(curr_rev)
-            else:
-                Log.warning(
-                    "Unknown `phase` state `{{state}}` encountered at revision {{cset}}",
-                    cset=curr_rev, state=clog_obj['phase']
-                )
-                return [(file, []) for file in files]
-            curr_rev = clog_obj['parents'][0][:12]
+            if 'changesets' not in pushes_obj[push_num] or len(pushes_obj[push_num]['changesets']) == 0:
+                raise Exception("Cannot find any changesets in this push.")
+
+            # Get the diffs that are needed to be applied
+            # along with the mozilla-central revision they are applied to.
+            all_csets = pushes_obj[push_num]['changesets']
+            for count, cset_obj in enumerate(all_csets):
+                node = cset_obj['node']
+                if 'parents' not in cset_obj:
+                    raise Exception("Cannot find parents in object for changeset: " + str(node))
+                if count == 0:
+                    mc_revision = cset_obj['parents'][0]
+                if len(cset_obj['parents']) > 1:
+                    raise Exception("Cannot yet handle multiple parents for changeset: " + str(node))
+                diffs_to_get.append(node)
+        except Exception as e:
+            Log.warning(
+                "Unexpected error getting changset-log for {{url}}: {{error}}",
+                url=jsonpushes_url, error=e
+            )
+            return [(file, []) for file in files]
 
         added_files = {}
         removed_files = {}
@@ -847,9 +840,8 @@ class TUIDService:
                     ann_inserts.append((revision, file, ''))
                     tmp_results[file] = []
                 elif file in files_to_process:
-                    # Reverse the list, we always find the newest diff first
                     Log.note("Try revision run - modified: {{file}}", file=file)
-                    csets_to_proc = files_to_process[file][::-1]
+                    csets_to_proc = files_to_process[file]
                     old_ann = curr_annots_dict[file]
 
                     # Apply all the diffs
@@ -1051,15 +1043,27 @@ class TUIDService:
                             if diff_count + 1 < len(csets_to_proc):
                                 _, next_rev = csets_to_proc[diff_count + 1]
 
+                            rev_to_proc = next_rev
                             if backwards:
                                 file_to_modify = apply_diff_backwards(file_to_modify, parsed_diffs[rev])
-                                file_to_modify.create_and_insert_tuids(next_rev)
                             else:
                                 file_to_modify = apply_diff(file_to_modify, parsed_diffs[rev])
-                                file_to_modify.create_and_insert_tuids(rev)
+                                rev_to_proc = rev
+
+                            try:
+                                file_to_modify.create_and_insert_tuids(rev_to_proc)
+                            except Exception as e:
+                                file_to_modify.failed_file = True
+                                Log.warning(
+                                    "Failed to create and insert tuids - likely due to merge conflict.",
+                                    cause=e
+                                )
+                                break
                             file_to_modify.reset_new_lines()
 
-                        tmp_res = file_to_modify.lines_to_annotation()
+                        if not file_to_modify.failed_file:
+                            tmp_res = file_to_modify.lines_to_annotation()
+
                         ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
                         Log.note(
                             "Frontier update - modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} "

@@ -68,7 +68,7 @@
         "tuid.clogger.CSET_BACKFILL_WAIT_TIME": 5,
         "tuid.clogger.CSET_MAINTENANCE_WAIT_TIME": 15,
         "tuid.clogger.MAXIMUM_NONPERMANENT_CSETS": 100,
-        "tuid.clogger.SIGNAL_MAINTENACE_CSETS": 120,
+        "tuid.clogger.SIGNAL_MAINTENANCE_CSETS": 120,
         "tuid.clogger.CSET_DELETION_WAIT_TIME": 5,
         "tuid.clogger.CSET_TIP_WAIT_TIME": 40,
         "pyLibrary.env.http.DEBUG": false,
