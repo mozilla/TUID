@@ -11,7 +11,11 @@ from __future__ import unicode_literals
 from __future__ import division
 from __future__ import absolute_import
 from collections import deque
+
+from mo_collections.queue import Queue
+
 from mo_math import INTERSECT
+from pyLibrary.graphs import Graph, Edge, Tree
 from pyLibrary.graphs.paths import Step, Path
 from mo_dots import Data
 
@@ -99,3 +103,72 @@ def dominator(graph, head):
     bfs(graph, find_dominator, head)
 
     return dom.output
+
+
+def dominator_tree(graph):
+    """
+    RETURN DOMINATOR TREE
+    ALL NODES WITH None AS DOMINATOR ARE ROOT NODES
+    roots = dominator_tree(graph).get_children(None)
+    """
+    todo = Queue()
+    done = set()
+    dominator = Tree(None)
+
+    def next_node():
+        nodes = list(graph.nodes)
+
+        while True:
+            if todo:
+                output = todo.pop()
+            elif nodes:
+                output = nodes.pop()
+            else:
+                return
+
+            if output not in done:
+                yield output
+
+    for node in next_node():
+        parents = graph.get_parents(node)
+        if not parents:
+            # node WITHOUT parents IS A ROOT
+            done.add(node)
+            dominator.add_edge(Edge(None, node))
+            continue
+
+        not_done = [p for p in parents if p not in done]
+        if not_done:
+            # THERE ARE MORE parents TO DO FIRST
+            more_todo = [p for p in not_done if p not in todo]
+            if not more_todo:
+                # ALL PARENTS ARE PART OF A CYCLE, MAKE node A ROOT
+                done.add(node)
+                dominator.add_edge(Edge(None, node))
+            else:
+                # DO THE PARENTS BEFORE node
+                todo.push(node)
+                for p in more_todo:
+                    todo.push(p)
+            continue
+
+        # WE CAN GET THE DOMINATORS FOR ALL parents
+        if len(parents) == 1:
+            # SHORTCUT
+            dominator.add_edge(Edge(parents[0], node))
+            done.add(node)
+            continue
+
+        common_path = list(reversed(dominator.get_path_to_root(parents[0])))
+        for p in parents[1:]:
+            pfr = list(reversed(dominator.get_path_to_root(p)))
+            # FIND COMMON PATH FROM root
+            for i, (a, b) in enumerate(zip(common_path, pfr)):
+                if a != b:
+                    common_path = common_path[:i]
+                    break
+        dom = common_path[-1]
+        dominator.add_edge(Edge(dom, node))
+        done.add(node)
+
+    return dominator

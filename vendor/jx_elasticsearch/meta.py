@@ -15,7 +15,7 @@ import itertools
 from itertools import product
 
 import jx_base
-from jx_base import STRUCT, TableDesc, BOOLEAN
+from jx_base import TableDesc
 from jx_base.namespace import Namespace
 from jx_base.query import QueryOp
 from jx_python import jx
@@ -23,7 +23,7 @@ from jx_python.containers.list_usingPythonList import ListContainer
 from jx_python.meta import ColumnList, Column
 from mo_collections.relation import Relation_usingList
 from mo_dots import Data, relative_field, SELF_PATH, ROOT_PATH, coalesce, set_default, Null, split_field, join_field, wrap, concat_field, startswith_field, literal_field
-from mo_json.typed_encoder import EXISTS_TYPE, untype_path, unnest_path
+from mo_json.typed_encoder import EXISTS_TYPE, untype_path, unnest_path, OBJECT, EXISTS, STRUCT, BOOLEAN
 from mo_kwargs import override
 from mo_logs import Log
 from mo_logs.exceptions import Except
@@ -162,7 +162,7 @@ class ElasticsearchMetadata(Namespace):
                 ]
             )
 
-        with Timer("upserting {{num}} columns", {"num": len(abs_columns)}, debug=DEBUG):
+        with Timer("upserting {{num}} columns", {"num": len(abs_columns)}, silent=not DEBUG):
             # LIST OF EVERY NESTED PATH
             query_paths = [[c.es_column] for c in abs_columns if c.es_type == "nested"]
             for a, b in itertools.product(query_paths, query_paths):
@@ -311,7 +311,7 @@ class ElasticsearchMetadata(Namespace):
                     "size": 0
                 })
                 count = result.hits.total
-                cardinality = 1001
+                cardinality = max(1001, count)
                 multi = 1001
             elif column.es_column == "_id":
                 result = self.es_cluster.post("/" + es_index + "/_search", data={
@@ -419,7 +419,7 @@ class ElasticsearchMetadata(Namespace):
             e = Except.wrap(e)
             TEST_TABLE = "testdata"
             is_missing_index = any(w in e for w in ["IndexMissingException", "index_not_found_exception"])
-            is_test_table = any(column.es_index.startswith(t) for t in [TEST_TABLE_PREFIX, TEST_TABLE])
+            is_test_table = column.es_index.startswith((TEST_TABLE_PREFIX, TEST_TABLE))
             if is_missing_index and is_test_table:
                 # WE EXPECT TEST TABLES TO DISAPPEAR
                 self.meta.columns.update({
@@ -438,7 +438,7 @@ class ElasticsearchMetadata(Namespace):
                         "multi",
                         "partitions",
                     ],
-                    "where": {"eq": {"names.\\.": ".", "es_index": column.es_index, "es_column": column.es_column}}
+                    "where": {"eq": {"es_index": column.es_index, "es_column": column.es_column}}
                 })
                 Log.warning("Could not get {{col.es_index}}.{{col.es_column}} info", col=column, cause=e)
 
@@ -471,7 +471,7 @@ class ElasticsearchMetadata(Namespace):
                     if column is THREAD_STOP:
                         continue
 
-                    with Timer("update {{table}}.{{column}}", param={"table":column.es_index, "column":column.es_column}, debug=DEBUG):
+                    with Timer("update {{table}}.{{column}}", param={"table":column.es_index, "column":column.es_column}, silent=not DEBUG):
                         if column.es_index in self.index_does_not_exist:
                             self.meta.columns.update({
                                 "clear": ".",
@@ -487,7 +487,13 @@ class ElasticsearchMetadata(Namespace):
                             self._update_cardinality(column)
                             (DEBUG and not column.es_index.startswith(TEST_TABLE_PREFIX)) and Log.note("updated {{column.name}}", column=column)
                         except Exception as e:
-                            Log.warning("problem getting cardinality for {{column.name}}", column=column, cause=e)
+                            if '"status":404' in e:
+                                self.meta.columns.update({
+                                    "clear": ".",
+                                    "where": {"eq": {"es_index": column.es_index, "es_column": column.es_column}}
+                                })
+                            else:
+                                Log.warning("problem getting cardinality for {{column.name}}", column=column, cause=e)
             except Exception as e:
                 Log.warning("problem in cardinality monitor", cause=e)
 
@@ -502,19 +508,19 @@ class ElasticsearchMetadata(Namespace):
             if c.last_updated >= Date.now()-TOO_OLD:
                 continue
 
-            self.meta.columns.update({
-                "set": {
-                    "last_updated": Date.now()
-                },
-                "clear":[
-                    "count",
-                    "cardinality",
-                    "multi",
-                    "partitions",
-                ],
-                "where": {"eq": {"es_index": c.es_index, "es_column": c.es_column}}
-            })
-            DEBUG and Log.note("Did not get {{col.es_index}}.{{col.es_column}} info", col=c)
+            with Timer("Update {{col.es_index}}.{{col.es_column}}", param={"col": c}, silent=not DEBUG, too_long=0.05):
+                self.meta.columns.update({
+                    "set": {
+                        "last_updated": Date.now()
+                    },
+                    "clear": [
+                        "count",
+                        "cardinality",
+                        "multi",
+                        "partitions",
+                    ],
+                    "where": {"eq": {"es_index": c.es_index, "es_column": c.es_column}}
+                })
 
     def get_table(self, name):
         if name == "meta.columns":
@@ -719,8 +725,8 @@ def jx_type(column):
     return the jx_type for given column
     """
     if column.es_column.endswith(EXISTS_TYPE):
-        return jx_base.EXISTS
+        return EXISTS
     return es_type_to_json_type[column.es_type]
 
 
-OBJECTS = (jx_base.OBJECT, jx_base.EXISTS)
+OBJECTS = (OBJECT, EXISTS)

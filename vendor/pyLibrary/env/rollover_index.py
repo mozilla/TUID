@@ -120,7 +120,7 @@ class RolloverIndex(object):
                     self.cluster.delete_index(c.index)
                 except Exception as e:
                     Log.warning("could not delete index {{index}}", index=c.index, cause=e)
-        for t, q in list(self.known_queues.items()):
+        for t, q in items(self.known_queues):
             if unix2Date(t) + self.rollover_interval < Date.today() - self.rollover_max:
                 with self.locker:
                     del self.known_queues[t]
@@ -189,7 +189,7 @@ class RolloverIndex(object):
         queue = None
         pending = []  # FOR WHEN WE DO NOT HAVE QUEUE YET
         for key in keys:
-            timer = Timer("Process {{key}}", param={"key": key}, debug=DEBUG)
+            timer = Timer("Process {{key}}", param={"key": key}, silent=not DEBUG)
             try:
                 with timer:
                     for rownum, line in enumerate(source.read_lines(strip_extension(key))):

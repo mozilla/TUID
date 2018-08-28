@@ -14,16 +14,16 @@ from __future__ import unicode_literals
 from collections import Mapping
 from datetime import date
 from datetime import datetime
+from decimal import Decimal
 
 import jx_base
-from jx_base import python_type_to_json_type
-from jx_base import STRUCT, Column, Table
+from jx_base import Column, Table
 from jx_base.schema import Schema
 from jx_python import jx
 from mo_collections import UniqueIndex
-from mo_dots import Data, concat_field, get_attr, listwrap, unwraplist, NullType, FlatList, set_default, split_field, join_field, ROOT_PATH, wrap, coalesce
+from mo_dots import Data, concat_field, listwrap, unwraplist, NullType, FlatList, set_default, split_field, join_field, ROOT_PATH, wrap, coalesce
 from mo_future import none_type, text_type, long, PY2
-from mo_json.typed_encoder import untype_path, unnest_path
+from mo_json.typed_encoder import untype_path, unnest_path, python_type_to_json_type, STRUCT
 from mo_logs import Log
 from mo_threads import Lock
 from mo_times.dates import Date
@@ -134,22 +134,49 @@ class ColumnList(Table, jx_base.Container):
             command = wrap(command)
             eq = command.where.eq
             if eq.es_index:
-                columns = self.find(eq.es_index, eq.name)
-                columns = [
-                    c
-                    for c in columns
-                    if all(get_attr(c, k) == v for k, v in eq.items())
-                ]
+                all_columns = self.data.get(eq.es_index, {}).values()
+                if len(eq) == 1:
+                    # FASTEST
+                    with self.locker:
+                        columns = [
+                            c
+                            for cs in all_columns
+                            for c in cs
+                        ]
+                elif eq.es_column and len(eq) == 2:
+                    # FASTER
+                    with self.locker:
+                        columns = [
+                            c
+                            for cs in all_columns
+                            for c in cs
+                            if c.es_column == eq.es_column
+                        ]
+
+                else:
+                    # SLOWER
+                    with self.locker:
+                        columns = [
+                            c
+                            for cs in all_columns
+                            for c in cs
+                            if all(c[k] == v for k, v in eq.items())  # THIS LINE IS VERY SLOW
+                        ]
             else:
-                with self.locker:
-                    columns = list(self)
-                    columns = jx.filter(columns, command.where)
+                columns = list(self)
+                columns = jx.filter(columns, command.where)
 
             with self.locker:
-                for col in list(columns):
+                for col in columns:
                     for k in command["clear"]:
                         if k == ".":
-                            columns.remove(col)
+                            lst = self.data[col.es_index]
+                            cols = lst[col.names['.']]
+                            cols.remove(col)
+                            if len(cols) == 0:
+                                del lst[col.names['.']]
+                                if len(lst) == 0:
+                                    del self.data[col.es_index]
                         else:
                             col[k] = None
 
@@ -388,6 +415,7 @@ _type_to_name = {
     list: "nested",
     FlatList: "nested",
     Date: "double",
+    Decimal: "double",
     datetime: "double",
     date: "double"
 }

@@ -18,9 +18,9 @@ from copy import deepcopy
 from jx_python import jx
 from jx_python.expressions import jx_expression_to_function
 from jx_python.meta import Column
-from mo_dots import wrap, FlatList, coalesce, Null, Data, set_default, listwrap, literal_field, ROOT_PATH, concat_field, split_field
+from mo_dots import wrap, FlatList, coalesce, Null, Data, set_default, listwrap, literal_field, ROOT_PATH, concat_field, split_field, SLOT
 from mo_files.url import URL
-from mo_future import text_type, binary_type
+from mo_future import text_type, binary_type, items
 from mo_json import value2json, json2value
 from mo_json.typed_encoder import EXISTS_TYPE, BOOLEAN_TYPE, STRING_TYPE, NUMBER_TYPE, NESTED_TYPE, TYPE_PREFIX, json_type_to_inserter_type
 from mo_kwargs import override
@@ -313,7 +313,7 @@ class Index(Features):
             if not lines:
                 return
 
-            with Timer("Add {{num}} documents to {{index}}", {"num": int(len(lines) / 2), "index":self.settings.index}, debug=self.debug):
+            with Timer("Add {{num}} documents to {{index}}", {"num": int(len(lines) / 2), "index": self.settings.index}, silent=not self.debug):
                 try:
                     data_string = "\n".join(l for l in lines) + "\n"
                 except Exception as e:
@@ -726,7 +726,7 @@ class Cluster(object):
         elif isinstance(schema, text_type):
             Log.error("Expecting a JSON schema")
 
-        for k, m in list(schema.mappings.items()):
+        for k, m in items(schema.mappings):
             m.date_detection = False  # DISABLE DATE DETECTION
 
             if typed:
@@ -911,7 +911,7 @@ class Cluster(object):
                 Log.error(
                     "Problem with call to {{url}}" + suggestion + "\n{{body|left(10000)}}",
                     url=url,
-                    body=strings.limit(kwargs[DATA_KEY], 100 if self.debug else 10000),
+                    body=strings.limit(utf82unicode(kwargs[DATA_KEY]), 100 if self.debug else 10000),
                     cause=e
                 )
             else:
@@ -986,8 +986,8 @@ class Cluster(object):
         try:
             response = http.put(url, **kwargs)
             if response.status_code not in [200]:
-                Log.error(response.reason + ": " + utf82unicode(response.all_content))
-            self.debug and Log.note("response: {{response}}", response=utf82unicode(response.all_content)[0:300:])
+                Log.error(response.reason + ": " + utf82unicode(response.content))
+            self.debug and Log.note("response: {{response}}", response=utf82unicode(response.content)[0:300:])
 
             details = json2value(utf82unicode(response.content))
             if details.error:
@@ -1035,7 +1035,7 @@ def _scrub(r):
             return convert.value2number(r)
         elif isinstance(r, Mapping):
             if isinstance(r, Data):
-                r = object.__getattribute__(r, "_dict")
+                r = object.__getattribute__(r, SLOT)
             output = {}
             for k, v in r.items():
                 v = _scrub(v)
@@ -1487,6 +1487,8 @@ def diff_schema(A, B):
     output =[]
     def _diff_schema(path, A, B):
         for k, av in A.items():
+            if k == "_id" and path == ".":
+                continue  # DO NOT ADD _id TO ANY SCHEMA DIFF
             bv = B[k]
             if bv == None:
                 output.append((concat_field(path, k), av))

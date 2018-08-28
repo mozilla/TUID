@@ -27,6 +27,14 @@ from mo_logs import Log, Except
 DEBUG = False
 
 
+def get_file(file):
+    file = File(file)
+    if os.sep=="\\":
+        return get("file:///" + file.abspath)
+    else:
+        return get("file://" + file.abspath)
+
+
 def get(url):
     """
     USE json.net CONVENTIONS TO LINK TO INLINE OTHER JSON
@@ -184,7 +192,7 @@ def _replace_locals(node, doc_path):
 ## SCHEME LOADERS ARE BELOW THIS LINE
 ###############################################################################
 
-def get_file(ref, url):
+def _get_file(ref, url):
 
     if ref.path.startswith("~"):
         home_path = os.path.expanduser("~")
@@ -236,7 +244,7 @@ def get_http(ref, url):
     return new_value
 
 
-def get_env(ref, url):
+def _get_env(ref, url):
     # GET ENVIRONMENT VARIABLES
     ref = ref.host
     try:
@@ -246,7 +254,7 @@ def get_env(ref, url):
     return new_value
 
 
-def get_param(ref, url):
+def _get_param(ref, url):
     # GET PARAMETERS FROM url
     param = url.query
     new_value = param[ref.host]
@@ -255,8 +263,8 @@ def get_param(ref, url):
 
 scheme_loaders = {
     "http": get_http,
-    "file": get_file,
-    "env": get_env,
-    "param": get_param
+    "file": _get_file,
+    "env": _get_env,
+    "param": _get_param
 }
 
