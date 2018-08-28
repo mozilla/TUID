@@ -23,7 +23,7 @@ from datetime import timedelta, date
 from json.encoder import encode_basestring
 
 from mo_dots import coalesce, wrap, get_module, Data
-from mo_future import text_type, xrange, binary_type, round as _round, get_function_name, zip_longest, transpose
+from mo_future import text_type, xrange, binary_type, round as _round, get_function_name, zip_longest, transpose, PY3
 from mo_logs.convert import datetime2unix, datetime2string, value2json, milli2datetime, unix2datetime
 
 # from mo_files.url import value2url_param
