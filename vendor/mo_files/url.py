@@ -1,6 +1,8 @@
 from collections import Mapping
 
-from mo_dots import wrap, Data, coalesce
+from mo_json import json2value
+
+from mo_dots import wrap, Data, coalesce, Null
 from mo_future import urlparse, text_type, PY2, unichr
 from mo_logs import Log
 
@@ -39,7 +41,7 @@ class URL(object):
                 self.query = coalesce(query, wrap(url_param2value(output.query)))
                 self.fragment = coalesce(fragment, output.fragment)
         except Exception as e:
-            Log.error("problem parsing {{value}} to URL", value=value, cause=e)
+            Log.error(u"problem parsing {{value}} to URL", value=value, cause=e)
 
     def __nonzero__(self):
         if self.scheme or self.host or self.port or self.path or self.query or self.fragment:
@@ -133,6 +135,8 @@ def url_param2value(param):
     """
     if isinstance(param, text_type):
         param = param.encode("ascii")
+    if param == None:
+        return Null
 
     def _decode(v):
         output = []
