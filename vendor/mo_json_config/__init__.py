@@ -18,11 +18,11 @@ from collections import Mapping
 import mo_dots
 from mo_dots import set_default, wrap, unwrap
 from mo_files import File
+from mo_files.url import URL
 from mo_future import text_type
 from mo_json import json2value
 from mo_json_config.convert import ini2value
 from mo_logs import Log, Except
-from mo_logs.url import URL
 
 DEBUG = False
 
