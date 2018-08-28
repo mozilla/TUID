@@ -9,19 +9,10 @@
 
 from collections import Mapping
 
-<<<<<<< .mine
-from mo_json import json2value
-
 from mo_dots import wrap, Data, coalesce, Null
-||||||| .r1270
-from mo_dots import wrap, Data, coalesce
-=======
-from mo_dots import wrap, Data, coalesce, Null
->>>>>>> .r1315
 from mo_future import urlparse, text_type, PY2, unichr
 from mo_json import value2json, json2value
 from mo_logs import Log
-from pyLibrary.convert import hex2bytes
 
 
 class URL(object):
