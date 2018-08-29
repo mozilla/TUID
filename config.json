@@ -6,6 +6,7 @@
         "local_hg_source": "C:/mozilla-source/mozilla-central/",
         "hg_for_building": "C:/mozilla-build/python/Scripts/hg.exe",
         "hg": {
+            "url": "https://hg.mozilla.org",
             "branch": "mozilla-central"
         },
         "hg_cache": {
@@ -18,7 +19,7 @@
                 "port": 9201,
                 "index": "branches",
                 "type": "branch",
-                "tjson": false,
+                "typed": false,
                 "timeout": 300,
                 "consistency": "one", // WE ONLY NEED ONE SHARD TO BE AVAILABLE
                 "debug": false,
@@ -29,7 +30,7 @@
                 "port": 9201,
                 "index": "repo",
                 "type": "revision",
-                "tjson": false,
+                "typed": false,
                 "timeout": 300,
                 "consistency": "one", // WE ONLY NEED ONE SHARD TO BE AVAILABLE
                 "debug": false,
@@ -67,7 +68,7 @@
         "tuid.clogger.CSET_BACKFILL_WAIT_TIME": 5,
         "tuid.clogger.CSET_MAINTENANCE_WAIT_TIME": 15,
         "tuid.clogger.MAXIMUM_NONPERMANENT_CSETS": 100,
-        "tuid.clogger.SIGNAL_MAINTENACE_CSETS": 120,
+        "tuid.clogger.SIGNAL_MAINTENANCE_CSETS": 120,
         "tuid.clogger.CSET_DELETION_WAIT_TIME": 5,
         "tuid.clogger.CSET_TIP_WAIT_TIME": 40,
         "pyLibrary.env.http.DEBUG": false,

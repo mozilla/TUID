@@ -10,26 +10,21 @@ from __future__ import unicode_literals
 
 import time
 
-from jx_python import jx
-from mo_dots import Null, coalesce, wrap
-from mo_future import text_type
-from mo_hg.hg_mozilla_org import HgMozillaOrg
-from mo_files.url import URL
-from mo_logs import Log
-from mo_times import Timer
-from mo_times.durations import DAY
-from mo_threads import Till, Thread, Lock, Queue, Signal
-from pyLibrary.env import http
-from pyLibrary.sql import sql_list, quote_set
-from tuid import sql
-from tuid.util import HG_URL
-
 # Use import as follows to prevent
 # circular dependency conflict for
 # TUIDService, which makes use of the
 # Clogger
 import tuid.service
-
+from jx_python import jx
+from mo_dots import Null, coalesce
+from mo_hg.hg_mozilla_org import HgMozillaOrg
+from mo_logs import Log
+from mo_threads import Till, Thread, Lock, Queue, Signal
+from mo_times.durations import DAY
+from pyLibrary.env import http
+from pyLibrary.sql import sql_list, quote_set
+from tuid import sql
+from tuid.util import HG_URL, insert_into_db_chunked
 
 RETRY = {"times": 3, "sleep": 5}
 SQL_CSET_BATCH_SIZE = 500
@@ -44,8 +39,8 @@ MAX_BACKFILL_CLOGS = 1000 # changeset logs
 CHANGESETS_PER_CLOG = 20 # changesets
 BACKFILL_REVNUM_TIMEOUT = int(MAX_BACKFILL_CLOGS * 2.5) # Assume 2.5 seconds per clog
 MINIMUM_PERMANENT_CSETS = 200 # changesets
-MAXIMUM_NONPERMANENT_CSETS = 20000 # changesets
-SIGNAL_MAINTENACE_CSETS = MAXIMUM_NONPERMANENT_CSETS + (0.1 * MAXIMUM_NONPERMANENT_CSETS)
+MAXIMUM_NONPERMANENT_CSETS = 1500 # changesets
+SIGNAL_MAINTENANCE_CSETS = int(MAXIMUM_NONPERMANENT_CSETS + (0.2 * MAXIMUM_NONPERMANENT_CSETS))
 UPDATE_VERY_OLD_FRONTIERS = False
 
 
@@ -236,8 +231,8 @@ class Clogger:
         :return:
         '''
         numrevs = self.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
-        if numrevs >= SIGNAL_MAINTENACE_CSETS:
-            Log.warning("Must now request starting clog maintenance.")
+        Log.note("Number of csets in csetLog table: {{num}}", num=numrevs)
+        if numrevs >= SIGNAL_MAINTENANCE_CSETS:
             return True
         return False
 
@@ -303,6 +298,7 @@ class Clogger:
 
         # Start a maintenance run if needed
         if self.check_for_maintenance():
+            Log.note("Scheduling maintenance run on clogger.")
             self.maintenance_signal.go()
 
 
@@ -337,7 +333,7 @@ class Clogger:
         clogs_seen = 0
         final_rev = child_cset
         while not found_parent and clogs_seen < MAX_BACKFILL_CLOGS:
-            clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
+            clog_url = self.tuid_service.hg_url / self.config.hg.branch / 'json-log' / final_rev
             clog_obj = self._get_clog(clog_url)
             clog_csets_list = list(clog_obj['changesets'])
             for clog_cset in clog_csets_list[:-1]:
@@ -480,7 +476,7 @@ class Clogger:
         if an update has taken place.
         :return:
         '''
-        clog_obj = self._get_clog(HG_URL / self.config.hg.branch / 'json-log' / 'tip')
+        clog_obj = self._get_clog(self.tuid_service.hg_url / self.config.hg.branch / 'json-log' / 'tip')
 
         # Get current tip in DB
         with self.conn.transaction() as t:
@@ -523,7 +519,7 @@ class Clogger:
                 # Get the next page
                 clogs_seen += 1
                 final_rev = clog_csets_list[-1]['node'][:12]
-                clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
+                clog_url = self.tuid_service.hg_url / self.config.hg.branch / 'json-log' / final_rev
                 clog_obj = self._get_clog(clog_url)
 
         if clogs_seen >= MAX_TIPFILL_CLOGS:
@@ -681,12 +677,10 @@ class Clogger:
                     # Update table and schedule a deletion
                     if modified:
                         with self.conn.transaction() as t:
-                            t.execute(
-                                "INSERT OR REPLACE INTO csetLog (revnum, revision, timestamp) VALUES " +
-                                sql_list(
-                                    quote_set(cset_entry)
-                                    for cset_entry in new_data2
-                                )
+                            insert_into_db_chunked(
+                                t,
+                                new_data2,
+                                "INSERT OR REPLACE INTO csetLog (revnum, revision, timestamp) VALUES "
                             )
                     if not deleted_data:
                         continue

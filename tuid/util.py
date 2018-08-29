@@ -135,7 +135,7 @@ class AnnotateFile(SourceFile, object):
 
 
 def insert_into_db_chunked(transaction, data, cmd, sql_chunk_size=500):
-    # For the `cmd` object, we expect something like:
+    # For the `cmd` object, we expect something like (don't forget the whitespace at the end):
     #   "INSERT INTO temporal (tuid, file, revision, line) VALUES "
     #
     # `data` must be a list of tuples.

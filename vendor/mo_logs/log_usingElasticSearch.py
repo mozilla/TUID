@@ -44,7 +44,7 @@ class StructuredLogger_usingElasticSearch(StructuredLogger):
         self.es = Cluster(kwargs).get_or_create_index(
             schema=mo_json.json2value(value2json(SCHEMA), leaves=True),
             limit_replicas=True,
-            tjson=True,
+            typed=True,
             kwargs=kwargs
         )
         self.batch_size = batch_size

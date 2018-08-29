@@ -27,7 +27,7 @@ from mo_times.durations import SECOND, HOUR, DAY
 from pyLibrary.env import http
 from pyLibrary.meta import cache
 from pyLibrary.sql import sql_list, sql_iso
-from pyLibrary.sql.sqlite import quote_value
+from pyLibrary.sql.sqlite import quote_value, quote_list
 from tuid import sql
 from tuid.statslogger import StatsLogger
 from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL
@@ -63,6 +63,7 @@ class TUIDService:
 
             self.conn = conn if conn else sql.Sql(self.config.database.name)
             self.hg_cache = HgMozillaOrg(kwargs=self.config.hg_cache, use_cache=True) if self.config.hg_cache else Null
+            self.hg_url = URL(hg.url)
 
             if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
@@ -174,7 +175,7 @@ class TUIDService:
 
         transaction.execute(
             "INSERT INTO annotations (revision, file, annotation) VALUES " +
-            sql_list(sql_iso(sql_list(map(quote_value, row))) for row in data)
+            sql_list(quote_list(row) for row in data)
         )
 
 
@@ -250,7 +251,7 @@ class TUIDService:
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num, repo, please_stop=None):
         with self.ann_thread_locker:
             self.ann_threads_running += 1
-        url = HG_URL / repo / "json-annotate" / cset / file
+        url = self.hg_url / repo / "json-annotate" / cset / file
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
 
@@ -308,7 +309,7 @@ class TUIDService:
         :return: list of (file, list(tuids)) tuples
         """
         result = []
-        URL_TO_FILES = HG_URL / self.config.hg.branch / 'json-info' / revision
+        URL_TO_FILES = self.hg_url / self.config.hg.branch / 'json-info' / revision
         try:
             mozobject = http.get_json(url=URL_TO_FILES, retry=RETRY)
         except Exception as e:
@@ -338,7 +339,7 @@ class TUIDService:
         '''
 
         # Get a changelog
-        clog_url = HG_URL / branch / 'json-log' / revision
+        clog_url = self.hg_url / branch / 'json-log' / revision
         try:
             Log.note("Searching through changelog {{url}}", url=clog_url)
             clog_obj = self.get_clog(clog_url)
@@ -534,10 +535,7 @@ class TUIDService:
                 for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
                     transaction.execute(
                         "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                        sql_list(
-                            sql_iso(sql_list(map(quote_value, i)))
-                            for i in inserts_list
-                        )
+                        sql_list(quote_list(i) for i in inserts_list)
                     )
                     del inserts_list
             del transaction
@@ -584,10 +582,7 @@ class TUIDService:
                         for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
                             transaction.execute(
                                 "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                                sql_list(
-                                    sql_iso(sql_list(map(quote_value, i)))
-                                    for i in inserts_list
-                                )
+                                sql_list(quote_list(i) for i in inserts_list)
                             )
                     del transaction
                 print("d")
@@ -633,6 +628,7 @@ class TUIDService:
             thread_count = 0
             prev_ind = 0
             curr_ind = 0
+
             while curr_ind <= len(frontier_update_list) or curr_ind <= len(new_files):
                 thread_count += 1
                 prev_ind = curr_ind
@@ -726,7 +722,7 @@ class TUIDService:
                 transaction.execute(
                     "INSERT INTO temporal (tuid, revision, file, line)"
                     " VALUES " +
-                    sql_list(sql_iso(sql_list(map(quote_value, tp))) for tp in inserts_list)
+                    sql_list(quote_list(tp) for tp in inserts_list)
                 )
 
         return new_ann, file
@@ -1166,7 +1162,7 @@ class TUIDService:
                 for _, inserts_list in jx.groupby(latestFileMod_inserts.values(), size=SQL_BATCH_SIZE):
                     transaction.execute(
                         "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                        sql_list(sql_iso(sql_list(map(quote_value, i))) for i in inserts_list)
+                        sql_list(quote_list(i) for i in inserts_list)
                     )
 
             anns_added_by_other_thread = {}
@@ -1579,10 +1575,10 @@ class TUIDService:
                 final_rev = ''
                 found_last_frontier = False
                 Log.note("Searching for frontier: {{frontier}} ", frontier=frontier)
-                Log.note("HG URL: {{url}}", url=HG_URL / self.config.hg.branch / 'rev' / frontier)
+                Log.note("HG URL: {{url}}", url=self.hg_url / self.config.hg.branch / 'rev' / frontier)
                 while not found_last_frontier:
                     # Get a changelog
-                    clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
+                    clog_url = self.hg_url / self.config.hg.branch / 'json-log' / final_rev
                     try:
                         clog_obj = self.get_clog(clog_url)
                     except Exception as e:
