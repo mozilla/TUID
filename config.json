@@ -81,6 +81,10 @@
         "mo_hg.hg_branches.BRANCH_WHITELIST": ["mozilla-central", "try"]
     },
     "debug": {
-        "trace": true
+        "trace": true,
+        "cprofile": {
+			"enabled": false,
+			"filename": "./results/profile.tab"
+		}
     }
 }

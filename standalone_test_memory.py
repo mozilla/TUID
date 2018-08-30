@@ -37,6 +37,7 @@ def test_annotation_memory():
 
     with open('resources/stressfiles.json', 'r') as f:
         files = json.load(f)
+    del f
 
     total_trials = 500
     total_files = 1

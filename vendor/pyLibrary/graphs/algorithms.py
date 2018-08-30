@@ -136,7 +136,10 @@ def dominator_tree(graph):
             if output not in done:
                 yield output
 
-    for node in next_node():
+    total = len(list(graph.nodes))
+    for count, node in enumerate(next_node()):
+        #print(count)
+        print("Len of todo: " + str(len(todo)) + " - Len of done/total: " + str(len(done)) + "/" + str(total))
         parents = graph.get_parents(node)
         if not parents:
             # node WITHOUT parents IS A ROOT
@@ -144,10 +147,10 @@ def dominator_tree(graph):
             dominator.add_edge(Edge(ROOTS, node))
             continue
 
-        not_done = [p for p in parents if p not in done]
+        not_done = set(parents) - done
         if not_done:
             # THERE ARE MORE parents TO DO FIRST
-            more_todo = [p for p in not_done if p not in todo]
+            more_todo = not_done - (todo.set | {node})
             if not more_todo:
                 # ALL PARENTS ARE PART OF A CYCLE, MAKE node A ROOT
                 done.add(node)
@@ -162,7 +165,7 @@ def dominator_tree(graph):
         # WE CAN GET THE DOMINATORS FOR ALL parents
         if len(parents) == 1:
             # SHORTCUT
-            dominator.add_edge(Edge(parents[0], node))
+            dominator.add_edge(Edge(list(parents)[0], node))
             done.add(node)
             continue
 
@@ -171,9 +174,9 @@ def dominator_tree(graph):
             for p in parents
         ]
 
-        if any(p[0] == ROOTS for p in paths_from_roots):
+        if any(p[0] is ROOTS for p in paths_from_roots):
             # THIS OBJECT CAN BE REACHED FROM A ROOT, IGNORE PATHS FROM LOOPS
-            paths_from_roots = [p for p in paths_from_roots if p[0] == ROOTS]
+            paths_from_roots = [p for p in paths_from_roots if p[0] is ROOTS]
 
         # FIND COMMON PATH FROM root
         num_paths = len(paths_from_roots)
