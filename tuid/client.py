@@ -18,11 +18,12 @@ from mo_threads import Till
 from mo_times import Timer, Date
 from pyLibrary import aws
 from pyLibrary.env import http
-from pyLibrary.sql import sql_iso, sql_list
+from pyLibrary.sql import sql_list
 from pyLibrary.sql.sqlite import Sqlite, quote_value, quote_list
 
 DEBUG = True
 SLEEP_ON_ERROR = 30
+
 
 class TuidClient(object):
 
@@ -34,7 +35,6 @@ class TuidClient(object):
         self.timeout = timeout
         self.push_queue = aws.Queue(push_queue) if push_queue else None
         self.config = kwargs
-
         self.db = Sqlite(filename=coalesce(db.filename, "tuid_client.sqlite"), kwargs=db)
 
         if not self.db.query("SELECT name FROM sqlite_master WHERE type='table';").data:
