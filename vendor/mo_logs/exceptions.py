@@ -13,6 +13,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
+import copy
 import sys
 from collections import Mapping
 
@@ -153,6 +154,7 @@ def extract_stack(start=0):
     except ZeroDivisionError:
         trace = sys.exc_info()[2]
         f = trace.tb_frame.f_back
+        trace = None
 
     for i in range(start):
         f = f.f_back

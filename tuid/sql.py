@@ -60,6 +60,7 @@ class Transaction():
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.transaction.__exit__(exc_type, exc_val, exc_tb)
+        self.transaction = None
 
     def execute(self, sql, params=None):
         if params:

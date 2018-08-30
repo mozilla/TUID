@@ -10,6 +10,7 @@ from __future__ import unicode_literals
 
 import gc
 import copy
+import objgraph.objgraph as objgraph
 
 from mo_times import Timer
 from jx_python import jx
@@ -66,6 +67,7 @@ class TUIDService:
             if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
 
+            self.initial_growth = {}
             self.locker = Lock()
             self.request_locker = Lock()
             self.ann_thread_locker = Lock()
@@ -457,7 +459,9 @@ class TUIDService:
         total = len(files)
         latestFileMod_inserts = {}
         new_files = []
-
+        print("z")
+        gc.collect()
+        objgraph.show_growth(peak_stats=self.initial_growth)
         log_existing_files = []
         for count, file in enumerate(files):
             # Go through all requested files and
@@ -470,6 +474,7 @@ class TUIDService:
             with self.conn.transaction() as t:
                 latest_rev = self._get_latest_revision(file, transaction=t)
                 already_ann = self._get_annotation(revision, file, transaction=t)
+            del t
 
             # Check if the file has already been collected at
             # this revision and get the result if so
@@ -506,6 +511,10 @@ class TUIDService:
                 )
                 new_files.append(file)
 
+        print("y")
+        gc.collect()
+        objgraph.show_growth(peak_stats=self.initial_growth)
+
         if DEBUG:
             Log.note(
                 "Frontier update - already exist in DB: "
@@ -530,6 +539,12 @@ class TUIDService:
                             for i in inserts_list
                         )
                     )
+                    del inserts_list
+            del transaction
+        print("x")
+        gc.collect()
+        objgraph.show_growth(peak_stats=self.initial_growth)
+
 
         def update_tuids_in_thread(
                 new_files,
@@ -559,6 +574,9 @@ class TUIDService:
                     # revisions.
                     for file in new_files:
                         latestFileMod_inserts[file] = (file, revision)
+                print("e")
+                gc.collect()
+                objgraph.show_growth(peak_stats=self.initial_growth)
 
                 Log.note("Finished updating frontiers. Updating DB table `latestFileMod`...")
                 if len(latestFileMod_inserts) > 0:
@@ -571,6 +589,10 @@ class TUIDService:
                                     for i in inserts_list
                                 )
                             )
+                    del transaction
+                print("d")
+                gc.collect()
+                objgraph.show_growth(peak_stats=self.initial_growth)
 
                 # If we have files that need to have their frontier updated, do that now
                 if len(frontier_update_list) > 0:
@@ -581,6 +603,9 @@ class TUIDService:
                         max_csets_proc=max_csets_proc
                     )
                     result.extend(tmp)
+                print("c")
+                gc.collect()
+                objgraph.show_growth(peak_stats=self.initial_growth)
 
             except Exception as e:
                 Log.warning("Thread dead becasue of problem", cause=e)
@@ -622,9 +647,17 @@ class TUIDService:
             for _ in range(1, thread_count): # Skip the first thread
                 self._add_thread()
         else:
+            print("b")
+            gc.collect()
+            objgraph.show_growth(peak_stats=self.initial_growth)
+
             result.extend(
                 update_tuids_in_thread(new_files, frontier_update_list, revision, threaded)
             )
+            print("a")
+            gc.collect()
+            objgraph.show_growth(peak_stats=self.initial_growth)
+
             self._remove_thread()
 
         self.statsdaemon.update_totals(len(files), len(result))
