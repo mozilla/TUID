@@ -42,12 +42,10 @@ class RolloverIndex(object):
         rollover_max,        # remove old indexes, do not add old records
         queue_size=10000,    # number of documents to queue in memory
         batch_size=5000,     # number of documents to push at once
-        typed=None,          # indicate if we are expected typed json
+        tjson=None,          # indicate if we are expected typed json
         kwargs=None          # plus additional ES settings
     ):
-        if kwargs.tjson != None:
-            Log.error
-        if typed == None:
+        if tjson == None:
             Log.error("not expected")
 
         self.settings = kwargs
@@ -120,7 +118,7 @@ class RolloverIndex(object):
                     self.cluster.delete_index(c.index)
                 except Exception as e:
                     Log.warning("could not delete index {{index}}", index=c.index, cause=e)
-        for t, q in items(self.known_queues):
+        for t, q in list(self.known_queues.items()):
             if unix2Date(t) + self.rollover_interval < Date.today() - self.rollover_max:
                 with self.locker:
                     del self.known_queues[t]
@@ -189,7 +187,7 @@ class RolloverIndex(object):
         queue = None
         pending = []  # FOR WHEN WE DO NOT HAVE QUEUE YET
         for key in keys:
-            timer = Timer("Process {{key}}", param={"key": key}, silent=not DEBUG)
+            timer = Timer("Process {{key}}", param={"key": key}, debug=DEBUG)
             try:
                 with timer:
                     for rownum, line in enumerate(source.read_lines(strip_extension(key))):

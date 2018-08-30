@@ -15,20 +15,23 @@ from __future__ import unicode_literals
 import subprocess
 from collections import Mapping
 from datetime import datetime
+from zipfile import ZipFile
 
 from pymysql import connect, InterfaceError, cursors
 
 import mo_json
 from jx_python import jx
-from mo_dots import coalesce, wrap, listwrap, unwrap, split_field
+from mo_dots import coalesce, wrap, listwrap, unwrap
 from mo_files import File
-from mo_future import text_type, utf8_json_encoder, binary_type, transpose
+from mo_future import text_type, utf8_json_encoder, binary_type
 from mo_kwargs import override
 from mo_logs import Log
 from mo_logs.exceptions import Except, suppress_exception
 from mo_logs.strings import expand_template, indent, outdent
 from mo_math import Math
 from mo_times import Date
+from pyLibrary.convert import zip2bytes
+from pyLibrary.env.big_data import ibytes2ilines
 from pyLibrary.sql import SQL, SQL_NULL, SQL_SELECT, SQL_LIMIT, SQL_WHERE, SQL_LEFT_JOIN, SQL_FROM, SQL_AND, sql_list, sql_iso, SQL_ASC, SQL_TRUE, SQL_ONE, SQL_DESC, SQL_IS_NULL, sql_alias
 from pyLibrary.sql.sqlite import join_column
 
@@ -103,12 +106,11 @@ class MySQL(object):
             )
         except Exception as e:
             if self.settings.host.find("://") == -1:
-                Log.error(
-                    u"Failure to connect to {{host}}:{{port}}",
-                    host=self.settings.host,
-                    port=self.settings.port,
-                    cause=e
-                )
+                Log.error(u"Failure to connect to {{host}}:{{port}}",
+                          host=self.settings.host,
+                          port=self.settings.port,
+                          cause=e
+                          )
             else:
                 Log.error(u"Failure to connect.  PROTOCOL PREFIX IS PROBABLY BAD", e)
         self.cursor = None
@@ -178,8 +180,7 @@ class MySQL(object):
         try:
             self.db.close()
         except Exception as e:
-            e = Except.wrap(e)
-            if "Already closed" in e:
+            if e.message.find("Already closed") >= 0:
                 return
 
             Log.warning("can not close()", e)
@@ -304,7 +305,7 @@ class MySQL(object):
             self.cursor.execute(sql)
             grid = [[utf8_to_unicode(c) for c in row] for row in self.cursor]
             # columns = [utf8_to_unicode(d[0]) for d in coalesce(self.cursor.description, [])]
-            result = transpose(*grid)
+            result = zip(*grid)
 
             if not old_cursor:  # CLEANUP AFTER NON-TRANSACTIONAL READS
                 self.cursor.close()
@@ -357,6 +358,85 @@ class MySQL(object):
         self.backlog.append(sql)
         if self.debug or len(self.backlog) >= MAX_BATCH_SIZE:
             self._execute_backlog()
+
+    @staticmethod
+    @override
+    def execute_sql(
+        host,
+        username,
+        password,
+        sql,
+        schema=None,
+        param=None,
+        kwargs=None
+    ):
+        """EXECUTE MANY LINES OF SQL (FROM SQLDUMP FILE, MAYBE?"""
+        kwargs.schema = coalesce(kwargs.schema, kwargs.database)
+
+        if param:
+            with MySQL(kwargs) as temp:
+                sql = expand_template(sql, quote_param(param))
+
+        # We have no way to execute an entire SQL file in bulk, so we
+        # have to shell out to the commandline client.
+        args = [
+            "mysql",
+            "-h{0}".format(host),
+            "-u{0}".format(username),
+            "-p{0}".format(password)
+        ]
+        if schema:
+            args.append("{0}".format(schema))
+
+        try:
+            proc = subprocess.Popen(
+                args,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=-1
+            )
+            if isinstance(sql, text_type):
+                sql = sql.encode("utf8")
+            (output, _) = proc.communicate(sql)
+        except Exception as e:
+            raise Log.error("Can not call \"mysql\"", e)
+
+        if proc.returncode:
+            if len(sql) > 10000:
+                sql = "<" + text_type(len(sql)) + " bytes of sql>"
+            Log.error(
+                "Unable to execute sql: return code {{return_code}}, {{output}}:\n {{sql}}\n",
+                sql=indent(sql),
+                return_code=proc.returncode,
+                output=output
+            )
+
+    @staticmethod
+    @override
+    def execute_file(
+        filename,
+        host,
+        username,
+        password,
+        schema=None,
+        param=None,
+        ignore_errors=False,
+        kwargs=None
+    ):
+        # MySQLdb provides no way to execute an entire SQL file in bulk, so we
+        # have to shell out to the commandline client.
+        file = File(filename)
+        if file.extension == 'zip':
+            sql = file.read_zipfile()
+        else:
+            sql = File(filename).read()
+
+        if ignore_errors:
+            with suppress_exception:
+                MySQL.execute_sql(sql=sql, param=param, kwargs=kwargs)
+        else:
+            MySQL.execute_sql(sql=sql, param=param, kwargs=kwargs)
 
     def _execute_backlog(self):
         if not self.backlog: return
@@ -482,93 +562,19 @@ class MySQL(object):
         sort = jx.normalize_sort_parameters(sort)
         return sql_list([quote_column(s.field) + (SQL_DESC if s.sort == -1 else SQL_ASC) for s in sort])
 
-@override
-def execute_sql(
-    host,
-    username,
-    password,
-    sql,
-    schema=None,
-    param=None,
-    kwargs=None
-):
-    """EXECUTE MANY LINES OF SQL (FROM SQLDUMP FILE, MAYBE?"""
-    kwargs.schema = coalesce(kwargs.schema, kwargs.database)
-
-    if param:
-        with MySQL(kwargs) as temp:
-            sql = expand_template(sql, quote_param(param))
-
-    # We have no way to execute an entire SQL file in bulk, so we
-    # have to shell out to the commandline client.
-    args = [
-        "mysql",
-        "-h{0}".format(host),
-        "-u{0}".format(username),
-        "-p{0}".format(password)
-    ]
-    if schema:
-        args.append("{0}".format(schema))
-
-    try:
-        proc = subprocess.Popen(
-            args,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            bufsize=-1
-        )
-        if isinstance(sql, text_type):
-            sql = sql.encode("utf8")
-        (output, _) = proc.communicate(sql)
-    except Exception as e:
-        raise Log.error("Can not call \"mysql\"", e)
-
-    if proc.returncode:
-        if len(sql) > 10000:
-            sql = "<" + text_type(len(sql)) + " bytes of sql>"
-        Log.error(
-            "Unable to execute sql: return code {{return_code}}, {{output}}:\n {{sql}}\n",
-            sql=indent(sql),
-            return_code=proc.returncode,
-            output=output
-        )
-
-@override
-def execute_file(
-    filename,
-    host,
-    username,
-    password,
-    schema=None,
-    param=None,
-    ignore_errors=False,
-    kwargs=None
-):
-    # MySQLdb provides no way to execute an entire SQL file in bulk, so we
-    # have to shell out to the commandline client.
-    file = File(filename)
-    if file.extension == 'zip':
-        sql = file.read_zipfile()
-    else:
-        sql = File(filename).read()
-
-    if ignore_errors:
-        with suppress_exception:
-            execute_sql(sql=sql, kwargs=kwargs)
-    else:
-        execute_sql(sql=sql, kwargs=kwargs)
 
 ESCAPE_DCT = {
     u"\\": u"\\\\",
-    u"\0": u"\\0",
-    u"\"": u'\\"',
+    # u"\0": u"\\0",
+    # u"\"": u'\\"',
     u"\'": u"''",
-    u"\b": u"\\b",
-    u"\f": u"\\f",
-    u"\n": u"\\n",
-    u"\r": u"\\r",
-    u"\t": u"\\t"
+    # u"\b": u"\\b",
+    # u"\f": u"\\f",
+    # u"\n": u"\\n",
+    # u"\r": u"\\r",
+    # u"\t": u"\\t",
+    # u"%": u"\\%",
+    # u"_": u"\\_"
 }
 
 
@@ -604,12 +610,13 @@ def quote_column(column_name, table=None):
     if column_name == None:
         Log.error("missing column_name")
     elif isinstance(column_name, text_type):
-        if table:
-            return join_column(table, column_name)
-        else:
-            return SQL("`" + '`.`'.join(split_field(column_name)) + "`")  # MYSQL QUOTE OF COLUMN NAMES
+            if table:
+                column_name = join_column(table, column_name)
+            return SQL("`" + column_name.replace(".", "`.`") + "`")  # MY SQL QUOTE OF COLUMN NAMES
     elif isinstance(column_name, binary_type):
-        return quote_column(column_name.decode('utf8'), table)
+        if table:
+            column_name = join_column(table, column_name)
+        return SQL("`" + column_name.decode('utf8').replace(".", "`.`") + "`")
     elif isinstance(column_name, list):
         if table:
             return sql_list(join_column(table, c) for c in column_name)
@@ -617,6 +624,10 @@ def quote_column(column_name, table=None):
     else:
         # ASSUME {"name":name, "value":value} FORM
         return SQL(sql_alias(column_name.value, quote_column(column_name.name)))
+
+
+def quote_list(value):
+    return sql_iso(sql_list(map(quote_value, value)))
 
 
 def quote_sql(value, param=None):
@@ -634,7 +645,7 @@ def quote_sql(value, param=None):
         elif isinstance(value, Mapping):
             return quote_value(json_encode(value))
         elif hasattr(value, '__iter__'):
-            return quote_list(value)
+            return sql_iso(sql_list(map(quote_value, value)))
         else:
             return text_type(value)
     except Exception as e:

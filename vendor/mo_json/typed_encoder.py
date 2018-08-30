@@ -11,19 +11,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
-import time
 from collections import Mapping
-from datetime import date, datetime, timedelta
 from decimal import Decimal
 from json.encoder import encode_basestring
 
+from datetime import date, datetime, timedelta
+import time
+from jx_base import Column, python_type_to_json_type, NESTED, EXISTS, STRING, NUMBER, INTEGER, BOOLEAN
 from mo_dots import Data, FlatList, NullType, join_field, split_field
-from mo_future import text_type, binary_type, sort_using_key, long, PY2, none_type
-from mo_json import ESCAPE_DCT, float2json
-from mo_json.encoder import UnicodeBuilder, COLON, COMMA, problem_serializing, json_encoder
+from mo_future import text_type, binary_type, sort_using_key
 from mo_logs import Log
 from mo_logs.strings import quote, utf82unicode
 from mo_times import Date, Duration
+
+from mo_json import ESCAPE_DCT, float2json
+from mo_json.encoder import UnicodeBuilder, COLON, COMMA, problem_serializing, json_encoder
 
 
 def encode_property(name):
@@ -63,20 +65,10 @@ def _untype(value):
         for k, v in value.items():
             if k == EXISTS_TYPE:
                 continue
-            elif k == NESTED_TYPE:
-                return _untype(v)
             elif k.startswith(TYPE_PREFIX):
                 return v
             else:
-                new_v = _untype(v)
-                if isinstance(new_v, list):
-                    len_v = len(new_v)
-                    if len_v==1:
-                        output[decode_property(k)] = new_v[0]
-                    elif len_v>1:
-                        output[decode_property(k)] = new_v
-                elif new_v != None:
-                    output[decode_property(k)] = new_v
+                output[decode_property(k)] = _untype(v)
         return output
     elif isinstance(value, list):
         return [_untype(v) for v in value]
@@ -106,8 +98,7 @@ def typed_encode(value, sub_schema, path, net_new_properties, buffer):
     :return:
     """
     try:
-        # from jx_base import Column
-        if sub_schema.__class__.__name__=='Column':
+        if isinstance(sub_schema, Column):
             value_json_type = python_type_to_json_type[value.__class__]
             column_json_type = es_type_to_json_type[sub_schema.es_type]
 
@@ -144,7 +135,7 @@ def typed_encode(value, sub_schema, path, net_new_properties, buffer):
 
         _type = value.__class__
         if _type in (dict, Data):
-            if sub_schema.__class__.__name__ == 'Column':
+            if isinstance(sub_schema, Column):
                 from mo_logs import Log
                 Log.error("Can not handle {{column|json}}", column=sub_schema)
 
@@ -200,16 +191,16 @@ def typed_encode(value, sub_schema, path, net_new_properties, buffer):
             for c in value:
                 append(buffer, ESCAPE_DCT.get(c, c))
             append(buffer, '"}')
-        elif _type in (int, long):
+        elif _type in (int, long, Decimal):
             if NUMBER_TYPE not in sub_schema:
                 sub_schema[NUMBER_TYPE] = True
                 net_new_properties.append(path + [NUMBER_TYPE])
 
             append(buffer, '{')
             append(buffer, QUOTED_NUMBER_TYPE)
-            append(buffer, text_type(value))
+            append(buffer, float2json(value))
             append(buffer, '}')
-        elif _type in (float, Decimal):
+        elif _type is float:
             if NUMBER_TYPE not in sub_schema:
                 sub_schema[NUMBER_TYPE] = True
                 net_new_properties.append(path + [NUMBER_TYPE])
@@ -371,7 +362,7 @@ def _dict2json(value, sub_schema, path, net_new_properties, buffer):
         if k not in sub_schema:
             sub_schema[k] = {}
             net_new_properties.append(path + [k])
-        append(buffer, encode_basestring(encode_property(k)))
+        append(buffer, encode_basestring(k))
         append(buffer, COLON)
         typed_encode(v, sub_schema[k], path + [k], net_new_properties, buffer)
     if prefix is COMMA:
@@ -381,43 +372,7 @@ def _dict2json(value, sub_schema, path, net_new_properties, buffer):
     else:
         append(buffer, '{')
         append(buffer, QUOTED_EXISTS_TYPE)
-        append(buffer, '1}')
-
-
-IS_NULL = '0'
-BOOLEAN = 'boolean'
-INTEGER = 'integer'
-NUMBER = 'number'
-STRING = 'string'
-OBJECT = 'object'
-NESTED = "nested"
-EXISTS = "exists"
-
-JSON_TYPES = [BOOLEAN, INTEGER, NUMBER, STRING, OBJECT]
-PRIMITIVE = [EXISTS, BOOLEAN, INTEGER, NUMBER, STRING]
-STRUCT = [EXISTS, OBJECT, NESTED]
-
-
-python_type_to_json_type = {
-    int: NUMBER,
-    text_type: STRING,
-    float: NUMBER,
-    None: OBJECT,
-    bool: BOOLEAN,
-    NullType: OBJECT,
-    none_type: OBJECT,
-    Data: OBJECT,
-    dict: OBJECT,
-    object: OBJECT,
-    Mapping: OBJECT,
-    list: NESTED,
-    FlatList: NESTED,
-    Date: NUMBER
-}
-
-if PY2:
-    python_type_to_json_type[str] = STRING
-    python_type_to_json_type[long] = NUMBER
+        append(buffer, '0}')
 
 
 TYPE_PREFIX = "~"  # u'\u0442\u0443\u0440\u0435-'  # "туре"

@@ -52,6 +52,7 @@ class ES14(Container):
         host,
         index,
         type=None,
+        alias=None,
         name=None,
         port=9200,
         read_only=True,
@@ -160,7 +161,7 @@ class ES14(Container):
         except Exception as e:
             e = Except.wrap(e)
             if "Data too large, data for" in e:
-                http.post(self.es.cluster.url / "_cache/clear")
+                http.post(self.es.cluster.path+"/_cache/clear")
                 Log.error("Problem (Tried to clear Elasticsearch cache)", e)
             Log.error("problem", e)
 

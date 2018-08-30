@@ -10,21 +10,26 @@ from __future__ import unicode_literals
 
 import time
 
+from jx_python import jx
+from mo_dots import Null, coalesce, wrap
+from mo_future import text_type
+from mo_hg.hg_mozilla_org import HgMozillaOrg
+from mo_files.url import URL
+from mo_logs import Log
+from mo_times import Timer
+from mo_times.durations import DAY
+from mo_threads import Till, Thread, Lock, Queue, Signal
+from pyLibrary.env import http
+from pyLibrary.sql import sql_list, quote_set
+from tuid import sql
+from tuid.util import HG_URL, insert_into_db_chunked
+
 # Use import as follows to prevent
 # circular dependency conflict for
 # TUIDService, which makes use of the
 # Clogger
 import tuid.service
-from jx_python import jx
-from mo_dots import Null, coalesce
-from mo_hg.hg_mozilla_org import HgMozillaOrg
-from mo_logs import Log
-from mo_threads import Till, Thread, Lock, Queue, Signal
-from mo_times.durations import DAY
-from pyLibrary.env import http
-from pyLibrary.sql import sql_list, quote_set
-from tuid import sql
-from tuid.util import HG_URL, insert_into_db_chunked
+
 
 RETRY = {"times": 3, "sleep": 5}
 SQL_CSET_BATCH_SIZE = 500
@@ -333,7 +338,7 @@ class Clogger:
         clogs_seen = 0
         final_rev = child_cset
         while not found_parent and clogs_seen < MAX_BACKFILL_CLOGS:
-            clog_url = self.tuid_service.hg_url / self.config.hg.branch / 'json-log' / final_rev
+            clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
             clog_obj = self._get_clog(clog_url)
             clog_csets_list = list(clog_obj['changesets'])
             for clog_cset in clog_csets_list[:-1]:
@@ -476,7 +481,7 @@ class Clogger:
         if an update has taken place.
         :return:
         '''
-        clog_obj = self._get_clog(self.tuid_service.hg_url / self.config.hg.branch / 'json-log' / 'tip')
+        clog_obj = self._get_clog(HG_URL / self.config.hg.branch / 'json-log' / 'tip')
 
         # Get current tip in DB
         with self.conn.transaction() as t:
@@ -519,7 +524,7 @@ class Clogger:
                 # Get the next page
                 clogs_seen += 1
                 final_rev = clog_csets_list[-1]['node'][:12]
-                clog_url = self.tuid_service.hg_url / self.config.hg.branch / 'json-log' / final_rev
+                clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
                 clog_obj = self._get_clog(clog_url)
 
         if clogs_seen >= MAX_TIPFILL_CLOGS:

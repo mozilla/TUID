@@ -6,7 +6,6 @@
         "local_hg_source": "C:/mozilla-source/mozilla-central/",
         "hg_for_building": "C:/mozilla-build/python/Scripts/hg.exe",
         "hg": {
-            "url": "https://hg.mozilla.org",
             "branch": "mozilla-central"
         },
         "hg_cache": {
@@ -19,7 +18,7 @@
                 "port": 9201,
                 "index": "branches",
                 "type": "branch",
-                "typed": false,
+                "tjson": false,
                 "timeout": 300,
                 "consistency": "one", // WE ONLY NEED ONE SHARD TO BE AVAILABLE
                 "debug": false,
@@ -30,7 +29,7 @@
                 "port": 9201,
                 "index": "repo",
                 "type": "revision",
-                "typed": false,
+                "tjson": false,
                 "timeout": 300,
                 "consistency": "one", // WE ONLY NEED ONE SHARD TO BE AVAILABLE
                 "debug": false,

@@ -27,8 +27,13 @@ class StructuredLogger_usingStream(StructuredLogger):
             self.flush = stream.flush
             if stream in (sys.stdout, sys.stderr):
                 if PY3:
-                    stream = stream.buffer
-            self.writer = _UTF8Encoder(stream).write
+                    self.writer = stream.write
+                else:
+                    self.writer = _UTF8Encoder(stream).write
+            elif hasattr(stream, 'encoding') and stream.encoding:
+                self.writer = _UTF8Encoder(stream).write
+            else:
+                self.writer = stream.write
         except Exception as _:
             sys.stderr.write("can not handle")
 

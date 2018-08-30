@@ -177,11 +177,7 @@ class NullType(object):
         v = o.get(k)
         if v == None:
             return NullType(self, key)
-        try:
-            return wrap(v.get(key))
-        except Exception as e:
-            from mo_logs import Log
-            Log.error("not expected", cause=e)
+        return wrap(v.get(key))
 
     def __setattr__(self, key, value):
         key = text_type(key)
@@ -226,7 +222,6 @@ class NullType(object):
 
     def __hash__(self):
         return hash(None)
-
 
 Null = NullType()   # INSTEAD OF None!!!
 

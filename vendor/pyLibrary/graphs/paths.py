@@ -61,10 +61,10 @@ class Path(list):
         return item in self.list
 
     def append(self, val):
-        raise NotImplementedError()
+        Log.error("not implemented")
 
     def __str__(self):
-        raise NotImplementedError()
+        Log.error("not implemented")
 
     def __len__(self):
         if not self.list:
@@ -80,13 +80,13 @@ class Path(list):
         return self.list.copy()
 
     def remove(self, x):
-        raise NotImplementedError()
+        Log.error("not implemented")
 
     def extend(self, values):
-        raise NotImplementedError()
+        Log.error("not implemented")
 
     def pop(self):
-        raise NotImplementedError()
+        Log.error("not implemented")
 
     def right(self, num=None):
         """

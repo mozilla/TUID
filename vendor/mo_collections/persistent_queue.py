@@ -93,6 +93,7 @@ class PersistentQueue(object):
                     yield value
             except Exception as e:
                 Log.warning("Tell me about what happened here", cause=e)
+        DEBUG and Log.note("queue iterator is done")
 
     def add(self, value):
         with self.lock:

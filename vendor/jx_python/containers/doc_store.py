@@ -192,7 +192,7 @@ class DocStore(Container):
 
     def having(self, having):
         _ = having
-        raise NotImplementedError()
+        Log.error("not implemented")
 
     def format(self, format):
         if format == "list":

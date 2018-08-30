@@ -42,7 +42,7 @@ Some tests take long, and you want to run just one of them. Here is an example:
     python -m pytest tests\test_basic.py::test_one_http_call_required
 
 
-## Running the web application for development
+## Running the web application
 
 You can run the web service locally with 
 
@@ -66,7 +66,7 @@ The web service was designed to be part of a larger service. You can assign a
 route that points to the `tuid_endpoint()` method, and avoid the Flask
 server construction.
 
-## Deploying the web service
+## Starting the web service
 
 First, the server needs to be setup, which can be done by running
 the server setup script `resources/scripts/setup_server.sh`, and then the

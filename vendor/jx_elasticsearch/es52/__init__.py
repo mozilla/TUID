@@ -11,10 +11,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
+from collections import Mapping
+
 from jx_base import container
 from jx_base.container import Container
 from jx_base.dimensions import Dimension
 from jx_base.expressions import jx_expression
+from jx_base.queries import is_variable_name
 from jx_base.query import QueryOp
 from jx_elasticsearch.es52.aggs import es_aggsop, is_aggsop
 from jx_elasticsearch.es52.deep import is_deepop, es_deepop
@@ -22,9 +25,9 @@ from jx_elasticsearch.es52.setop import is_setop, es_setop
 from jx_elasticsearch.es52.util import aggregates
 from jx_elasticsearch.meta import ElasticsearchMetadata, Table
 from jx_python import jx
-from mo_dots import Data, unwrap, coalesce, split_field, join_field, wrap, listwrap
-from mo_json import value2json
-from mo_json.typed_encoder import EXISTS_TYPE
+from mo_dots import Data, Null, unwrap, coalesce, split_field, literal_field, unwraplist, join_field, wrap, listwrap, FlatList
+from mo_json import scrub, value2json
+from mo_json.typed_encoder import TYPE_PREFIX, EXISTS_TYPE
 from mo_kwargs import override
 from mo_logs import Log, Except
 from pyLibrary.env import elasticsearch, http
@@ -49,6 +52,7 @@ class ES52(Container):
         host,
         index,
         type=None,
+        alias=None,
         name=None,
         port=9200,
         read_only=True,
@@ -64,9 +68,9 @@ class ES52(Container):
                 "settings": unwrap(kwargs)
             }
         self.settings = kwargs
-        self.name = name = coalesce(name, index)
+        self.name = name = coalesce(name, alias, index)
         if read_only:
-            self.es = elasticsearch.Alias(alias=index, kwargs=kwargs)
+            self.es = elasticsearch.Alias(alias=coalesce(alias, index), kwargs=kwargs)
         else:
             self.es = elasticsearch.Cluster(kwargs=kwargs).get_index(read_only=read_only, kwargs=kwargs)
 
@@ -75,7 +79,7 @@ class ES52(Container):
         self.edges = Data()
         self.worker = None
 
-        columns = self.snowflake.columns  # ABSOLUTE COLUMNS
+        columns = self._namespace.get_snowflake(self.es.settings.alias).columns  # ABSOLUTE COLUMNS
         is_typed = any(c.es_column == EXISTS_TYPE for c in columns)
 
         if typed == None:
@@ -93,6 +97,7 @@ class ES52(Container):
     @property
     def namespace(self):
         return self._namespace
+
 
     def get_table(self, full_name):
         return Table(full_name, self)
@@ -156,7 +161,7 @@ class ES52(Container):
         except Exception as e:
             e = Except.wrap(e)
             if "Data too large, data for" in e:
-                http.post(self.es.cluster.url / "_cache/clear")
+                http.post(self.es.cluster.path+"/_cache/clear")
                 Log.error("Problem (Tried to clear Elasticsearch cache)", e)
             Log.error("problem", e)
 
@@ -193,38 +198,37 @@ class ES52(Container):
         THE where CLAUSE IS AN ES FILTER
         """
         command = wrap(command)
-        table = self.get_table(command['update'])
-
-        es_index = self.es.cluster.get_index(read_only=False, alias=None, kwargs=self.es.settings)
-
-        schema = table.schema
-        es_filter = jx_expression(command.where).to_esfilter(schema)
+        schema = self.es.get_properties()
 
         # GET IDS OF DOCUMENTS
-        query = {
-            "from": command['update'],
-            "select": ["_id"] + [
-                {"name": k, "value": v}
-                for k, v in command.set.items()
-            ],
-            "where": command.where,
-            "format": "list",
-            "limit": 10000
-        }
+        results = self.es.search({
+            "stored_fields": listwrap(schema._routing.path),
+            "query": {"bool": {
+                "filter": jx_expression(command.where).to_esfilter(Null)
+            }},
+            "size": 10000
+        })
 
-        results = self.query(query)
+        # SCRIPT IS SAME FOR ALL (CAN ONLY HANDLE ASSIGNMENT TO CONSTANT)
+        scripts = FlatList()
+        for k, v in command.set.items():
+            if not is_variable_name(k):
+                Log.error("Only support simple paths for now")
+            if isinstance(v, Mapping) and v.doc:
+                scripts.append({"doc": v.doc})
+            else:
+                v = scrub(v)
+                scripts.append({"script": "ctx._source." + k + " = " + jx_expression(v).to_es_script(schema).script(schema)})
 
-        if results.data:
-            content = "".join(
-                t
-                for r in results.data
-                for _id, row in [(r._id, r)]
-                for _ in [row.__setitem__('_id', None)]  # WARNING! DESTRUCTIVE TO row
-                for update in map(value2json, ({"update": {"_id": _id}}, {"doc": row}))
-                for t in (update, "\n")
-            )
+        if results.hits.hits:
+            updates = []
+            for h in results.hits.hits:
+                for s in scripts:
+                    updates.append({"update": {"_id": h._id, "_routing": unwraplist(h.fields[literal_field(schema._routing.path)])}})
+                    updates.append(s)
+            content = ("\n".join(value2json(c) for c in updates) + "\n")
             response = self.es.cluster.post(
-                es_index.path + "/" + "_bulk",
+                self.es.path + "/_bulk",
                 data=content,
                 headers={"Content-Type": "application/json"},
                 timeout=self.settings.timeout,
@@ -232,12 +236,4 @@ class ES52(Container):
             )
             if response.errors:
                 Log.error("could not update: {{error}}", error=[e.error for i in response["items"] for e in i.values() if e.status not in (200, 201)])
-
-        # DELETE BY QUERY, IF NEEDED
-        if '.' in listwrap(command.clear):
-            self.es.delete_record(es_filter)
-            return
-
-        es_index.flush()
-
 

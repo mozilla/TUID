@@ -13,6 +13,7 @@ from __future__ import unicode_literals
 
 from collections import Mapping
 
+from jx_base import STRING, NUMBER, BOOLEAN
 from jx_base.dimensions import Dimension
 from jx_base.domains import SimpleSetDomain, DefaultDomain, PARTITION
 from jx_base.expressions import TupleOp, TRUE
@@ -21,8 +22,8 @@ from jx_elasticsearch.es52.expressions import Variable, NotOp, InOp, Literal, An
 from jx_elasticsearch.es52.util import es_missing
 from jx_python import jx
 from mo_dots import wrap, set_default, coalesce, literal_field, Data, relative_field, unwraplist
-from mo_future import text_type, transpose
-from mo_json.typed_encoder import untype_path, STRING, NUMBER, BOOLEAN
+from mo_future import text_type
+from mo_json.typed_encoder import untype_path
 from mo_logs import Log
 from mo_logs.strings import quote, expand_template
 from mo_math import MAX, MIN, Math
@@ -124,13 +125,13 @@ class AggsDecoder(object):
         pass
 
     def get_value_from_row(self, row):
-        raise NotImplementedError()
+        Log.error("Not implemented")
 
     def get_value(self, index):
-        raise NotImplementedError()
+        Log.error("Not implemented")
 
     def get_index(self, row):
-        raise NotImplementedError()
+        Log.error("Not implemented")
 
     @property
     def num_columns(self):
@@ -160,7 +161,7 @@ class SetDecoder(AggsDecoder):
         domain = self.domain
 
         domain_key = domain.key
-        include, text_include = transpose(*(
+        include, text_include = zip(*(
             (
                 float(v) if isinstance(v, (int, float)) else v,
                 text_type(float(v)) if isinstance(v, (int, float)) else v
@@ -501,7 +502,7 @@ class ObjectDecoder(AggsDecoder):
             prefix = edge.value.var
             flatter = lambda k: relative_field(k, prefix)
 
-        self.put, self.fields = transpose(*[
+        self.put, self.fields = zip(*[
             (flatter(untype_path(c.names["."])), c.es_column)
             for c in query.frum.schema.leaves(prefix)
         ])
@@ -561,7 +562,7 @@ class ObjectDecoder(AggsDecoder):
             return None
 
         output = Data()
-        for k, v in transpose(self.put, part):
+        for k, v in zip(self.put, part):
             output[k] = v.get('key')
         return output
 

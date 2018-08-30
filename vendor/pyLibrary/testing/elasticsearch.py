@@ -12,58 +12,57 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import mo_json
-from jx_python import jx
-from mo_dots import Data, Null, unwrap, wrap
 from mo_files import File
-from mo_kwargs import override
 from mo_logs import Log
-from pyLibrary.env.elasticsearch import Cluster
+from mo_dots import Data
+from mo_dots import unwrap, wrap
+from pyLibrary import convert
+from pyLibrary.env.elasticsearch import Index, Cluster
+from mo_kwargs import override
+from jx_python import jx
 
 
-@override
-def make_test_instance(name, filename=None, kwargs=None):
-    if filename != None:
-        File(filename).delete()
-    return open_test_instance(kwargs)
+def make_test_instance(name, settings):
+    if settings.filename:
+        File(settings.filename).delete()
+    return open_test_instance(name, settings)
 
 
-@override
-def open_test_instance(name, filename=None, es=None, kwargs=None):
-    if filename != None:
+def open_test_instance(name, settings):
+    if settings.filename:
         Log.note(
             "Using {{filename}} as {{type}}",
-            filename=filename,
+            filename=settings.filename,
             type=name
         )
-        return FakeES(filename=filename)
+        return FakeES(settings)
     else:
         Log.note(
             "Using ES cluster at {{host}} as {{type}}",
-            host=es.host,
+            host=settings.host,
             type=name
         )
-        cluster = Cluster(es)
+        cluster = Cluster(settings)
         try:
-            old_index = cluster.get_index(es)
+            old_index = cluster.get_index(kwargs=settings)
             cluster.delete_index(old_index.settings.index)
         except Exception as e:
             if "Can not find index" not in e:
                 Log.error("unexpected", cause=e)
 
-        output = cluster.create_index(limit_replicas=True, limit_replicas_warning=False, kwargs=es)
-        output.delete_all_but_self()
-        output.add_alias(es.index)
-        return output
+        es = cluster.create_index(limit_replicas=True, limit_replicas_warning=False, kwargs=settings)
+        es.delete_all_but_self()
+        es.add_alias(settings.index)
+        return es
 
 
 class FakeES():
     @override
     def __init__(self, filename, host="fake", index="fake", kwargs=None):
         self.settings = kwargs
-        self.file = File(filename)
-        self.cluster= Null
+        self.filename = filename
         try:
-            self.data = mo_json.json2value(self.file.read())
+            self.data = mo_json.json2value(File(self.filename).read())
         except Exception as e:
             self.data = Data()
 
@@ -86,8 +85,11 @@ class FakeES():
         }
 
         unwrap(self.data).update(records)
-        self.refresh()
-        Log.note("{{num}} documents added", num=len(records))
+
+        data_as_json = mo_json.value2json(self.data, pretty=True)
+
+        File(self.filename).write(data_as_json)
+        Log.note("{{num}} documents added",  num= len(records))
 
     def add(self, record):
         if isinstance(record, list):
@@ -95,13 +97,8 @@ class FakeES():
         return self.extend([record])
 
     def delete_record(self, filter):
-        f = esfilter2where(filter)
+        f = convert.esfilter2where(filter)
         self.data = wrap({k: v for k, v in self.data.items() if not f(v)})
-
-    def refresh(self, *args, **kwargs):
-        data_as_json = mo_json.value2json(self.data, pretty=True)
-        self.file.write(data_as_json)
-
 
     def set_refresh_interval(self, seconds):
         pass

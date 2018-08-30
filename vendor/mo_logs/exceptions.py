@@ -211,7 +211,7 @@ class Suppress(object):
         self.type = exception_type
 
     def __enter__(self):
-        return self
+        pass
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if not exc_val or isinstance(exc_val, self.type):

@@ -28,6 +28,7 @@ class Namespace(object):
     def get_schema(self, name):
         raise NotImplementedError()
 
+
     def convert(self, expr):
         raise NotImplementedError()
 

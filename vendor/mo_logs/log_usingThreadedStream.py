@@ -16,8 +16,7 @@ from __future__ import unicode_literals
 import sys
 from time import time
 
-from mo_dots import Data
-from mo_future import text_type, PY3
+from mo_future import text_type, PY2
 from mo_logs import Log
 from mo_logs.log_usingNothing import StructuredLogger
 from mo_logs.strings import expand_template
@@ -32,24 +31,29 @@ class StructuredLogger_usingThreadedStream(StructuredLogger):
     def __init__(self, stream):
         assert stream
 
+        use_UTF8 = False
+
         if isinstance(stream, text_type):
+            if stream.startswith("sys."):
+                use_UTF8 = True  # sys.* ARE OLD AND CAN NOT HANDLE unicode
+            self.stream = eval(stream)
             name = stream
-            stream = self.stream = eval(stream)
-            if name.startswith("sys.") and PY3:
-                self.stream = Data(write=lambda d: stream.write(d.decode('utf8')))
         else:
-            name = "stream"
             self.stream = stream
+            name = "stream"
 
         # WRITE TO STREAMS CAN BE *REALLY* SLOW, WE WILL USE A THREAD
         from mo_threads import Queue
 
-        def utf8_appender(value):
-            if isinstance(value, text_type):
-                value = value.encode('utf8')
-            self.stream.write(value)
+        if use_UTF8 and PY2:
+            def utf8_appender(value):
+                if isinstance(value, text_type):
+                    value = value.encode('utf8')
+                self.stream.write(value)
 
-        appender = utf8_appender
+            appender = utf8_appender
+        else:
+            appender = self.stream.write
 
         self.queue = Queue("queue for " + self.__class__.__name__ + "(" + name + ")", max=10000, silent=True)
         self.thread = Thread("log to " + self.__class__.__name__ + "(" + name + ")", time_delta_pusher, appender=appender, queue=self.queue, interval=0.3)

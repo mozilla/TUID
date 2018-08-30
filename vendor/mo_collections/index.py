@@ -38,7 +38,7 @@ class Index(object):
         try:
             if isinstance(key, (list, tuple)) and len(key) < len(self._keys):
                 # RETURN ANOTHER Index
-                raise NotImplementedError()
+                Log.error("not implemented")
 
             key = value2key(self._keys, key)
             return wrap(copy(self._data.get(key, [])))

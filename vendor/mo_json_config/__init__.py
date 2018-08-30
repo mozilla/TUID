@@ -18,28 +18,19 @@ from collections import Mapping
 import mo_dots
 from mo_dots import set_default, wrap, unwrap
 from mo_files import File
-from mo_files.url import URL
-from mo_future import text_type
 from mo_json import json2value
 from mo_json_config.convert import ini2value
 from mo_logs import Log, Except
+from mo_logs.url import URL
 
 DEBUG = False
-
-
-def get_file(file):
-    file = File(file)
-    if os.sep=="\\":
-        return get("file:///" + file.abspath)
-    else:
-        return get("file://" + file.abspath)
 
 
 def get(url):
     """
     USE json.net CONVENTIONS TO LINK TO INLINE OTHER JSON
     """
-    url = text_type(url)
+    url = str(url)
     if url.find("://") == -1:
         Log.error("{{url}} must have a prototcol (eg http://) declared", url=url)
 
@@ -123,8 +114,6 @@ def _replace_ref(node, url):
 
         if not output:
             output = new_value
-        elif isinstance(output, text_type):
-            Log.error("Can not handle set_default({{output}},{{new_value}})", output=output, new_value=new_value)
         else:
             output = unwrap(set_default(output, new_value))
 
@@ -192,7 +181,7 @@ def _replace_locals(node, doc_path):
 ## SCHEME LOADERS ARE BELOW THIS LINE
 ###############################################################################
 
-def _get_file(ref, url):
+def get_file(ref, url):
 
     if ref.path.startswith("~"):
         home_path = os.path.expanduser("~")
@@ -244,17 +233,17 @@ def get_http(ref, url):
     return new_value
 
 
-def _get_env(ref, url):
+def get_env(ref, url):
     # GET ENVIRONMENT VARIABLES
     ref = ref.host
     try:
         new_value = json2value(os.environ[ref])
     except Exception as e:
-        new_value = os.environ.get(ref)
+        new_value = os.environ[ref]
     return new_value
 
 
-def _get_param(ref, url):
+def get_param(ref, url):
     # GET PARAMETERS FROM url
     param = url.query
     new_value = param[ref.host]
@@ -263,8 +252,8 @@ def _get_param(ref, url):
 
 scheme_loaders = {
     "http": get_http,
-    "file": _get_file,
-    "env": _get_env,
-    "param": _get_param
+    "file": get_file,
+    "env": get_env,
+    "param": get_param
 }
 

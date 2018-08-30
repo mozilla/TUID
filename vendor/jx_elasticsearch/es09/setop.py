@@ -175,7 +175,7 @@ def es_setop(es, mvel, query):
         if not data_list:
             cube = Cube(select, [], {s.name: Matrix.wrap([]) for s in select})
         else:
-            output = transpose(*data_list)
+            output = zip(*data_list)
             cube = Cube(select, [], {s.name: Matrix(list=output[i]) for i, s in enumerate(select)})
 
     return Data(
@@ -221,7 +221,7 @@ def es_deepop(es, mvel, query):
     data = es_post(es, FromES, query.limit)
 
     rows = unpack_terms(data.facets.mvel, query.edges)
-    terms = transpose(*rows)
+    terms = zip(*rows)
 
     # NUMBER ALL EDGES FOR JSON EXPRESSION INDEXING
     edges = query.edges
