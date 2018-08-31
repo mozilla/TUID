@@ -52,7 +52,7 @@ class Clogger:
             self.hg_cache = HgMozillaOrg(kwargs=self.config.hg_cache, use_cache=True) if self.config.hg_cache else Null
 
             self.tuid_service = tuid_service if tuid_service else tuid.service.TUIDService(
-                database=None, hg=None, kwargs=self.config, conn=self.conn, clogger=self
+                kwargs=self.config.tuid, conn=self.conn, clogger=self
             )
             self.rev_locker = Lock()
             self.working_locker = Lock()
