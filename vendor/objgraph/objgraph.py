@@ -44,7 +44,7 @@ import sys
 import itertools
 
 from pyLibrary.graphs import Edge
-from pyLibrary.graphs.algorithms import dominator_tree
+from pyLibrary.graphs.algorithms import dominator_tree, ROOTS, LOOPS
 from objgraph.graph import MemoryGraph
 
 try:
@@ -841,14 +841,10 @@ def show_chain(*chains, **kw):
 def show_dominator_tree(obj, max_depth=6, extra_ignore=(), filter=None, too_many=30,
                   highlight=None, filename=None, extra_info=None,
                   refcounts=False, shortnames=True, output=None, **kw):
-    dominator_trees = _find_dominator_tree(obj, max_depth=max_depth+1, extra_ignore=extra_ignore, **kw)
-    for dominator_tree in dominator_trees:
-        dominator_tree.find_roots(set_graph=True)
-        print(dominator_tree)
-        if not dominator_tree.root:
-            print("Could not find a root, using requested object's id.")
-            dominator_tree.root = id(obj)
-        _show_graph(dominator_tree.root, extra_ignore=extra_ignore,
+    dominator_tree = _find_dominator_tree(obj, max_depth=max_depth+1, extra_ignore=extra_ignore, **kw)
+    roots = dominator_tree.get_children(ROOTS)
+    for root in roots:
+        _show_graph(root, extra_ignore=extra_ignore,
                     filter=filter, too_many=too_many, highlight=highlight,
                     edge_func=dominator_tree.object_neighbours, swap_source_target=True,
                     filename=filename, extra_info=extra_info,
