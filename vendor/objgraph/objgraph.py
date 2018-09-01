@@ -43,6 +43,8 @@ import tempfile
 import sys
 import itertools
 
+from pyLibrary.graphs import Edge
+from pyLibrary.graphs.algorithms import dominator_tree
 from objgraph.graph import MemoryGraph
 
 try:
@@ -917,7 +919,7 @@ def _find_chain(obj, predicate, edge_func, max_depth=20, extra_ignore=()):
 def _find_dominator_tree(obj, max_depth=2, max_nodes=4, extra_ignore=()):
     queue = [obj]
     depth = {id(obj): 0}
-    mgraph = MemoryGraph(None, directed=True)
+    mgraph = MemoryGraph(int)
     mgraph.add_objects([obj])
 
     ignore = set(extra_ignore)
@@ -925,17 +927,28 @@ def _find_dominator_tree(obj, max_depth=2, max_nodes=4, extra_ignore=()):
     ignore.add(id(queue))
     ignore.add(id(depth))
     ignore.add(id(mgraph))
-    ignore.add(id(mgraph._roots))
-    ignore.add(id(mgraph._graph))
+    ignore.add(id(mgraph.nodes))
+    ignore.add(id(mgraph.node_type))
+    ignore.add(id(mgraph.edges))
+    ignore.add(id(mgraph.node_parents))
+    ignore.add(id(mgraph.node_children))
     ignore.add(id(mgraph._objs_seen))
-    ignore.add(id(mgraph.root))
-    ignore.add(id(mgraph.add))
     ignore.add(id(mgraph.add_objects))
-    ignore.add(id(mgraph.add_connections))
+    ignore.add(id(mgraph.add_edges))
     ignore.add(id(ignore))
     ignore.add(id(sys._getframe()))   # this function
     ignore.add(id(sys._getframe(1)))  # find_chain/find_backref_chain
     gc.collect()
+
+    '''
+    # Full mem graph
+    edges = [
+        Edge(*(id(parent), id(child)))
+        for child in gc.get_objects() if child not in ignore
+        for parent in gc.get_referents(child) if parent not in ignore
+    ]
+    mgraph.add_edges(edges)
+    '''
 
     # Build up initial graph
     count = 0
@@ -950,12 +963,12 @@ def _find_dominator_tree(obj, max_depth=2, max_nodes=4, extra_ignore=()):
         if abs(min(depth.values())) + max(depth.values()) < max_depth:
             referrers = gc.get_referrers(target)
             print(len(referrers))
-            mgraph.add_connections([(id(target), id(ref)) for ref in referrers])
+            mgraph.add_edges([Edge(*(id(target), id(ref)))for ref in referrers])
             mgraph.add_objects(referrers)
 
             referents = gc.get_referents(target)
             print(len(referents))
-            mgraph.add_connections([(id(ref), id(target)) for ref in referents])
+            mgraph.add_edges([Edge(*(id(ref), id(target))) for ref in referents])
             mgraph.add_objects(referents)
 
             ignore.add(id(referrers))
@@ -974,7 +987,9 @@ def _find_dominator_tree(obj, max_depth=2, max_nodes=4, extra_ignore=()):
                     depth[id(source)] = tdepth - 1
                     queue.append(source)
 
-    return mgraph.dominator_tree()
+    dtree = dominator_tree(mgraph)
+    dtree = mgraph.convert_tree_to_memtree(dtree)
+    return dtree
 
 
 def _show_graph(objs, edge_func, swap_source_target,
