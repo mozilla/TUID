@@ -10,26 +10,21 @@ from __future__ import unicode_literals
 
 import time
 
-from jx_python import jx
-from mo_dots import Null, coalesce, wrap
-from mo_future import text_type
-from mo_hg.hg_mozilla_org import HgMozillaOrg
-from mo_files.url import URL
-from mo_logs import Log
-from mo_times import Timer
-from mo_times.durations import DAY
-from mo_threads import Till, Thread, Lock, Queue, Signal
-from pyLibrary.env import http
-from pyLibrary.sql import sql_list, quote_set
-from tuid import sql
-from tuid.util import HG_URL, insert_into_db_chunked
-
 # Use import as follows to prevent
 # circular dependency conflict for
 # TUIDService, which makes use of the
 # Clogger
 import tuid.service
-
+from jx_python import jx
+from mo_dots import Null, coalesce
+from mo_hg.hg_mozilla_org import HgMozillaOrg
+from mo_logs import Log
+from mo_threads import Till, Thread, Lock, Queue, Signal
+from mo_times.durations import DAY
+from pyLibrary.env import http
+from pyLibrary.sql import sql_list, quote_set
+from tuid import sql
+from tuid.util import HG_URL, insert_into_db_chunked
 
 RETRY = {"times": 3, "sleep": 5}
 SQL_CSET_BATCH_SIZE = 500
@@ -57,7 +52,7 @@ class Clogger:
             self.hg_cache = HgMozillaOrg(kwargs=self.config.hg_cache, use_cache=True) if self.config.hg_cache else Null
 
             self.tuid_service = tuid_service if tuid_service else tuid.service.TUIDService(
-                database=None, hg=None, kwargs=self.config, conn=self.conn, clogger=self
+                kwargs=self.config.tuid, conn=self.conn, clogger=self
             )
             self.rev_locker = Lock()
             self.working_locker = Lock()

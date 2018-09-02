@@ -17,8 +17,8 @@ from mo_logs import Log, Except
 from mo_threads import Thread, Till
 from mo_times import Timer
 from pyLibrary.env import http
-from pyLibrary.sql import sql_list, sql_iso, quote_set
-from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR
+from pyLibrary.sql import sql_list, quote_set
+from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR, quote_list
 from tuid.service import TUIDService
 from tuid.util import map_to_array
 
@@ -56,7 +56,7 @@ def test_transactions(service):
                 count += 50
                 t.execute(
                     "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-                    sql_list(sql_iso(sql_list(map(quote_value, i))) for i in tmp_inserts)
+                    sql_list(quote_list(i) for i in tmp_inserts)
                 )
         assert False  # SHOULD NOT GET HERE
     except Exception as e:
@@ -77,7 +77,7 @@ def test_transactions2(service):
         # Make a change
         t.execute(
             "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-            sql_list(sql_iso(sql_list(map(quote_value, i))) for i in inserting)
+            sql_list(quote_list(i) for i in inserting)
         )
 
         try:

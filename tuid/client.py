@@ -18,11 +18,12 @@ from mo_threads import Till
 from mo_times import Timer, Date
 from pyLibrary import aws
 from pyLibrary.env import http
-from pyLibrary.sql import sql_iso, sql_list
-from pyLibrary.sql.sqlite import Sqlite, quote_value
+from pyLibrary.sql import sql_list
+from pyLibrary.sql.sqlite import Sqlite, quote_value, quote_list
 
 DEBUG = True
 SLEEP_ON_ERROR = 30
+
 
 class TuidClient(object):
 
@@ -34,7 +35,6 @@ class TuidClient(object):
         self.timeout = timeout
         self.push_queue = aws.Queue(push_queue) if push_queue else None
         self.config = kwargs
-
         self.db = Sqlite(filename=coalesce(db.filename, "tuid_client.sqlite"), kwargs=db)
 
         if not self.db.query("SELECT name FROM sqlite_master WHERE type='table';").data:
@@ -78,12 +78,11 @@ class TuidClient(object):
         with Timer(
             "ask tuid service for {{num}} files at {{revision|left(12)}}",
             {"num": len(files), "revision": revision},
-            debug=DEBUG,
             silent=not self.enabled
         ):
             response = self.db.query(
                 "SELECT file, tuids FROM tuid WHERE revision=" + quote_value(revision) +
-                " AND file IN " + sql_iso(sql_list(map(quote_value, files)))
+                " AND file IN " + quote_list(files)
             )
             found = {file: json2value(tuids) for file, tuids in response.data}
 
@@ -123,7 +122,7 @@ class TuidClient(object):
 
                     with self.db.transaction() as transaction:
                         command = "INSERT INTO tuid (revision, file, tuids) VALUES " + sql_list(
-                            sql_iso(sql_list(map(quote_value, (revision, r.path, value2json(r.tuids)))))
+                            quote_list((revision, r.path, value2json(r.tuids)))
                             for r in new_response.data
                             if r.tuids != None
                         )
