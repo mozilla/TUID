@@ -869,7 +869,7 @@ class TUIDService:
                     recomputed_inserts = []
                     for rev, filename, tuids in tmp_inserts:
                         tmp_ann = self._get_annotation(rev, filename, transaction=transaction)
-                        if not tmp_ann:
+                        if not tmp_ann and tmp_ann != '':
                             recomputed_inserts.append((rev, filename, tuids))
                         else:
                             anns_added_by_other_thread[filename] = self.destringify_tuids(tmp_ann)
@@ -1142,7 +1142,7 @@ class TUIDService:
                     recomputed_inserts = []
                     for rev, filename, string_tuids in tmp_inserts:
                         tmp_ann = self._get_annotation(rev, filename, transaction)
-                        if not tmp_ann or tmp_ann == '':
+                        if not tmp_ann and tmp_ann != '':
                             recomputed_inserts.append((rev, filename, string_tuids))
                         else:
                             anns_added_by_other_thread[filename] = self.destringify_tuids(tmp_ann)
