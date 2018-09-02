@@ -22,7 +22,7 @@ from mo_kwargs import override
 from mo_logs import Log
 from mo_math.randoms import Random
 from mo_threads import Till, Thread, Lock
-from mo_times.durations import SECOND, HOUR, DAY
+from mo_times.durations import SECOND, HOUR, MINUTE, DAY
 from pyLibrary.env import http
 from pyLibrary.meta import cache
 from pyLibrary.sql import sql_list, sql_iso
@@ -177,7 +177,6 @@ class TUIDService:
 
 
     def _get_annotation(self, rev, file, transaction=None):
-        # Returns an annotation if it exists
         return coalesce(transaction, self.conn).get_one(GET_ANNOTATION_QUERY, (rev, file))[0]
 
 
@@ -248,7 +247,7 @@ class TUIDService:
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num, repo, please_stop=None):
         with self.ann_thread_locker:
             self.ann_threads_running += 1
-        url = HG_URL / repo / "json-annotate" / cset / file
+        url = str(HG_URL) +"/" + repo + "/json-annotate/" + cset + "/" + file
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
 
@@ -306,7 +305,7 @@ class TUIDService:
         :return: list of (file, list(tuids)) tuples
         """
         result = []
-        URL_TO_FILES = HG_URL / self.config.hg.branch / 'json-info' / revision
+        URL_TO_FILES = str(HG_URL) +"/" + self.config.hg.branch + "/json-info/" + revision
         try:
             mozobject = http.get_json(url=URL_TO_FILES, retry=RETRY)
         except Exception as e:
@@ -319,13 +318,13 @@ class TUIDService:
         return results
 
 
-    @cache(duration=HOUR)
+    @cache(duration=30*MINUTE)
     def get_clog(self, clog_url):
         clog_obj = http.get_json(clog_url, retry=RETRY)
         return clog_obj
 
 
-    @cache(duration=HOUR)
+    @cache(duration=30*MINUTE)
     def _check_branch(self, revision, branch):
         '''
         Used to find out if the revision is in the given branch.
@@ -336,7 +335,9 @@ class TUIDService:
         '''
 
         # Get a changelog
-        clog_url = HG_URL / branch / 'json-log' / revision
+        res = True
+        clog_url = str(HG_URL) + "/" + branch + "/json-log/" + revision
+        clog_obj = None
         try:
             Log.note("Searching through changelog {{url}}", url=clog_url)
             clog_obj = self.get_clog(clog_url)
@@ -345,11 +346,11 @@ class TUIDService:
                     "Revision {{cset}} does not exist in the {{branch}} branch",
                     cset=revision, branch=branch
                 )
-                return False
+                res = False
         except Exception as e:
             Log.note("Unexpected error getting changset-log for {{url}}: {{error}}", url=clog_url, error=e)
-            return False
-        return True
+            res = False
+        return res
 
 
     def mthread_testing_get_tuids_from_files(self, files, revision, results, res_position,
@@ -468,8 +469,8 @@ class TUIDService:
                 Log.note(" {{percent|percent(decimal=0)}}|{{file}}", file=file, percent=count / total)
 
             with self.conn.transaction() as t:
-                latest_rev = self._get_latest_revision(file, transaction=t)
-                already_ann = self._get_annotation(revision, file, transaction=t)
+                latest_rev = self._get_latest_revision(file, t)
+                already_ann = self._get_annotation(revision, file, t)
 
             # Check if the file has already been collected at
             # this revision and get the result if so
@@ -750,7 +751,7 @@ class TUIDService:
         diffs_to_get = [] # Will contain diffs in reverse order of application
         curr_rev = revision
         mc_revision = ''
-        jsonpushes_url = HG_URL / repo / ("json-pushes?" + "full=1&changeset=" + str(revision))
+        jsonpushes_url = str(HG_URL) + "/" + repo + "/" + "json-pushes?full=1&changeset=" + str(revision)
         try:
             pushes_obj = http.get_json(jsonpushes_url, retry=RETRY)
             if not pushes_obj or len(pushes_obj.keys()) == 0:
@@ -899,7 +900,8 @@ class TUIDService:
             frontier_list,
             revision,
             max_csets_proc=30,
-            going_forward=False
+            going_forward=False,
+            initial_growth={}
         ):
         '''
         Update the frontier for all given files, up to the given revision.
@@ -1547,10 +1549,10 @@ class TUIDService:
                 final_rev = ''
                 found_last_frontier = False
                 Log.note("Searching for frontier: {{frontier}} ", frontier=frontier)
-                Log.note("HG URL: {{url}}", url=HG_URL / self.config.hg.branch / 'rev' / frontier)
+                Log.note("HG URL: {{url}}", url=str(HG_URL) +"/" + self.config.hg.branch + "/rev/" + frontier)
                 while not found_last_frontier:
                     # Get a changelog
-                    clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
+                    clog_url = str(HG_URL) + "/" + self.config.hg.branch + "/json-log/" + final_rev
                     try:
                         clog_obj = self.get_clog(clog_url)
                     except Exception as e:

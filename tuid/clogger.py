@@ -338,7 +338,7 @@ class Clogger:
         clogs_seen = 0
         final_rev = child_cset
         while not found_parent and clogs_seen < MAX_BACKFILL_CLOGS:
-            clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
+            clog_url = str(HG_URL) + "/" + self.config.hg.branch + "/json-log/" + final_rev
             clog_obj = self._get_clog(clog_url)
             clog_csets_list = list(clog_obj['changesets'])
             for clog_cset in clog_csets_list[:-1]:
@@ -481,7 +481,9 @@ class Clogger:
         if an update has taken place.
         :return:
         '''
-        clog_obj = self._get_clog(HG_URL / self.config.hg.branch / 'json-log' / 'tip')
+        clog_obj = self._get_clog(
+            str(HG_URL) + "/" + self.config.hg.branch + "/json-log/tip"
+        )
 
         # Get current tip in DB
         with self.conn.transaction() as t:
@@ -524,7 +526,7 @@ class Clogger:
                 # Get the next page
                 clogs_seen += 1
                 final_rev = clog_csets_list[-1]['node'][:12]
-                clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
+                clog_url = str(HG_URL) + "/" + self.config.hg.branch + "/json-log/" + final_rev
                 clog_obj = self._get_clog(clog_url)
 
         if clogs_seen >= MAX_TIPFILL_CLOGS:
