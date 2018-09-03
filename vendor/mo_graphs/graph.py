@@ -7,17 +7,16 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import unicode_literals
-from __future__ import division
 from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
-from collections import namedtuple
 from collections import defaultdict
 
-from mo_logs import Log
+from mo_graphs import BaseGraph
 
 
-class Graph(object):
+class Graph(BaseGraph):
     def __init__(self, node_type=None):
         self.nodes = set()
         self.edges = set()
@@ -63,25 +62,3 @@ class Graph(object):
         """
         return set([p if c == node else c for p, c in self.edges])
 
-
-Edge = namedtuple("Edge", ["parent", "child"])
-
-
-class Tree(Graph):
-
-    def get_parent(self, node):
-        output = self.get_parents(node)
-        num = len(output)
-        if num == 0:
-            return None
-        elif num == 1:
-            return list(output)[0]
-        else:
-            Log.error("not expected")
-
-    def get_path_to_root(self, node):
-        output = []
-        while node:
-            output.append(node)
-            node = self.get_parent(node)
-        return output

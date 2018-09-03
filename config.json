@@ -83,8 +83,8 @@
     "debug": {
         "trace": true,
         "cprofile": {
-			"enabled": false,
-			"filename": "./results/profile.tab"
-		}
+            "enabled": true,
+            "filename": "results/profile.tab"
+        }
     }
 }

@@ -43,9 +43,9 @@ import tempfile
 import sys
 import itertools
 
-from pyLibrary.graphs import Edge
-from pyLibrary.graphs.algorithms import dominator_tree, ROOTS, LOOPS
-from objgraph.graph import MemoryGraph
+from mo_graphs import Edge
+from mo_graphs.algorithms import dominator_tree, ROOTS, LOOPS
+from mo_graphs.gc_graph import GCGraph
 
 try:
     # Python 2.x compatibility
@@ -782,12 +782,13 @@ def show_refs(objs, max_depth=3, extra_ignore=(), filter=None, too_many=10,
     .. versionchanged:: 1.8
        New parameter: ``shortnames``.
 
-    .. versionchanged:: 2.0
        New parameter: ``output``.
     """
     return _show_graph(objs, max_depth=max_depth, extra_ignore=extra_ignore,
                        filter=filter, too_many=too_many, highlight=highlight,
-                       edge_func=gc.get_referents, edge_func_objs=objs, swap_source_target=True,
+                       edge_func=gc.get_referents,
+                       # edge_func_objs=objs,
+                       swap_source_target=True,
                        filename=filename, extra_info=extra_info,
                        refcounts=refcounts, shortnames=shortnames,
                        output=output)
@@ -841,16 +842,56 @@ def show_chain(*chains, **kw):
 def show_dominator_tree(obj, max_depth=6, extra_ignore=(), filter=None, too_many=30,
                   highlight=None, filename=None, extra_info=None,
                   refcounts=False, shortnames=True, output=None, **kw):
-    dominator_tree = _find_dominator_tree(obj, max_depth=max_depth+1, extra_ignore=extra_ignore, **kw)
-    roots = dominator_tree.get_children(ROOTS)
-    for root in roots:
-        _show_graph(root, extra_ignore=extra_ignore,
-                    filter=filter, too_many=too_many, highlight=highlight,
-                    edge_func=dominator_tree.object_neighbours, swap_source_target=True,
-                    filename=filename, extra_info=extra_info,
-                    refcounts=refcounts, shortnames=shortnames,
-                    output=output, id_func=dominator_tree.get_object,
-                    cull_func=is_proper_module)
+
+    gcg = GCGraph()
+    dt = dominator_tree(gcg)
+
+    def family(node):
+        if node in (ROOTS, LOOPS):
+            return set()
+        return set(
+            o
+            for n in dt.get_family(id(node))
+            for o in (gcg.id2obj.get(n, n),)
+            if o is not None
+        )
+
+    _show_graph(
+        obj,
+        extra_ignore=extra_ignore,
+        filter=filter,
+        too_many=too_many,
+        highlight=highlight,
+        edge_func=family,
+        swap_source_target=True,
+        filename=filename,
+        extra_info=extra_info,
+        refcounts=refcounts,
+        shortnames=shortnames,
+        output=output,
+        id_func=None,
+        cull_func=is_proper_module
+    )
+
+    # loops = dt.get_children(LOOPS)
+    # for root in loops:
+    #     _show_graph(
+    #         gcg.id2obj(root),
+    #         extra_ignore=extra_ignore,
+    #         filter=filter,
+    #         too_many=too_many,
+    #         highlight=highlight,
+    #         edge_func=dt.get_family,
+    #         swap_source_target=True,
+    #         filename=filename,
+    #         extra_info=extra_info,
+    #         refcounts=refcounts,
+    #         shortnames=shortnames,
+    #         output=output,
+    #         id_func=None,
+    #         cull_func=is_proper_module
+    #     )
+    #     break  # ONLY SHOW ONE LOOP OBJECT
 
 
 def is_proper_module(obj):
@@ -915,7 +956,7 @@ def _find_chain(obj, predicate, edge_func, max_depth=20, extra_ignore=()):
 def _find_dominator_tree(obj, max_depth=2, max_nodes=4, extra_ignore=()):
     queue = [obj]
     depth = {id(obj): 0}
-    mgraph = MemoryGraph(int)
+    mgraph = GCGraph(int)
     mgraph.add_objects([obj])
 
     ignore = set(extra_ignore)

@@ -78,7 +78,6 @@ class TuidClient(object):
         with Timer(
             "ask tuid service for {{num}} files at {{revision|left(12)}}",
             {"num": len(files), "revision": revision},
-            debug=DEBUG,
             silent=not self.enabled
         ):
             response = self.db.query(

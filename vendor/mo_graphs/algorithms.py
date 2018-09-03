@@ -7,17 +7,20 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import unicode_literals
-from __future__ import division
 from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
 from collections import deque
+from itertools import zip_longest
 
 from mo_collections.queue import Queue
-
-from mo_math import INTERSECT
-from pyLibrary.graphs import Graph, Edge, Tree
-from pyLibrary.graphs.paths import Step, Path
 from mo_dots import Data
+from mo_graphs import Edge
+from mo_graphs.paths import Step, Path
+from mo_graphs.tree_graph import Tree
+from mo_logs import Log
+from mo_math import INTERSECT
 
 
 def dfs(graph, func, head, reverse=None):
@@ -121,36 +124,32 @@ def dominator_tree(graph):
     todo = Queue()
     done = set()
     dominator = Tree(None)
+    nodes = list(graph.nodes)
 
-    def next_node():
-        nodes = list(graph.nodes)
+    while True:
+        # FIGURE OUT NET ITEM TO WORK ON
+        if todo:
+            node = todo.pop()
+        elif nodes:
+            node = nodes.pop()
+            if len(nodes) % 1000 == 0:
+                Log.note("{{num}} nodes remaining", num=len(nodes))
+        else:
+            break
+        if node in done:
+            continue
 
-        while True:
-            if todo:
-                output = todo.pop()
-            elif nodes:
-                output = nodes.pop()
-            else:
-                return
-
-            if output not in done:
-                yield output
-
-    total = len(list(graph.nodes))
-    for count, node in enumerate(next_node()):
-        #print(count)
-        print("Len of todo: " + str(len(todo)) + " - Len of done/total: " + str(len(done)) + "/" + str(total))
-        parents = graph.get_parents(node)
+        parents = graph.get_parents(node) - {node}
         if not parents:
             # node WITHOUT parents IS A ROOT
             done.add(node)
             dominator.add_edge(Edge(ROOTS, node))
             continue
 
-        not_done = set(parents) - done
+        not_done = parents - done
         if not_done:
             # THERE ARE MORE parents TO DO FIRST
-            more_todo = not_done - (todo.set | {node})
+            more_todo = not_done - todo
             if not more_todo:
                 # ALL PARENTS ARE PART OF A CYCLE, MAKE node A ROOT
                 done.add(node)
@@ -177,10 +176,16 @@ def dominator_tree(graph):
         if any(p[0] is ROOTS for p in paths_from_roots):
             # THIS OBJECT CAN BE REACHED FROM A ROOT, IGNORE PATHS FROM LOOPS
             paths_from_roots = [p for p in paths_from_roots if p[0] is ROOTS]
+            if len(paths_from_roots) == 1:
+                # SHORTCUT
+                dom = paths_from_roots[0][-1]
+                dominator.add_edge(Edge(dom, node))
+                done.add(node)
+                continue
 
         # FIND COMMON PATH FROM root
         num_paths = len(paths_from_roots)
-        for i, x in enumerate(zip(*paths_from_roots)):
+        for i, x in enumerate(zip_longest(*paths_from_roots)):
             if x.count(x[0]) != num_paths:
                 dom = paths_from_roots[0][i-1]
                 break

@@ -10,12 +10,15 @@ from __future__ import unicode_literals
 
 import json
 import os
+
+import pydot
 import pytest
 
 from mo_dots import Null
+from mo_files import File
 from mo_logs import Log, startup, constants
 from mo_threads import Thread, Till
-from mo_times import Timer
+from mo_times import Timer, Date
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, sql_iso, quote_set
 from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR
@@ -39,7 +42,7 @@ def test_annotation_memory():
         files = json.load(f)
     del f
 
-    total_trials = 500
+    total_trials = 1
     total_files = 1
     files_to_get = files[:total_files]
     test_rev = "58eb13b394f4"
@@ -74,12 +77,16 @@ def test_annotation_memory():
 
         tmp = objgraph.by_type('Transaction')
         obj = objgraph.by_type('SQL')[-1]
-        objgraph.show_dominator_tree(obj, max_depth=4, filename=str(int(time.time())) + '_dominatorgraph.dot')
-        objgraph.show_refs(obj, filename=str(int(time.time())) + '_forwardrefs.dot')
-        objgraph.show_backrefs(objgraph.by_type('SQL')[-1], filename=str(int(time.time())) + '_backwwardrefs.dot')
-        objgraph.show_refs(objgraph.by_type('tuple')[-10], filename=str(int(time.time())) + '_allrefs_dict.dot')
-        objgraph.show_refs([res], filename=str(int(time.time())) + '_res_var.dot')
-        gc.collect()
+        dom_dot_file = File(Date.now().format("%Y%m%d_%H%M%S") + '_dominatorgraph.dot')
+        objgraph.show_dominator_tree(obj, max_depth=2, filename=dom_dot_file.abspath)
+        (graph,) = pydot.graph_from_dot_file(dom_dot_file.abspath)
+        graph.write_png(dom_dot_file.set_extension("png").abspath)
+
+        # objgraph.show_refs(obj, filename=str(int(time.time())) + '_forwardrefs.dot')
+        # objgraph.show_backrefs(objgraph.by_type('SQL')[-1], filename=str(int(time.time())) + '_backwwardrefs.dot')
+        # objgraph.show_refs(objgraph.by_type('tuple')[-10], filename=str(int(time.time())) + '_allrefs_dict.dot')
+        # objgraph.show_refs([res], filename=str(int(time.time())) + '_res_var.dot')
+        # gc.collect()
 
         end_mem = round(process.memory_info().rss / (1000 * 1000), 2)
         pc_used = service.statsdaemon.get_used_memory_percent()
