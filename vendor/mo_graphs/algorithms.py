@@ -61,7 +61,7 @@ def bfs(graph, func, head, reverse=None):
 
     IF func RETURNS FALSE, THEN NO MORE PATHS DOWN THE BRANCH ARE TAKEN
 
-    IT'S EXPECTED func TAKES 3 ARGUMENTS
+    IT'S EXPECTED func TAKES THESE ARGUMENTS:
     node - THE CURRENT NODE IN THE
     path - PATH FROM head TO node
     graph - THE WHOLE GRAPH
@@ -71,7 +71,7 @@ def bfs(graph, func, head, reverse=None):
     todo = deque()  # LIST OF PATHS
     todo.append(Step(None, head))
 
-    while True:
+    while todo:
         path = todo.popleft()
         keep_going = func(path.node, Path(path), graph, todo)
         if keep_going:
@@ -188,11 +188,14 @@ def dominator_tree(graph):
         for i, x in enumerate(zip_longest(*paths_from_roots)):
             if x.count(x[0]) != num_paths:
                 dom = paths_from_roots[0][i-1]
+                if dom is LOOPS:
+                    # CAN BE REACHED FROM MORE THAN ONE LOOP, PICK ONE TO BLAME
+                    dom = paths_from_roots[0][-1]
                 break
         else:
+            # ALL PATHS IDENTICAL
             dom = paths_from_roots[0][-1]
 
-        # TODO: dom CAN BE None; IF node CAN BE REACHED FROM A LEGIT root *AND* FROM A CYCLE THEN dom is None; WHICH MAY NOT BE LEGIT
         dominator.add_edge(Edge(dom, node))
         done.add(node)
 

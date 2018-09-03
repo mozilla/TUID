@@ -44,7 +44,7 @@ import sys
 import itertools
 
 from mo_graphs import Edge
-from mo_graphs.algorithms import dominator_tree, ROOTS, LOOPS
+from mo_graphs.algorithms import dominator_tree, ROOTS, LOOPS, bfs
 from mo_graphs.gc_graph import GCGraph
 
 try:
@@ -849,12 +849,12 @@ def show_dominator_tree(obj, max_depth=6, extra_ignore=(), filter=None, too_many
     def family(node):
         if node in (ROOTS, LOOPS):
             return set()
-        return set(
+        return [
             o
             for n in dt.get_family(id(node))
-            for o in (gcg.id2obj.get(n, n),)
+            for o in [gcg.id2obj.get(n, n)]
             if o is not None
-        )
+        ]
 
     _show_graph(
         obj,
@@ -873,25 +873,64 @@ def show_dominator_tree(obj, max_depth=6, extra_ignore=(), filter=None, too_many
         cull_func=is_proper_module
     )
 
-    # loops = dt.get_children(LOOPS)
-    # for root in loops:
-    #     _show_graph(
-    #         gcg.id2obj(root),
-    #         extra_ignore=extra_ignore,
-    #         filter=filter,
-    #         too_many=too_many,
-    #         highlight=highlight,
-    #         edge_func=dt.get_family,
-    #         swap_source_target=True,
-    #         filename=filename,
-    #         extra_info=extra_info,
-    #         refcounts=refcounts,
-    #         shortnames=shortnames,
-    #         output=output,
-    #         id_func=None,
-    #         cull_func=is_proper_module
-    #     )
-    #     break  # ONLY SHOW ONE LOOP OBJECT
+
+def show_a_loop(
+    extra_ignore=(),
+    filter=None,
+    too_many=30,
+    highlight=None,
+    filename=None,
+    extra_info=None,
+    refcounts=False,
+    shortnames=True,
+    output=None,
+    **kw
+):
+
+    gcg = GCGraph()
+    dt = dominator_tree(gcg)
+
+    loop_node = list(dt.get_children(LOOPS))[0]
+    loops = []
+
+    def find_loop(node, path, graph, todo):
+        if loops:
+            return False
+        if len(path) > 1 and node == loop_node:
+            loops.append(path)
+            return False
+        return True
+
+    bfs(gcg, find_loop, loop_node)
+    found_loop = loops[0]
+
+    def children(node):
+        if node in (ROOTS, LOOPS):
+            return set()
+        return [
+            o
+            for n in gcg.get_children(id(node))
+            for o in [gcg.id2obj.get(n, n)]
+            if o is not None
+        ]
+
+    _show_graph(
+        [gcg.id2obj[i] for i in found_loop],
+        max_depth=len(found_loop),
+        extra_ignore=extra_ignore,
+        filter=lambda o: id(o) in found_loop,
+        too_many=too_many,
+        highlight=highlight,
+        edge_func=children,
+        swap_source_target=True,
+        filename=filename,
+        extra_info=extra_info,
+        refcounts=refcounts,
+        shortnames=shortnames,
+        output=output,
+        id_func=None,
+        cull_func=is_proper_module
+    )
 
 
 def is_proper_module(obj):

@@ -25,7 +25,7 @@ class GCGraph(BaseGraph):
 
     def __init__(self):
         gc.collect()
-        gc.disable()
+        gc.disable()  # OBJECTS CONTINUE TO BLINK IN, AND OUT, OF EXISTENCE
         self.id2obj = {id(o): o for o in gc.get_objects()}
         self.parents = defaultdict(set)
         self.children = defaultdict(set)

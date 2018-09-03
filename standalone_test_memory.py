@@ -75,12 +75,19 @@ def test_annotation_memory():
         Log.note("\nAfter:")
         objgraph.show_growth(peak_stats=initial_growth)
 
-        tmp = objgraph.by_type('Transaction')
-        obj = objgraph.by_type('SQL')[-1]
-        dom_dot_file = File(Date.now().format("%Y%m%d_%H%M%S") + '_dominatorgraph.dot')
-        objgraph.show_dominator_tree(obj, max_depth=2, filename=dom_dot_file.abspath)
-        (graph,) = pydot.graph_from_dot_file(dom_dot_file.abspath)
-        graph.write_png(dom_dot_file.set_extension("png").abspath)
+        # tmp = objgraph.by_type('Transaction')
+        # obj = objgraph.by_type('SQL')[-1]
+        # dom_dot_file = File(Date.now().format("%Y%m%d_%H%M%S") + '_dominatorgraph.dot')
+        # objgraph.show_dominator_tree(obj, max_depth=3, filename=dom_dot_file.abspath)
+        # (graph,) = pydot.graph_from_dot_file(dom_dot_file.abspath)
+        # graph.write_png(dom_dot_file.set_extension("png").abspath)
+
+        with Timer("find a loop"):
+            loop_file = File(Date.now().format("%Y%m%d_%H%M%S") + '_loopgraph.dot')
+            objgraph.show_a_loop(filename=loop_file.abspath)
+            (graph,) = pydot.graph_from_dot_file(loop_file.abspath)
+            graph.write_png(loop_file.set_extension("png").abspath)
+
 
         # objgraph.show_refs(obj, filename=str(int(time.time())) + '_forwardrefs.dot')
         # objgraph.show_backrefs(objgraph.by_type('SQL')[-1], filename=str(int(time.time())) + '_backwwardrefs.dot')
@@ -105,21 +112,21 @@ def test_annotation_memory():
         all_end_mems[i] = end_mem
         all_percents[i] = pc_used
 
-    from matplotlib import pyplot as plt
-
-    plt.figure()
-    plt.plot(all_end_mems)
-    plt.title("Memory usage over time.")
-    plt.xlabel("Trial count")
-    plt.ylabel("Memory usage (Mb)")
-
-    plt.figure()
-    plt.plot(all_percents)
-    plt.title("Percent of memory used over time.")
-    plt.xlabel("Trial count")
-    plt.ylabel("Memory usage (%)")
-
-    plt.show(block=True)
+    # from matplotlib import pyplot as plt
+    #
+    # plt.figure()
+    # plt.plot(all_end_mems)
+    # plt.title("Memory usage over time.")
+    # plt.xlabel("Trial count")
+    # plt.ylabel("Memory usage (Mb)")
+    #
+    # plt.figure()
+    # plt.plot(all_percents)
+    # plt.title("Percent of memory used over time.")
+    # plt.xlabel("Trial count")
+    # plt.ylabel("Memory usage (%)")
+    #
+    # plt.show(block=True)
 
 if __name__=="__main__":
     try:
