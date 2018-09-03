@@ -84,9 +84,7 @@ def test_annotation_memory():
 
         with Timer("find a loop"):
             loop_file = File(Date.now().format("%Y%m%d_%H%M%S") + '_loopgraph.dot')
-            objgraph.show_a_loop(filename=loop_file.abspath)
-            (graph,) = pydot.graph_from_dot_file(loop_file.abspath)
-            graph.write_png(loop_file.set_extension("png").abspath)
+            objgraph.show_loops(filename=loop_file.abspath)
 
 
         # objgraph.show_refs(obj, filename=str(int(time.time())) + '_forwardrefs.dot')

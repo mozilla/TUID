@@ -43,6 +43,10 @@ import tempfile
 import sys
 import itertools
 
+import pydot
+
+from mo_files import File
+
 from mo_graphs import Edge
 from mo_graphs.algorithms import dominator_tree, ROOTS, LOOPS, bfs
 from mo_graphs.gc_graph import GCGraph
@@ -874,7 +878,7 @@ def show_dominator_tree(obj, max_depth=6, extra_ignore=(), filter=None, too_many
     )
 
 
-def show_a_loop(
+def show_loops(
     extra_ignore=(),
     filter=None,
     too_many=30,
@@ -890,20 +894,6 @@ def show_a_loop(
     gcg = GCGraph()
     dt = dominator_tree(gcg)
 
-    loop_node = list(dt.get_children(LOOPS))[0]
-    loops = []
-
-    def find_loop(node, path, graph, todo):
-        if loops:
-            return False
-        if len(path) > 1 and node == loop_node:
-            loops.append(path)
-            return False
-        return True
-
-    bfs(gcg, find_loop, loop_node)
-    found_loop = loops[0]
-
     def children(node):
         if node in (ROOTS, LOOPS):
             return set()
@@ -914,23 +904,49 @@ def show_a_loop(
             if o is not None
         ]
 
-    _show_graph(
-        [gcg.id2obj[i] for i in found_loop],
-        max_depth=len(found_loop),
-        extra_ignore=extra_ignore,
-        filter=lambda o: id(o) in found_loop,
-        too_many=too_many,
-        highlight=highlight,
-        edge_func=children,
-        swap_source_target=True,
-        filename=filename,
-        extra_info=extra_info,
-        refcounts=refcounts,
-        shortnames=shortnames,
-        output=output,
-        id_func=None,
-        cull_func=is_proper_module
-    )
+    shown = set()
+
+    loop_candidates = dt.get_children(LOOPS)
+    for part, loop_node in enumerate(loop_candidates):
+        if loop_node in shown:
+            continue
+
+        loops = []
+
+        def find_loop(node, path, graph, todo):
+            if loops:
+                return False
+            if len(path) > 1 and node == loop_node:
+                loops.append(list(path)[:-1])
+                return False
+            return True
+
+        bfs(gcg, find_loop, loop_node)
+        found_loop = loops[0]
+        shown |= set(found_loop)
+        if len(found_loop) <= 2:
+            continue
+
+        loopfile = File.add_suffix(filename, '.'+str(part))
+        _show_graph(
+            [gcg.id2obj[i] for i in found_loop],
+            max_depth=len(found_loop),
+            extra_ignore=extra_ignore,
+            filter=lambda o: id(o) in found_loop,
+            too_many=too_many,
+            highlight=highlight,
+            edge_func=children,
+            swap_source_target=True,
+            filename=loopfile,
+            extra_info=extra_info,
+            refcounts=refcounts,
+            shortnames=shortnames,
+            output=output,
+            id_func=None,
+            cull_func=is_proper_module
+        )
+        (graph,) = pydot.graph_from_dot_file(loopfile)
+        graph.write_png(File(loopfile).set_extension("png").abspath)
 
 
 def is_proper_module(obj):
