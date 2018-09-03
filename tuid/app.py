@@ -52,9 +52,11 @@ service = None
 @cors_wrapper
 def tuid_endpoint(path):
     try:
+        service.statsdaemon.update_requests(requests_total=1)
 
         if flask.request.headers.get("content-length", "") in ["", "0"]:
             # ASSUME A BROWSER HIT THIS POINT, SEND text/html RESPONSE BACK
+            service.statsdaemon.update_requests(requests_complete=1, requests_passed=1)
             return Response(
                 EXPECTING_QUERY,
                 status=400,
@@ -63,6 +65,7 @@ def tuid_endpoint(path):
                 }
             )
         elif int(flask.request.headers["content-length"]) > QUERY_SIZE_LIMIT:
+            service.statsdaemon.update_requests(requests_complete=1, requests_passed=1)
             return Response(
                 unicode2utf8("request too large"),
                 status=400,
@@ -152,6 +155,12 @@ def tuid_endpoint(path):
         else:
             formatter = _stream_table
 
+        service.statsdaemon.update_requests(
+            requests_complete=1 if completed else 0,
+            requests_incomplete=1 if not completed else 0,
+            requests_passed=1
+        )
+
         return Response(
             formatter(response),
             status=200 if completed else 202,
@@ -161,6 +170,7 @@ def tuid_endpoint(path):
         )
     except Exception as e:
         e = Except.wrap(e)
+        service.statsdaemon.update_requests(requests_incomplete=1, requests_failed=1)
         Log.warning("could not handle request", cause=e)
         return Response(
             unicode2utf8(value2json(e, pretty=True)),

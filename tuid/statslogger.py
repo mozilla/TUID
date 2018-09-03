@@ -20,6 +20,7 @@ import objgraph
 DAEMON_WAIT_FOR_PC = 1 * MINUTE # Time until a percent complete log message is emitted.
 DAEMON_WAIT_FOR_THREADS = 1 * MINUTE # Time until a thread count log message is emitted.
 DAEMON_MEMORY_LOG_INTERVAL = 2 * MINUTE # Time until the memory is logged.
+DAEMON_REQUESTS_LOG_INTERVAL = 2 * MINUTE # Time until requests data is logged.
 
 class StatsLogger:
 
@@ -34,12 +35,20 @@ class StatsLogger:
         self.waiting = 0
         self.threads_waiting = 0
 
+        self.requests_locker = Lock()
+        self.requests_total = 0
+        self.requests_complete = 0
+        self.requests_incomplete = 0
+        self.requests_passed = 0
+        self.requests_failed = 0
+
         self.prev_mem = 0
         self.curr_mem = 0
 
         Thread.run("pc-daemon", self.run_pc_daemon)
         Thread.run("threads-daemon", self.run_threads_daemon)
         Thread.run("memory-daemon", self.run_memory_daemon)
+        Thread.run("requests-daemon", self.run_requests_daemon)
 
 
     def get_percent_complete(self):
@@ -156,3 +165,64 @@ class StatsLogger:
                 self.show_memory_growth()
             except Exception as e:
                 Log.warning("Error encountered while trying to log memory: {{cause}}", cause=e)
+
+
+    def update_requests(
+            self,
+            requests_total=0,
+            requests_incomplete=0,
+            requests_complete=0,
+            requests_failed=0,
+            requests_passed=0
+        ):
+        '''
+        Updates and returns the current totals.
+        :param requests_total:
+        :param requests_incomplete: Service required more than 30 seconds, or is busy
+        :param requests_complete: Service and app successfully fulfilled the request fully
+                                  (including handling errors successfully)
+        :param requests_failed: Count for unexpected behaviour
+        :param requests_passed: Count for expected behaviour
+        :return:
+        '''
+        with self.requests_locker:
+            self.requests_total += requests_total
+            self.requests_incomplete += requests_incomplete
+            self.requests_complete += requests_complete
+            self.requests_failed += requests_failed
+            self.requests_passed += requests_passed
+
+
+    def get_requests(self):
+        return {
+            'total': self.requests_total,
+            'incomplete': self.requests_incomplete,
+            'complete': self.requests_complete,
+            'failed': self.requests_failed,
+            'passed': self.requests_passed,
+        }
+
+
+    def run_requests_daemon(self, please_stop):
+        while not please_stop:
+            try:
+                (Till(seconds=DAEMON_REQUESTS_LOG_INTERVAL.seconds) | please_stop).wait()
+                request_stats = self.get_requests()
+                if request_stats['incomplete'] == 0:
+                    pc_complete = request_stats['complete']
+                else:
+                    pc_complete = request_stats['complete'] / request_stats['incomplete']
+                Log.note(
+                    "\nRequest stats \n"
+                    "----------------\n"
+                    "Requests ratio (complete/incomplete): {{comp}}/{{incomp}} = {{pc_comp}}\n"
+                    "Passed: {{passed}}\n"
+                    "Failed: {{failed}}\n",
+                    comp=request_stats['complete'],
+                    incomp=request_stats['incomplete'],
+                    pc_comp=pc_complete,
+                    passed=request_stats['passed'],
+                    failed=request_stats['failed']
+                )
+            except Exception as e:
+                Log.warning("Error encountered while trying to log requests: {{cause}}", cause=e)
