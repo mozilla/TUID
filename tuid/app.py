@@ -12,7 +12,9 @@ from __future__ import unicode_literals
 
 import sys
 import os
+import gc
 import flask
+import objgraph
 from flask import Flask, Response, request
 
 from mo_dots import listwrap, coalesce, unwraplist
@@ -230,6 +232,12 @@ if __name__ in ("__main__",):
             raise RuntimeError('Not running with the Werkzeug Server')
         func()
 
+    @flask_app.route('/memory-growth', methods=[str('GET'), str('POST')])
+    def show_memory_growth(self):
+        Log.note("Memory growth:")
+        gc.collect()
+        objgraph.show_growth(peak_stats=service.statsdaemon.initial_growth)
+
     try:
         config = startup.read_settings(
             filename=os.environ.get('TUID_CONFIG')
@@ -238,6 +246,13 @@ if __name__ in ("__main__",):
         Log.start(config.debug)
 
         service = TUIDService(config.tuid)
+
+        # Log memory info while running
+        initial_growth = {}
+        objgraph.growth(peak_stats={})
+        objgraph.growth(peak_stats=initial_growth)
+        service.statsdaemon.initial_growth = initial_growth
+
         Log.note("Started TUID Service")
         Log.note("Current free memory: {{mem}} Mb", mem=service.statsdaemon.get_free_memory())
     except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT

@@ -44,6 +44,7 @@ class StatsLogger:
 
         self.prev_mem = 0
         self.curr_mem = 0
+        self.initial_growth = {}
 
         Thread.run("pc-daemon", self.run_pc_daemon)
         Thread.run("threads-daemon", self.run_threads_daemon)
@@ -135,7 +136,7 @@ class StatsLogger:
     def show_memory_growth(self):
         Log.note("Memory growth:")
         gc.collect()
-        objgraph.show_growth()
+        objgraph.show_growth(peak_stats=self.initial_growth)
 
 
     def get_free_memory(self):
