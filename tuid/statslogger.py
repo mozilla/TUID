@@ -10,12 +10,12 @@ from __future__ import unicode_literals
 
 from mo_logs import Log
 from mo_threads import Till, Lock, Thread
+from mo_threads.threads import ALL
 from mo_times.durations import MINUTE
 
 import gc
 import os
 import psutil
-import objgraph
 
 DAEMON_WAIT_FOR_PC = 1 * MINUTE # Time until a percent complete log message is emitted.
 DAEMON_WAIT_FOR_THREADS = 1 * MINUTE # Time until a thread count log message is emitted.
@@ -133,12 +133,6 @@ class StatsLogger:
         )
 
 
-    def show_memory_growth(self):
-        Log.note("Memory growth:")
-        gc.collect()
-        objgraph.show_growth(peak_stats=self.initial_growth)
-
-
     def get_free_memory(self):
         tmp = psutil.virtual_memory()
         return tmp.available >> 20
@@ -163,7 +157,11 @@ class StatsLogger:
                     "TUID Process - complete memory info: {{mem}}",
                     mem=str(mem)
                 )
-                self.show_memory_growth()
+                Log.note("\nOpen threads ({{num}}):", num=len(ALL))
+                print(str({
+                    i: ALL[i].name
+                    for i in ALL
+                }))
             except Exception as e:
                 Log.warning("Error encountered while trying to log memory: {{cause}}", cause=e)
 

@@ -10,6 +10,7 @@ from __future__ import unicode_literals
 
 import gc
 import copy
+import objgraph
 
 from mo_times import Timer
 from jx_python import jx
@@ -29,6 +30,7 @@ from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value, quote_list
 from tuid import sql
 from tuid.statslogger import StatsLogger
+from tuid.counter import Counter
 from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL
 
 import tuid.clogger
@@ -38,6 +40,7 @@ ANNOTATE_DEBUG = False
 VERIFY_TUIDS = True
 RETRY = {"times": 3, "sleep": 5, "http": True}
 ANN_WAIT_TIME = 5 * HOUR
+MEMORY_LOG_INTERVAL = 15
 MAX_CONCURRENT_ANN_REQUESTS = 5
 MAX_ANN_REQUESTS_WAIT_TIME = 5 * SECOND
 MAX_THREAD_WAIT_TIME = 5 * SECOND
@@ -71,6 +74,7 @@ class TUIDService:
             self.request_locker = Lock()
             self.ann_thread_locker = Lock()
             self.service_thread_locker = Lock()
+            self.count_locker = Counter()
             self.num_requests = 0
             self.ann_threads_running = 0
             self.service_threads_running = 0
@@ -624,6 +628,15 @@ class TUIDService:
             self._remove_thread()
 
         self.statsdaemon.update_totals(len(files), len(result))
+
+        # Log memory growth periodically
+        with self.count_locker:
+            if self.count_locker.value >= MEMORY_LOG_INTERVAL:
+                Log.note("Inner memory growth:")
+                gc.collect()
+                objgraph.show_growth(peak_stats=self.statsdaemon.initial_growth)
+                self.count_locker.value = 0
+
         return result, completed
 
 

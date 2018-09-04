@@ -20,6 +20,7 @@ from mo_dots import Null, coalesce
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_logs import Log
 from mo_threads import Till, Thread, Lock, Queue, Signal
+from mo_threads.threads import ALL
 from mo_times.durations import DAY
 from pyLibrary.env import http
 from pyLibrary.sql import sql_list, quote_set
@@ -100,21 +101,37 @@ class Clogger:
         except Exception as e:
             Log.warning("Cannot setup clogger: {{cause}}", cause=str(e))
 
+
+    def check_for_existing_thread(self, name):
+        for ident in ALL:
+            if str(ALL[ident].name) == name:
+                return True
+        return False
+
+
     # TODO: Make these starters check if there is already a worker running.
     def start_backfilling(self):
-        Thread.run('clogger-backfill', self.fill_backward_with_list)
+        name = 'clogger-backfill'
+        if not self.check_for_existing_thread(name):
+            Thread.run(name, self.fill_backward_with_list)
 
 
     def start_tipfillling(self):
-        Thread.run('clogger-tip', self.fill_forward_continuous)
+        name = 'clogger-tip'
+        if not self.check_for_existing_thread(name):
+            Thread.run(name, self.fill_forward_continuous)
 
 
     def start_maintenance(self):
-        Thread.run('clogger-maintenance', self.csetLog_maintenance)
+        name = 'clogger-maintenance'
+        if not self.check_for_existing_thread(name):
+            Thread.run(name, self.csetLog_maintenance)
 
 
     def start_deleter(self):
-        Thread.run('clogger-deleter', self.csetLog_deleter)
+        name = 'clogger-deleter'
+        if not self.check_for_existing_thread(name):
+            Thread.run(name, self.csetLog_deleter)
 
 
     def start_workers(self):
