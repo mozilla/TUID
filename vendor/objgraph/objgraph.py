@@ -961,7 +961,7 @@ def show_big_dominator(filename):
     for e in dt.edges:
         rev_tree.add_edge(e)
 
-    def children(node):
+    def parents(node):
         if node in (ROOTS, LOOPS):
             return set()
         return [
@@ -985,9 +985,9 @@ def show_big_dominator(filename):
         _show_graph(
             gcg.id2obj[row.node],
             max_depth=3,
-            edge_func=children,
+            edge_func=parents,
             filename=domfile,
-            swap_source_target=True,
+            swap_source_target=False,
             cull_func=is_proper_module
         )
         (graph,) = pydot.graph_from_dot_file(domfile)
