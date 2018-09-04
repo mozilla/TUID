@@ -82,10 +82,14 @@ def test_annotation_memory():
         # (graph,) = pydot.graph_from_dot_file(dom_dot_file.abspath)
         # graph.write_png(dom_dot_file.set_extension("png").abspath)
 
-        with Timer("find a loop"):
-            loop_file = File(Date.now().format("%Y%m%d_%H%M%S") + '_loopgraph.dot')
-            objgraph.show_loops(filename=loop_file.abspath)
+        # with Timer("find a loop"):
+        #     loop_file = File(Date.now().format("%Y%m%d_%H%M%S") + '_loopgraph.dot')
+        #     objgraph.show_loops(filename=loop_file.abspath)
 
+
+        with Timer("find big dominator"):
+            dom_file = File(Date.now().format("%Y%m%d_%H%M%S") + '_bigdom_graph.dot')
+            objgraph.show_big_dominator(dom_file)
 
         # objgraph.show_refs(obj, filename=str(int(time.time())) + '_forwardrefs.dot')
         # objgraph.show_backrefs(objgraph.by_type('SQL')[-1], filename=str(int(time.time())) + '_backwwardrefs.dot')

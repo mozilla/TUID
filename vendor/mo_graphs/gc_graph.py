@@ -12,7 +12,6 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import gc
-from _weakref import ref
 from collections import defaultdict
 
 from mo_graphs import BaseGraph, Edge
@@ -24,8 +23,8 @@ class GCGraph(BaseGraph):
     """
 
     def __init__(self):
-        gc.collect()
         gc.disable()  # OBJECTS CONTINUE TO BLINK IN, AND OUT, OF EXISTENCE
+        gc.collect()
         self.id2obj = {id(o): o for o in gc.get_objects()}
         self.parents = defaultdict(set)
         self.children = defaultdict(set)

@@ -44,12 +44,15 @@ import sys
 import itertools
 
 import pydot
+from jx_python import jx
 
 from mo_files import File
 
 from mo_graphs import Edge
 from mo_graphs.algorithms import dominator_tree, ROOTS, LOOPS, bfs
 from mo_graphs.gc_graph import GCGraph
+from mo_graphs.graph import Graph
+from mo_logs import Log
 
 try:
     # Python 2.x compatibility
@@ -924,7 +927,7 @@ def show_loops(
         bfs(gcg, find_loop, loop_node)
         found_loop = loops[0]
         shown |= set(found_loop)
-        if len(found_loop) <= 2:
+        if len(found_loop) <= 7:
             continue
 
         loopfile = File.add_suffix(filename, '.'+str(part))
@@ -947,6 +950,57 @@ def show_loops(
         )
         (graph,) = pydot.graph_from_dot_file(loopfile)
         graph.write_png(File(loopfile).set_extension("png").abspath)
+
+
+def show_big_dominator(filename):
+
+    gcg = GCGraph()
+    dt = dominator_tree(gcg)
+
+    rev_tree = Graph()
+    for e in dt.edges:
+        rev_tree.add_edge(e)
+
+    def children(node):
+        if node in (ROOTS, LOOPS):
+            return set()
+        return [
+            o
+            for n in gcg.get_parents(id(node))
+            for o in [gcg.id2obj.get(n, n)]
+            if o is not None
+        ]
+
+    output = [
+        {"node": p, "num": num}
+        for p in rev_tree.nodes
+        if p not in (ROOTS, LOOPS)
+        for num in [len(rev_tree.get_children(p))]
+        if num > 0
+    ]
+    doms = jx.sort(output,  {"num": "desc"})
+
+    for part, row in enumerate(doms[:10]):
+        domfile = File.add_suffix(filename.abspath, '.'+str(part))
+        _show_graph(
+            gcg.id2obj[row.node],
+            max_depth=3,
+            edge_func=children,
+            filename=domfile,
+            swap_source_target=True,
+            cull_func=is_proper_module
+        )
+        (graph,) = pydot.graph_from_dot_file(domfile)
+        graph.write_png(File(domfile).set_extension("png").abspath)
+
+
+    Log.note(
+        "Top 10 object hogs:\n{{hogs|json}}",
+        hogs=[
+            {"repr": repr(gcg.id2obj[row.node]), "num": row.num}
+            for row in doms[:10]
+        ]
+    )
 
 
 def is_proper_module(obj):

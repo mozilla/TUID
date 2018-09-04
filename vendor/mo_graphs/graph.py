@@ -13,6 +13,9 @@ from __future__ import unicode_literals
 
 from collections import defaultdict
 
+from mo_math import UNION
+
+from mo_collections.queue import Queue
 from mo_graphs import BaseGraph
 
 
@@ -37,12 +40,17 @@ class Graph(BaseGraph):
         for edge in edges:
             self.add_edge(edge)
 
-    def remove_children(self, node):
-        self.edges = [e for e in self.edges if e.parent != node]
-
     def get_children(self, node):
         # FIND THE REVISION
         return self.node_children[node]
+
+    def get_decendents(self, node):
+        output = set()
+        cs = self.get_children(node)
+        output |= cs
+        for c in cs:
+            output |= self.get_decendents(c)
+        return output
 
     def get_parents(self, node):
         return self.node_parents[node]
@@ -60,5 +68,5 @@ class Graph(BaseGraph):
         """
         RETURN ALL ADJACENT NODES
         """
-        return set([p if c == node else c for p, c in self.edges])
+        return self.get_children(node) | self.get_parents(node)
 
