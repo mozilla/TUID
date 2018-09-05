@@ -296,7 +296,6 @@ class Sqlite(DB):
                             self.too_long = Till(seconds=TOO_LONG_TO_HOLD_TRANSACTION)
                             self.too_long.on_go(self.show_transactions_blocked_warning)
                         self.delayed_queries.append(command_item)
-                        del command_item
                     return
             elif self.transaction_stack and self.transaction_stack[-1] not in [transaction, transaction.parent]:
                 # THIS TRANSACTION IS NOT THE CURRENT TRANSACTION, DELAY IT
@@ -305,7 +304,6 @@ class Sqlite(DB):
                         self.too_long = Till(seconds=TOO_LONG_TO_HOLD_TRANSACTION)
                         self.too_long.on_go(self.show_transactions_blocked_warning)
                     self.delayed_transactions.append(command_item)
-                    del command_item
                 return
             else:
                 # ENSURE THE CURRENT TRANSACTION IS UP TO DATE FOR THIS query
@@ -341,9 +339,7 @@ class Sqlite(DB):
                     transaction.exception = result.exception = err
 
                     if query in [COMMIT, ROLLBACK]:
-                        c = CommandItem(ROLLBACK, result, signal, trace, transaction)
-                        self._close_transaction(c)
-                        del c
+                        self._close_transaction(CommandItem(ROLLBACK, result, signal, trace, transaction))
 
                     signal.release()
                     return
@@ -378,7 +374,6 @@ class Sqlite(DB):
                     transaction.exception = err
             finally:
                 signal.release()
-                self.last_command_item = None
 
 
 class Transaction(object):
@@ -397,20 +392,13 @@ class Transaction(object):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        import copy
         causes = []
         try:
             if isinstance(exc_val, Exception):
-                causes.append(Except.wrap(copy.deepcopy(exc_val)))
+                causes.append(Except.wrap(exc_val))
                 self.rollback()
             else:
                 self.commit()
-
-            self.parent = None
-            self.thread = None
-            self.locker = None
-            self.db = None
-            self.todo = []
         except Exception as e:
             causes.append(Except.wrap(e))
             Log.error("Transaction failed", cause=unwraplist(causes))
@@ -443,7 +431,6 @@ class Transaction(object):
             for c in todo:
                 DEBUG and Log.note(FORMAT_COMMAND, command=c.command)
                 self.db.db.execute(c.command)
-            self.todo = []
         except Exception as e:
             Log.error("problem running commands", current=c, cause=e)
 
@@ -460,7 +447,6 @@ class Transaction(object):
         signal.acquire()
         if result.exception:
             Log.error("Problem with Sqlite call", cause=result.exception)
-        signal = None
         return result
 
     def rollback(self):
