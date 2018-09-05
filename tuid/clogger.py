@@ -76,6 +76,11 @@ class Clogger:
             self.disable_deletion = False
             self.disable_maintenance = False
 
+            self.backfill_thread = None
+            self.tipfill_thread = None
+            self.deletion_thread = None
+            self.maintenance_thread = None
+
             # Make sure we are filled before allowing queries
             numrevs = self.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
             if numrevs < MINIMUM_PERMANENT_CSETS:
@@ -102,36 +107,24 @@ class Clogger:
             Log.warning("Cannot setup clogger: {{cause}}", cause=str(e))
 
 
-    def check_for_existing_thread(self, name):
-        for ident in ALL:
-            if str(ALL[ident].name) == name:
-                return True
-        return False
-
-
-    # TODO: Make these starters check if there is already a worker running.
     def start_backfilling(self):
-        name = 'clogger-backfill'
-        if not self.check_for_existing_thread(name):
-            Thread.run(name, self.fill_backward_with_list)
+        if not self.backfill_thread:
+            self.backfill_thread = Thread.run('clogger-backfill', self.fill_backward_with_list)
 
 
     def start_tipfillling(self):
-        name = 'clogger-tip'
-        if not self.check_for_existing_thread(name):
-            Thread.run(name, self.fill_forward_continuous)
+        if not self.tipfill_thread:
+            self.tipfill_thread = Thread.run('clogger-tip', self.fill_forward_continuous)
 
 
     def start_maintenance(self):
-        name = 'clogger-maintenance'
-        if not self.check_for_existing_thread(name):
-            Thread.run(name, self.csetLog_maintenance)
+        if not self.maintenance_thread:
+            self.maintenance_thread = Thread.run('clogger-maintenance', self.csetLog_maintenance)
 
 
     def start_deleter(self):
-        name = 'clogger-deleter'
-        if not self.check_for_existing_thread(name):
-            Thread.run(name, self.csetLog_deleter)
+        if not self.deletion_thread:
+            self.deletion_thread = Thread.run('clogger-deleter', self.csetLog_deleter)
 
 
     def start_workers(self):
