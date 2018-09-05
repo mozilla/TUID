@@ -152,5 +152,6 @@ def daemon(please_stop):
         for t, s in new_work + sorted_timers:
             s.go()
 
+
 def actual_time(rec):
     return 0 if rec[1]() is None else rec[0]

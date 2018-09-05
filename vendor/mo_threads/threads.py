@@ -203,7 +203,7 @@ class Thread(BaseThread):
         BaseThread.__init__(self, -1)
         self.name = name
         self.target = target
-        self.end_of_thread = None
+        self.end_of_thread = Data()
         self.synch_lock = Lock("response synch lock")
         self.args = args
 
@@ -260,15 +260,12 @@ class Thread(BaseThread):
             try:
                 if self.target is not None:
                     a, k, self.args, self.kwargs = self.args, self.kwargs, None, None
-                    self.target(*a, **k)
+                    self.end_of_thread.response = self.target(*a, **k)
                     self.parent.remove_child(self)  # IF THREAD ENDS OK, THEN FORGET ABOUT IT
-                else:
-                    with self.synch_lock:
-                        self.end_of_thread = Null
             except Exception as e:
                 e = Except.wrap(e)
                 with self.synch_lock:
-                    self.end_of_thread = Data(exception=e)
+                    self.end_of_thread.exception = e
                 with self.parent.child_lock:
                     emit_problem = self not in self.parent.children
                 if emit_problem:
@@ -352,7 +349,7 @@ class Thread(BaseThread):
             output = ALL.get(ident)
 
         if output is None:
-            Log.error("this thread is not known.  Register this thread at earliest known entry point.")
+            Log.error("this thread is not known. Register this thread at earliest known entry point.")
 
         return output
 
