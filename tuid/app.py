@@ -19,6 +19,7 @@ from mo_dots import listwrap, coalesce, unwraplist
 from mo_json import value2json, json2value
 from mo_logs import Log, constants, startup, Except
 from mo_logs.strings import utf82unicode, unicode2utf8
+from mo_threads.threads import RegisterThread
 from mo_times import Timer, Date
 from pyLibrary.env import http
 from pyLibrary.env.flask_wrappers import cors_wrapper
@@ -51,124 +52,125 @@ service = None
 
 @cors_wrapper
 def tuid_endpoint(path):
-    try:
+    with RegisterThread():
+        try:
 
-        if flask.request.headers.get("content-length", "") in ["", "0"]:
-            # ASSUME A BROWSER HIT THIS POINT, SEND text/html RESPONSE BACK
-            return Response(
-                EXPECTING_QUERY,
-                status=400,
-                headers={
-                    "Content-Type": "text/html"
-                }
-            )
-        elif int(flask.request.headers["content-length"]) > QUERY_SIZE_LIMIT:
-            return Response(
-                unicode2utf8("request too large"),
-                status=400,
-                headers={
-                    "Content-Type": "text/html"
-                }
-            )
-        request_body = flask.request.get_data().strip()
-        query = json2value(utf82unicode(request_body))
+            if flask.request.headers.get("content-length", "") in ["", "0"]:
+                # ASSUME A BROWSER HIT THIS POINT, SEND text/html RESPONSE BACK
+                return Response(
+                    EXPECTING_QUERY,
+                    status=400,
+                    headers={
+                        "Content-Type": "text/html"
+                    }
+                )
+            elif int(flask.request.headers["content-length"]) > QUERY_SIZE_LIMIT:
+                return Response(
+                    unicode2utf8("request too large"),
+                    status=400,
+                    headers={
+                        "Content-Type": "text/html"
+                    }
+                )
+            request_body = flask.request.get_data().strip()
+            query = json2value(utf82unicode(request_body))
 
-        # ENSURE THE QUERY HAS THE CORRECT FORM
-        if query['from'] != 'files':
-            Log.error("Can only handle queries on the `files` table")
+            # ENSURE THE QUERY HAS THE CORRECT FORM
+            if query['from'] != 'files':
+                Log.error("Can only handle queries on the `files` table")
 
-        ands = listwrap(query.where['and'])
-        if len(ands) != 3:
-            Log.error(
-                'expecting a simple where clause with following structure\n{{example|json}}',
-                example={"and": [
-                    {"eq": {"branch": "<BRANCH>"}},
-                    {"eq": {"revision": "<REVISION>"}},
-                    {"in": {"path": ["<path1>", "<path2>", "...", "<pathN>"]}}
-                ]}
-            )
-
-        rev = None
-        paths = None
-        branch_name = None
-        for a in ands:
-            rev = coalesce(rev, a.eq.revision)
-            paths = unwraplist(coalesce(paths, a['in'].path, a.eq.path))
-            branch_name = coalesce(branch_name, a.eq.branch)
-        paths = listwrap(paths)
-
-        if len(paths) == 0:
-            response, completed = [], True
-        elif service.conn.pending_transactions > TOO_BUSY:  # CHECK IF service IS VERY BUSY
-            # TODO:  BE SURE TO UPDATE STATS TOO
-            Log.note("Too many open transactions")
-            response, completed = [], False
-        elif service.get_thread_count() > TOO_MANY_THREADS:
-            Log.note("Too many threads open")
-            response, completed = [], False
-        elif service.statsdaemon.out_of_memory_restart or\
-            (service.statsdaemon.get_free_memory()) < FREE_MEMORY_LIMIT:
-
-            work_done = service.statsdaemon.get_percent_complete()
-
-            # TODO: Determine why the count goes over
-            # TODO: 100% sometimes.
-            if work_done >= 100 and \
-               service.get_thread_count() <= 0 and \
-               service.conn.pending_transactions <= 0:
-                Log.note("Out of memory, attempting to restart service. {{mem}} Mb left.", mem=service.statsdaemon.get_free_memory())
-                try:
-                    http.post('http://' + str(config.flask.host) + ":" + str(config.flask.port) + '/shutdown')
-                except Exception as e:
-                    Log.note("Already called shutdown.")
-            if service.conn.pending_transactions > 0:
-                Log.note("Waiting for {{num}} transactions to finish.", num=service.conn.pending_transactions)
-            if service.get_thread_count() > 0:
-                Log.note("Waiting for {{num}} threads to finish.", num=service.get_thread_count())
-
-            # If we run out of memory once, don't take anymore requests
-            # and restart the service to prevent a complete machine crash.
-            Log.note(
-                "Out of memory...waiting for {{done}}% of files requested to finish before restarting.",
-                done=100-work_done
-            )
-            service.statsdaemon.out_of_memory_restart = True
-            response, completed = [], False
-        else:
-            # RETURN TUIDS
-            with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
-                response, completed = service.get_tuids_from_files(
-                    revision=rev, files=paths, going_forward=True, repo=branch_name
+            ands = listwrap(query.where['and'])
+            if len(ands) != 3:
+                Log.error(
+                    'expecting a simple where clause with following structure\n{{example|json}}',
+                    example={"and": [
+                        {"eq": {"branch": "<BRANCH>"}},
+                        {"eq": {"revision": "<REVISION>"}},
+                        {"in": {"path": ["<path1>", "<path2>", "...", "<pathN>"]}}
+                    ]}
                 )
 
-            if not completed:
+            rev = None
+            paths = None
+            branch_name = None
+            for a in ands:
+                rev = coalesce(rev, a.eq.revision)
+                paths = unwraplist(coalesce(paths, a['in'].path, a.eq.path))
+                branch_name = coalesce(branch_name, a.eq.branch)
+            paths = listwrap(paths)
+
+            if len(paths) == 0:
+                response, completed = [], True
+            elif service.conn.pending_transactions > TOO_BUSY:  # CHECK IF service IS VERY BUSY
+                # TODO:  BE SURE TO UPDATE STATS TOO
+                Log.note("Too many open transactions")
+                response, completed = [], False
+            elif service.get_thread_count() > TOO_MANY_THREADS:
+                Log.note("Too many threads open")
+                response, completed = [], False
+            elif service.statsdaemon.out_of_memory_restart or\
+                (service.statsdaemon.get_free_memory()) < FREE_MEMORY_LIMIT:
+
+                work_done = service.statsdaemon.get_percent_complete()
+
+                # TODO: Determine why the count goes over
+                # TODO: 100% sometimes.
+                if work_done >= 100 and \
+                   service.get_thread_count() <= 0 and \
+                   service.conn.pending_transactions <= 0:
+                    Log.note("Out of memory, attempting to restart service. {{mem}} Mb left.", mem=service.statsdaemon.get_free_memory())
+                    try:
+                        http.post('http://' + str(config.flask.host) + ":" + str(config.flask.port) + '/shutdown')
+                    except Exception as e:
+                        Log.note("Already called shutdown.")
+                if service.conn.pending_transactions > 0:
+                    Log.note("Waiting for {{num}} transactions to finish.", num=service.conn.pending_transactions)
+                if service.get_thread_count() > 0:
+                    Log.note("Waiting for {{num}} threads to finish.", num=service.get_thread_count())
+
+                # If we run out of memory once, don't take anymore requests
+                # and restart the service to prevent a complete machine crash.
                 Log.note(
-                    "Request for {{num}} files is incomplete for revision {{rev}}.",
-                    num=len(paths), rev=rev
+                    "Out of memory...waiting for {{done}}% of files requested to finish before restarting.",
+                    done=100-work_done
                 )
+                service.statsdaemon.out_of_memory_restart = True
+                response, completed = [], False
+            else:
+                # RETURN TUIDS
+                with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
+                    response, completed = service.get_tuids_from_files(
+                        revision=rev, files=paths, going_forward=True, repo=branch_name
+                    )
 
-        if query.meta.format == 'list':
-            formatter = _stream_list
-        else:
-            formatter = _stream_table
+                if not completed:
+                    Log.note(
+                        "Request for {{num}} files is incomplete for revision {{rev}}.",
+                        num=len(paths), rev=rev
+                    )
 
-        return Response(
-            formatter(response),
-            status=200 if completed else 202,
-            headers={
-                "Content-Type": "application/json"
-            }
-        )
-    except Exception as e:
-        e = Except.wrap(e)
-        Log.warning("could not handle request", cause=e)
-        return Response(
-            unicode2utf8(value2json(e, pretty=True)),
-            status=400,
-            headers={
-                "Content-Type": "text/html"
-            }
-        )
+            if query.meta.format == 'list':
+                formatter = _stream_list
+            else:
+                formatter = _stream_table
+
+            return Response(
+                formatter(response),
+                status=200 if completed else 202,
+                headers={
+                    "Content-Type": "application/json"
+                }
+            )
+        except Exception as e:
+            e = Except.wrap(e)
+            Log.warning("could not handle request", cause=e)
+            return Response(
+                unicode2utf8(value2json(e, pretty=True)),
+                status=400,
+                headers={
+                    "Content-Type": "text/html"
+                }
+            )
 
 
 def _stream_table(files):
