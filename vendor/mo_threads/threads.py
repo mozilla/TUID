@@ -75,20 +75,24 @@ class AllThread(object):
 
 
 class BaseThread(object):
-    __slots__ = ["id", "name", "children"]
+    __slots__ = ["id", "name", "children", "child_lock", "cprofiler"]
 
     def __init__(self, ident):
         self.id = ident
         if ident != -1:
             self.name = "Unknown Thread " + text_type(ident)
+        self.child_lock = allocate_lock()
         self.children = []
+        self.cprofiler = None
 
     def add_child(self, child):
-        self.children.append(child)
+        with self.child_lock:
+            self.children.append(child)
 
     def remove_child(self, child):
         try:
-            self.children.remove(child)
+            with self.child_lock:
+                self.children.remove(child)
         except Exception:
             pass
 
@@ -100,7 +104,6 @@ class MainThread(BaseThread):
         self.please_stop = Signal()
         self.stop_logging = Log.stop
         self.timers = None
-        self.cprofiler = Null
 
     def stop(self):
         """
@@ -114,7 +117,8 @@ class MainThread(BaseThread):
             Log.error("Only the main thread can call stop() on main thread")
 
         join_errors = []
-        children = copy(self.children)
+        with self.child_lock:
+            children = copy(self.children)
         for c in reversed(children):
             DEBUG and c.name and Log.note("Stopping thread {{name|quote}}", name=c.name)
             try:
@@ -168,7 +172,8 @@ class MainThread(BaseThread):
 
         if not wait_forever:
             # TRIGGER SIGNAL WHEN ALL CHILDREN THEADS ARE DONE
-            pending = copy(self_thread.children)
+            with self_thread.child_lock:
+                pending = copy(self_thread.children)
             all = AndSignals(please_stop, len(pending))
             for p in pending:
                 p.stopped.on_go(all.done)
@@ -209,7 +214,6 @@ class Thread(BaseThread):
 
         self.thread = None
         self.stopped = Signal("stopped signal for " + self.name)
-        self.cprofiler = Null
 
         if "parent_thread" in kwargs:
             del self.kwargs["parent_thread"]
@@ -238,7 +242,12 @@ class Thread(BaseThread):
             Log.error("Can not start thread", e)
 
     def stop(self):
-        for c in copy(self.children):
+        """
+        SEND STOP SIGNAL, DO NOT BLOCK
+        """
+        with self.child_lock:
+            children = copy(self.children)
+        for c in children:
             DEBUG and c.name and Log.note("Stopping thread {{name|quote}}", name=c.name)
             c.stop()
         self.please_stop.go()
@@ -251,11 +260,8 @@ class Thread(BaseThread):
             try:
                 if self.target is not None:
                     a, k, self.args, self.kwargs = self.args, self.kwargs, None, None
-                    self.cprofiler = CProfiler()
-                    with self.cprofiler:  # PROFILE IN HERE SO THAT __exit__() IS RUN BEFORE THREAD MARKED AS stopped
-                        response = self.target(*a, **k)
-                    with self.synch_lock:
-                        self.end_of_thread = Data(response=response)
+                    self.target(*a, **k)
+                    self.parent.remove_child(self)  # IF THREAD ENDS OK, THEN FORGET ABOUT IT
                 else:
                     with self.synch_lock:
                         self.end_of_thread = Null
@@ -263,7 +269,9 @@ class Thread(BaseThread):
                 e = Except.wrap(e)
                 with self.synch_lock:
                     self.end_of_thread = Data(exception=e)
-                if self not in self.parent.children:
+                with self.parent.child_lock:
+                    emit_problem = self not in self.parent.children
+                if emit_problem:
                     # THREAD FAILURES ARE A PROBLEM ONLY IF NO ONE WILL BE JOINING WITH IT
                     try:
                         Log.fatal("Problem in thread {{name|quote}}", name=self.name, cause=e)
@@ -271,25 +279,23 @@ class Thread(BaseThread):
                         sys.stderr.write(str("ERROR in thread: " + self.name + " " + text_type(e) + "\n"))
             finally:
                 try:
-                    children = copy(self.children)
+                    with self.child_lock:
+                        children = copy(self.children)
                     for c in children:
                         try:
-                            if DEBUG:
-                                sys.stdout.write(str("Stopping thread " + c.name + "\n"))
+                            DEBUG and sys.stdout.write(str("Stopping thread " + c.name + "\n"))
                             c.stop()
                         except Exception as e:
                             Log.warning("Problem stopping thread {{thread}}", thread=c.name, cause=e)
 
                     for c in children:
                         try:
-                            if DEBUG:
-                                sys.stdout.write(str("Joining on thread " + c.name + "\n"))
+                            DEBUG and sys.stdout.write(str("Joining on thread " + c.name + "\n"))
                             c.join()
                         except Exception as e:
                             Log.warning("Problem joining thread {{thread}}", thread=c.name, cause=e)
                         finally:
-                            if DEBUG:
-                                sys.stdout.write(str("Joined on thread " + c.name + "\n"))
+                            DEBUG and sys.stdout.write(str("Joined on thread " + c.name + "\n"))
 
                     del self.target, self.args, self.kwargs
                     DEBUG and Log.note("thread {{name|quote}} stopping", name=self.name)
@@ -309,7 +315,8 @@ class Thread(BaseThread):
         if self is Thread:
             Log.error("Thread.join() is not a valid call, use t.join()")
 
-        children = copy(self.children)
+        with self.child_lock:
+            children = copy(self.children)
         for c in children:
             c.join(till=till)
 
@@ -345,24 +352,27 @@ class Thread(BaseThread):
             output = ALL.get(ident)
 
         if output is None:
-            output = BaseThread(ident)
-            with ALL_LOCK:
-                ALL[ident] = output
+            Log.error("this thread is not known.  Register this thread at earliest known entry point.")
 
         return output
 
 
 class RegisterThread(object):
 
-    def __init__(self, thread):
+    def __init__(self, thread=None):
+        if thread is None:
+            thread = BaseThread(get_ident())
         self.thread = thread
 
     def __enter__(self):
         with ALL_LOCK:
             ALL[self.thread.id] = self.thread
+        self.thread.cprofiler = CProfiler()
+        self.thread.cprofiler.__enter__()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        self.thread.cprofiler.__exit__(exc_type, exc_val, exc_tb)
         with ALL_LOCK:
             del ALL[self.thread.id]
 
