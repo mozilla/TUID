@@ -158,10 +158,13 @@ class StatsLogger:
                     mem=str(mem)
                 )
                 Log.note("\nOpen threads ({{num}}):", num=len(ALL))
-                print(str({
-                    i: ALL[i].name
-                    for i in ALL
-                }))
+                Log.note(
+                    "{{data}}",
+                    data=str({
+                        i: ALL[i].name
+                        for i in ALL
+                    })
+                )
             except Exception as e:
                 Log.warning("Error encountered while trying to log memory: {{cause}}", cause=e)
 
