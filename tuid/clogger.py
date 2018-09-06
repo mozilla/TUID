@@ -44,8 +44,18 @@ MAXIMUM_NONPERMANENT_CSETS = 1500 # changesets
 SIGNAL_MAINTENANCE_CSETS = int(MAXIMUM_NONPERMANENT_CSETS + (0.2 * MAXIMUM_NONPERMANENT_CSETS))
 UPDATE_VERY_OLD_FRONTIERS = False
 
+SINGLE_CLOGGER = None
 
 class Clogger:
+
+    # Singleton of the look-ahead scanner Clogger
+    SINGLE_CLOGGER = None
+    def __new__(cls, *args, **kwargs):
+        if cls.SINGLE_CLOGGER is None:
+            cls.SINGLE_CLOGGER = object.__new__(cls)
+        return cls.SINGLE_CLOGGER
+
+
     def __init__(self, conn=None, tuid_service=None, start_workers=True, new_table=False, kwargs=None):
         try:
             self.config = kwargs
