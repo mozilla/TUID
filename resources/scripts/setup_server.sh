@@ -19,15 +19,10 @@
 sudo yum -y update
 
 
-# SETUP EPHEMERAL DRIVE
-yes | sudo mkfs -t ext4 /dev/sdb
+# SETUP DATA FOLDER
 sudo mkdir /data1
-sudo mount /dev/sdb /data1
-sudo sed -i '$ a\\/dev/sdb   /data1       ext4    defaults,nofail  0   2' /etc/fstab
-sudo mount -a
 
 #INCREASE FILE LIMITS
-
 sudo sed -i '$ a\fs.file-max = 100000' /etc/sysctl.conf
 sudo sed -i '$ a\vm.max_map_count = 262144' /etc/sysctl.conf
 
@@ -45,13 +40,13 @@ sudo sed -i '$ a\ec2-user hard memlock unlimited' /etc/security/limits.conf
 sudo sysctl -p
 sudo su ec2-user
 
-# PUT A COPY OF THE JRE INTO THIS TEMP DIR
+# MANUALLY PUT A COPY OF THE JRE .RPM INSTALLATION FILE INTO THIS TEMP DIR
 cd /home/ec2-user/
 mkdir temp
 cd temp
 
 # INSTALL JAVA 8
-sudo rpm -i jre-8u131-linux-x64.rpm
+sudo rpm -i jre-8u181-linux-x64.rpm
 sudo alternatives --install /usr/bin/java java /usr/java/default/bin/java 20000
 export JAVA_HOME=/usr/java/default
 
@@ -76,9 +71,14 @@ sudo rm -f /usr/local/elasticsearch/config/jvm.options
 sudo rm -f /usr/local/elasticsearch/config/log4j2.properties
 
 
-#INSTALL GIT
+# INSTALL GIT
 sudo yum install -y git-core
 
+# INSTALL PYTHON 3
+sudo yum install python36
+sudo yum install python36-devel
+echo 'alias python=python3' >> ~/.bashrc
+source ~/.bashrc
 
 # INSTALL PIP
 cd ~/temp
@@ -86,19 +86,27 @@ rm -fr *
 curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
 sudo python get-pip.py
 
-#INSTALL SUPERVISOR
+# INSTALL SUPERVISOR
 sudo yum install -y libffi-devel
 sudo yum install -y openssl-devel
 sudo yum groupinstall -y "Development tools"
 
-sudo pip install pyopenssl
-sudo pip install ndg-httpsclient
-sudo pip install pyasn1
-sudo pip install requests
-sudo pip install supervisor
+sudo pip-3.6 install pyopenssl
+sudo pip-3.6 install ndg-httpsclient
+sudo pip-3.6 install pyasn1
+sudo pip-3.6 install requests
+
+# Must use python 2.7 pip to install supervisor
+# (might be at /usr/local/bin/pip)
+sudo /usr/local/bin/pip install supervisor
 
 cd /usr/bin
-sudo ln -s /usr/bin/supervisorctl supervisorctl
+#sudo ln -s /usr/bin/supervisorctl supervisorctl
+
+# Run these if supervisord/supervisorctl cannot be found
+#sudo ln -s /usr/local/bin/supervisorctl /usr/bin/supervisorctl
+#sudo ln -s /usr/local/bin/supervisord /usr/bin/supervisord
+
 
 # GET MEMMON
 sudo yum install python-setuptools
@@ -116,8 +124,8 @@ cd ~
 git clone https://github.com/mozilla/TUID.git
 
 cd ~/TUID/
-git checkout master
-sudo pip install -r requirements.txt
+git checkout dev
+sudo pip-3.6 install -r requirements.txt
 
 
 
