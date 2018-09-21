@@ -15,12 +15,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
+from collections import namedtuple
 from time import sleep, time
 from weakref import ref
 
 from mo_future import allocate_lock as _allocate_lock
 from mo_future import text_type
-
+from mo_logs import Log
 from mo_threads.signal import Signal, DONE
 
 DEBUG = False
@@ -51,6 +52,11 @@ class Till(Signal):
             return object.__new__(cls)
 
     def __init__(self, till=None, seconds=None):
+        """
+        ONE OF THESE PARAMETERS IS REQUIRED
+        :param till: UNIX TIMESTAMP OF WHEN TO SIGNAL
+        :param seconds: PREFERRED OVER timeout
+        """
         now = time()
         if till != None:
             if not isinstance(till, (float, int)):
@@ -61,21 +67,17 @@ class Till(Signal):
         elif seconds != None:
             timeout = now + seconds
         else:
-            from mo_logs import Log
-            Log.error("Should not happen")
+            raise Log.error("Should not happen")
 
         Signal.__init__(self, name=text_type(timeout))
 
         with Till.locker:
             if timeout != None:
                 Till.next_ping = min(Till.next_ping, timeout)
-            Till.new_timers.append((timeout, ref(self)))
-
+            Till.new_timers.append(TodoItem(timeout, ref(self)))
 
 
 def daemon(please_stop):
-    from mo_logs import Log
-
     Till.enabled = True
     sorted_timers = []
 
@@ -90,8 +92,6 @@ def daemon(please_stop):
                 try:
                     sleep(min(later, INTERVAL))
                 except Exception as e:
-                    from mo_logs import Log
-
                     Log.warning(
                         "Call to sleep failed with ({{later}}, {{interval}})",
                         later=later,
@@ -118,7 +118,7 @@ def daemon(please_stop):
                     t = actual_time(rec)
                     if now < t:
                         work, sorted_timers = sorted_timers[:i], sorted_timers[i:]
-                        Till.next_ping = min(Till.next_ping, sorted_timers[0][0])
+                        Till.next_ping = min(Till.next_ping, sorted_timers[0].timestamp)
                         break
                 else:
                     work, sorted_timers = sorted_timers, []
@@ -149,5 +149,8 @@ def daemon(please_stop):
                 s.go()
 
 
-def actual_time(rec):
-    return 0 if rec[1]() is None else rec[0]
+def actual_time(todo):
+    return 0 if todo.ref() is None else todo.timestamp
+
+
+TodoItem = namedtuple("TodoItem", ["timestamp", "ref"])

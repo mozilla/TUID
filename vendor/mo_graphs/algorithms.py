@@ -12,10 +12,10 @@ from __future__ import division
 from __future__ import unicode_literals
 
 from collections import deque
-from itertools import zip_longest
 
 from mo_collections.queue import Queue
 from mo_dots import Data
+from mo_future import zip_longest
 from mo_graphs import Edge
 from mo_graphs.paths import Step, Path
 from mo_graphs.tree_graph import Tree
