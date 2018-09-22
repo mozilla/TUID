@@ -56,13 +56,13 @@ def _late_imports():
 DEFAULT_LOCALE = "en-US"
 DEBUG = False
 DAEMON_DEBUG = False
-DAEMON_HG_INTERVAL = 30 * SECOND  # HOW LONG TO WAIT BETWEEN HG REQUESTS (MAX)
-DAEMON_WAIT_AFTER_TIMEOUT = 10 * MINUTE  # IF WE SEE A TIMEOUT, THEN WAIT
-WAIT_AFTER_NODE_FAILURE = 10 * MINUTE   # IF WE SEE A NODE FAILURE OR CLUSTER FAILURE, THEN WAIT
-WAIT_AFTER_CACHE_MISS = 30 * SECOND  # HOW LONG TO WAIT BETWEEN CACHE MISSES
+DAEMON_HG_INTERVAL = 30  # HOW LONG TO WAIT BETWEEN HG REQUESTS (MAX)
+DAEMON_WAIT_AFTER_TIMEOUT = 10 * 60  # IF WE SEE A TIMEOUT, THEN WAIT
+WAIT_AFTER_NODE_FAILURE = 10 * 60   # IF WE SEE A NODE FAILURE OR CLUSTER FAILURE, THEN WAIT
+WAIT_AFTER_CACHE_MISS = 30  # HOW LONG TO WAIT BETWEEN CACHE MISSES
 DAEMON_DO_NO_SCAN = ["try"]  # SOME BRANCHES ARE NOT WORTH SCANNING
 DAEMON_QUEUE_SIZE = 2 ** 15
-DAEMON_RECENT_HG_PULL = 2 * SECOND  # DETERMINE IF WE GOT DATA FROM HG (RECENT), OR ES (OLDER)
+DAEMON_RECENT_HG_PULL = 2 # DETERMINE IF WE GOT DATA FROM HG (RECENT), OR ES (OLDER)
 MAX_TODO_AGE = DAY  # THE DAEMON WILL NEVER STOP SCANNING; DO NOT ADD OLD REVISIONS TO THE todo QUEUE
 MIN_ETL_AGE = Date("03may2018").unix  # ARTIFACTS OLDER THAN THIS IN ES ARE REPLACED
 UNKNOWN_PUSH = "Unknown push {{revision}}"
@@ -148,12 +148,12 @@ class HgMozillaOrg(object):
                             Log.note("found revision with push date {{date|datetime}}", date=rev.push.date)
                         revisions.discard(r)
 
-                        if rev.etl.timestamp > Date.now()-DAEMON_RECENT_HG_PULL:
+                        if rev.etl.timestamp > Date.now() - (DAEMON_RECENT_HG_PULL * SECOND):
                             # SOME PUSHES ARE BIG, RUNNING THE RISK OTHER MACHINES ARE
                             # ALSO INTERESTED AND PERFORMING THE SAME SCAN. THIS DELAY
                             # WILL HAVE SMALL EFFECT ON THE MAJORITY OF SMALL PUSHES
                             # https://bugzilla.mozilla.org/show_bug.cgi?id=1417720
-                            Till(seconds=Random.float(DAEMON_HG_INTERVAL).seconds*2).wait()
+                            Till(seconds=Random.float(DAEMON_HG_INTERVAL*2)).wait()
 
                     except Exception as e:
                         Log.warning(
@@ -163,7 +163,7 @@ class HgMozillaOrg(object):
                             cause=e
                         )
                         if "Read timed out" in e:
-                            Till(seconds=DAEMON_WAIT_AFTER_TIMEOUT.seconds).wait()
+                            Till(seconds=DAEMON_WAIT_AFTER_TIMEOUT).wait()
 
 
                 # FIND ANY BRANCH THAT MAY HAVE THIS REVISION
@@ -198,7 +198,7 @@ class HgMozillaOrg(object):
                 return output
 
         # RATE LIMIT CALLS TO HG (CACHE MISSES)
-        next_cache_miss = self.last_cache_miss + (Random.float(WAIT_AFTER_CACHE_MISS.seconds * 2) * SECOND)
+        next_cache_miss = self.last_cache_miss + (Random.float(WAIT_AFTER_CACHE_MISS * 2) * SECOND)
         self.last_cache_miss = Date.now()
         if next_cache_miss > self.last_cache_miss:
             Log.note("delaying next hg call for {{seconds|round(decimal=1)}}", seconds=next_cache_miss - self.last_cache_miss)
@@ -293,8 +293,8 @@ class HgMozillaOrg(object):
                     (Till(seconds=Random.int(30))).wait()
                     continue
                 else:
-                    Log.warning("Bad ES call, waiting for {{num}} seconds", num=WAIT_AFTER_NODE_FAILURE.seconds, cause=e)
-                    Till(seconds=WAIT_AFTER_NODE_FAILURE.seconds).wait()
+                    Log.warning("Bad ES call, waiting for {{num}} seconds", num=WAIT_AFTER_NODE_FAILURE, cause=e)
+                    Till(seconds=WAIT_AFTER_NODE_FAILURE).wait()
                     continue
 
         Log.warning("ES did not deliver, fall back to HG")
@@ -433,8 +433,8 @@ class HgMozillaOrg(object):
                 self.es.add({"id": _id, "value": rev})
         except Exception as e:
             e = Except.wrap(e)
-            Log.warning("Did not save to ES, waiting {{duration}}", duration=WAIT_AFTER_NODE_FAILURE, cause=e)
-            Till(seconds=WAIT_AFTER_NODE_FAILURE.seconds).wait()
+            Log.warning("Did not save to ES, waiting {{duration}} seconds", duration=WAIT_AFTER_NODE_FAILURE, cause=e)
+            Till(seconds=WAIT_AFTER_NODE_FAILURE).wait()
             if "FORBIDDEN/12/index read-only" in e:
                 pass  # KNOWN FAILURE MODE
 
