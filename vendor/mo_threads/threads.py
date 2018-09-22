@@ -21,11 +21,11 @@ from copy import copy
 from datetime import datetime, timedelta
 from time import sleep
 
-from mo_dots import Data, unwraplist, Null
-from mo_future import get_ident, start_new_thread, interrupt_main, get_function_name, text_type, allocate_lock
+from mo_dots import Data, unwraplist
+from mo_future import get_ident, start_new_thread, get_function_name, text_type, allocate_lock
 from mo_logs import Log, Except
 from mo_threads.lock import Lock
-from mo_threads.profiles import CProfiler
+from mo_threads.profiles import CProfiler, write_profiles
 from mo_threads.signal import AndSignals, Signal
 from mo_threads.till import Till
 
@@ -110,11 +110,14 @@ class MainThread(BaseThread):
         BLOCKS UNTIL ALL THREADS HAVE STOPPED
         THEN RUNS sys.exit(0)
         """
-        self.please_stop.go()
+        global DEBUG
 
         self_thread = Thread.current()
         if self_thread != MAIN_THREAD or self_thread != self:
             Log.error("Only the main thread can call stop() on main thread")
+
+        DEBUG = True
+        self.please_stop.go()
 
         join_errors = []
         with self.child_lock:
@@ -142,6 +145,7 @@ class MainThread(BaseThread):
         self.timers.stop()
         self.timers.join()
 
+        write_profiles(self.cprofiler)
         DEBUG and Log.note("Thread {{name|quote}} now stopped", name=self.name)
         sys.exit(0)
 
@@ -166,7 +170,9 @@ class MainThread(BaseThread):
             Log.error("Only the main thread can sleep forever (waiting for KeyboardInterrupt)")
 
         if isinstance(please_stop, Signal):
+            # MUTUAL TRIGGERING, SO THEY ARE EFFECTIVELY THE SAME
             self.please_stop.on_go(please_stop.go)
+            please_stop.on_go(self.please_stop.go)
         else:
             please_stop = self.please_stop
 
@@ -349,8 +355,8 @@ class Thread(BaseThread):
             output = ALL.get(ident)
 
         if output is None:
-            Log.error("this thread is not known. Register this thread at earliest known entry point.")
-
+            Log.warning("this thread is not known. Register this thread at earliest known entry point.")
+            return BaseThread(get_ident())
         return output
 
 
@@ -375,11 +381,11 @@ class RegisterThread(object):
 
 
 def stop_main_thread(*args):
-    global DEBUG
-
-    DEBUG = True
+    """
+    CLEAN OF ALL THREADS CREATED WITH THIS LIBRARY
+    """
     try:
-        if len(args):
+        if len(args) and args[0]:
             Log.warning("exit with {{value}}", value=_describe_exit_codes.get(args[0], args[0]))
     except Exception as _:
         pass
@@ -398,11 +404,9 @@ _signal.signal(_signal.SIGINT, stop_main_thread)
 
 def _wait_for_exit(please_stop):
     """
-    /dev/null SPEWS INFINITE LINES, DO NOT POLL AS OFTEN
+    /dev/null PIPED TO sys.stdin SPEWS INFINITE LINES, DO NOT POLL AS OFTEN
     """
     cr_count = 0  # COUNT NUMBER OF BLANK LINES
-
-    please_stop.on_go(_interrupt_main_safely)
 
     while not please_stop:
         # if DEBUG:
@@ -436,14 +440,6 @@ def _wait_for_interrupt(please_stop):
             sleep(1)
         except Exception:
             pass
-
-
-def _interrupt_main_safely():
-    try:
-        interrupt_main()
-    except KeyboardInterrupt:
-        # WE COULD BE INTERRUPTING SELF
-        pass
 
 
 MAIN_THREAD = MainThread()
