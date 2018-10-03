@@ -10,9 +10,7 @@ from __future__ import unicode_literals
 
 import gc
 import copy
-import objgraph
 
-from mo_times import Timer
 from jx_python import jx
 from mo_dots import Null, coalesce, wrap
 from mo_future import text_type
@@ -632,9 +630,8 @@ class TUIDService:
         # Log memory growth periodically
         with self.count_locker:
             if self.count_locker.value >= MEMORY_LOG_INTERVAL:
-                Log.note("Inner memory growth:")
+                Log.note("Forcing Garbage collection to help with memory.")
                 gc.collect()
-                objgraph.show_growth(peak_stats=self.statsdaemon.initial_growth)
                 self.count_locker.value = 0
 
         return result, completed
