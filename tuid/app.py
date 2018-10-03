@@ -33,7 +33,6 @@ QUERY_SIZE_LIMIT = 10 * 1000 * 1000
 EXPECTING_QUERY = b"expecting query\r\n"
 TOO_BUSY = 10
 TOO_MANY_THREADS = 4
-FREE_MEMORY_LIMIT = 1000 # Mb
 
 
 class TUIDApp(Flask):
@@ -113,34 +112,6 @@ def tuid_endpoint(path):
                 response, completed = [], False
             elif service.get_thread_count() > TOO_MANY_THREADS:
                 Log.note("Too many threads open")
-                response, completed = [], False
-            elif service.statsdaemon.out_of_memory_restart or\
-                (service.statsdaemon.get_free_memory()) < FREE_MEMORY_LIMIT:
-
-                work_done = service.statsdaemon.get_percent_complete()
-
-                # TODO: Determine why the count goes over
-                # TODO: 100% sometimes.
-                if work_done >= 100 and \
-                   service.get_thread_count() <= 0 and \
-                   service.conn.pending_transactions <= 0:
-                    Log.note("Out of memory, attempting to restart service. {{mem}} Mb left.", mem=service.statsdaemon.get_free_memory())
-                    try:
-                        http.post('http://' + str(config.flask.host) + ":" + str(config.flask.port) + '/shutdown')
-                    except Exception as e:
-                        Log.note("Already called shutdown.")
-                if service.conn.pending_transactions > 0:
-                    Log.note("Waiting for {{num}} transactions to finish.", num=service.conn.pending_transactions)
-                if service.get_thread_count() > 0:
-                    Log.note("Waiting for {{num}} threads to finish.", num=service.get_thread_count())
-
-                # If we run out of memory once, don't take anymore requests
-                # and restart the service to prevent a complete machine crash.
-                Log.note(
-                    "Out of memory...waiting for {{done}}% of files requested to finish before restarting.",
-                    done=100-work_done
-                )
-                service.statsdaemon.out_of_memory_restart = True
                 response, completed = [], False
             else:
                 # RETURN TUIDS
@@ -228,18 +199,6 @@ if __name__ in ("__main__",):
     flask_app.add_url_rule(str('/'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
     flask_app.add_url_rule(str('/<path:path>'), None, tuid_endpoint, methods=[str('GET'), str('POST')])
 
-    @flask_app.route('/shutdown', methods=[str('GET'), str('POST')])
-    def shutdown_server():
-        func = request.environ.get('werkzeug.server.shutdown')
-        if func is None:
-            raise RuntimeError('Not running with the Werkzeug Server')
-        func()
-
-    @flask_app.route('/memory-growth', methods=[str('GET'), str('POST')])
-    def show_memory_growth(self):
-        Log.note("Memory growth:")
-        gc.collect()
-        objgraph.show_growth(peak_stats=service.statsdaemon.initial_growth)
 
     try:
         config = startup.read_settings(
