@@ -13,13 +13,12 @@ from __future__ import unicode_literals
 
 import os
 import platform
+import sys
 from collections import Mapping
 from datetime import datetime
 
-import sys
-
 from mo_dots import coalesce, listwrap, wrap, unwrap, unwraplist, set_default, FlatList
-from mo_future import text_type, PY3, iteritems
+from mo_future import text_type, PY3
 from mo_logs import constants
 from mo_logs.exceptions import Except, suppress_exception
 from mo_logs.strings import indent
@@ -40,8 +39,6 @@ class Log(object):
     main_log = None
     logging_multi = None
     profiler = None   # simple pypy-friendly profiler
-    cprofiler = None  # screws up with pypy, but better than nothing
-    cprofiler_stats = None
     error_mode = False  # prevent error loops
 
     @classmethod
@@ -59,7 +56,6 @@ class Log(object):
         constants - UPDATE MODULE CONSTANTS AT STARTUP (PRIMARILY INTENDED TO CHANGE DEBUG STATE)
         """
         global _Thread
-
         if not settings:
             return
         settings = wrap(settings)
@@ -72,26 +68,26 @@ class Log(object):
             from mo_threads import Thread as _Thread
             _ = _Thread
 
+        # ENABLE CPROFILE
         if settings.cprofile is False:
             settings.cprofile = {"enabled": False}
-        elif settings.cprofile is True or (isinstance(settings.cprofile, Mapping) and settings.cprofile.enabled):
+        elif settings.cprofile is True:
             if isinstance(settings.cprofile, bool):
                 settings.cprofile = {"enabled": True, "filename": "cprofile.tab"}
-
-            import cProfile
-
-            cls.cprofiler = cProfile.Profile()
-            cls.cprofiler.enable()
+        if settings.cprofile.enabled:
+            from mo_threads import profiles
+            profiles.enable_profilers(settings.cprofile.filename)
 
         if settings.profile is True or (isinstance(settings.profile, Mapping) and settings.profile.enabled):
-            from mo_logs import profiles
-
-            if isinstance(settings.profile, bool):
-                profiles.ON = True
-                settings.profile = {"enabled": True, "filename": "profile.tab"}
-
-            if settings.profile.enabled:
-                profiles.ON = True
+            Log.error("REMOVED 2018-09-02, Activedata revision 3f30ff46f5971776f8ba18")
+            # from mo_logs import profiles
+            #
+            # if isinstance(settings.profile, bool):
+            #     profiles.ON = True
+            #     settings.profile = {"enabled": True, "filename": "profile.tab"}
+            #
+            # if settings.profile.enabled:
+            #     profiles.ON = True
 
         if settings.constants:
             constants.set(settings.constants)
@@ -104,9 +100,6 @@ class Log(object):
             from mo_logs.log_usingThread import StructuredLogger_usingThread
             cls.main_log = StructuredLogger_usingThread(cls.logging_multi)
 
-        if settings.cprofile.enabled == True:
-            Log.alert("cprofiling is enabled, writing to {{filename}}", filename=os.path.abspath(settings.cprofile.filename))
-
     @classmethod
     def stop(cls):
         """
@@ -114,22 +107,6 @@ class Log(object):
         EXECUTING MULUTIPLE TIMES IN A ROW IS SAFE, IT HAS NO NET EFFECT, IT STILL LOGS TO stdout
         :return: NOTHING
         """
-
-        from mo_threads import profiles
-
-        if cls.cprofiler and hasattr(cls, "settings"):
-            if cls.cprofiler == None:
-                from mo_threads import Queue
-
-                cls.cprofiler_stats = Queue("cprofiler stats")  # ACCUMULATION OF STATS FROM ALL THREADS
-
-            import pstats
-            cls.cprofiler_stats.add(pstats.Stats(cls.cprofiler))
-            write_profile(cls.settings.cprofile, cls.cprofiler_stats.pop_all())
-
-        if profiles.ON and hasattr(cls, "settings"):
-            profiles.write(cls.settings.profile)
-
         main_log, cls.main_log = cls.main_log, StructuredLogger_usingStream(STDOUT)
         main_log.stop()
 
@@ -463,31 +440,6 @@ class Log(object):
 
     def write(self):
         raise NotImplementedError
-
-
-def write_profile(profile_settings, stats):
-    from pyLibrary import convert
-    from mo_files import File
-
-    Log.note("aggregating {{num}} profile stats", num=len(stats))
-    acc = stats[0]
-    for s in stats[1:]:
-        acc.add(s)
-
-    stats = [{
-        "num_calls": d[1],
-        "self_time": d[2],
-        "total_time": d[3],
-        "self_time_per_call": d[2] / d[1],
-        "total_time_per_call": d[3] / d[1],
-        "file": (f[0] if f[0] != "~" else "").replace("\\", "/"),
-        "line": f[1],
-        "method": f[2].lstrip("<").rstrip(">")
-    }
-        for f, d, in iteritems(acc.stats)
-    ]
-    stats_file = File(profile_settings.filename, suffix=convert.datetime2string(datetime.now(), "_%Y%m%d_%H%M%S"))
-    stats_file.write(convert.list2tab(stats))
 
 
 def _same_frame(frameA, frameB):

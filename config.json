@@ -78,9 +78,14 @@
         },
         "pyLibrary.sql.sqlite.DEBUG": false,
         "mo_hg.hg_mozilla_org.DAEMON_HG_INTERVAL": 0,
+        "mo_hg.hg_mozilla_org.WAIT_AFTER_CACHE_MISS":0,
         "mo_hg.hg_branches.BRANCH_WHITELIST": ["mozilla-central", "try"]
     },
     "debug": {
-        "trace": true
+        "trace": true,
+        "cprofile": {
+            "enabled": false,
+            "filename": "results/profile.tab"
+        }
     }
 }

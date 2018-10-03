@@ -50,8 +50,9 @@ class ElasticsearchMetadata(Namespace):
     MANAGE SNOWFLAKE SCHEMAS FOR EACH OF THE ALIASES FOUND IN THE CLUSTER
     """
 
-    def __new__(cls, *args, **kwargs):
-        es_cluster = elasticsearch.Cluster(kwargs['kwargs'])
+    @override
+    def __new__(cls, kwargs, *args, **_kwargs):
+        es_cluster = elasticsearch.Cluster(kwargs)
         output = known_clusters.get(id(es_cluster))
         if output is None:
             output = object.__new__(cls)
@@ -226,7 +227,7 @@ class ElasticsearchMetadata(Namespace):
                 Log.error("{{table|quote}} does not exist", table=table_name)
 
         try:
-            last_update =  MAX([
+            last_update = MAX([
                 self.es_cluster.index_last_updated[i]
                 for i in self.index_to_alias.get_domain(alias)
             ])
@@ -471,7 +472,7 @@ class ElasticsearchMetadata(Namespace):
                     if column is THREAD_STOP:
                         continue
 
-                    with Timer("update {{table}}.{{column}}", param={"table":column.es_index, "column":column.es_column}, silent=not DEBUG):
+                    with Timer("update {{table}}.{{column}}", param={"table": column.es_index, "column": column.es_column}, silent=not DEBUG):
                         if column.es_index in self.index_does_not_exist:
                             self.meta.columns.update({
                                 "clear": ".",
@@ -524,7 +525,7 @@ class ElasticsearchMetadata(Namespace):
 
     def get_table(self, name):
         if name == "meta.columns":
-            return ListContainer(self.meta.columns)
+            return self.meta.columns
 
             # return self.meta.columns
         with self.meta.tables.locker:

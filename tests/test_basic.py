@@ -574,6 +574,8 @@ def test_one_http_call_required(service):
     )
 
     # THIS NEXT CALL SHOULD BE FAST, DESPITE THE LACK OF LOCAL CACHE
+    http.DEBUG = True
+    Log.alert("start http request count")
     start = http.request_count
     timer = Timer("get next revision")
     with timer:
@@ -583,8 +585,9 @@ def test_one_http_call_required(service):
             use_thread=False
         )
     num_http_calls = http.request_count - start
+    http.DEBUG = False
 
-    #assert num_http_calls <= 2
+    assert num_http_calls <= 3  # 2 DIFFS FROM ES, AND ONE CALL TO hg.mo
     assert timer.duration.seconds < 30
 
     assert len(proc_files) == len(f_n_tuids)
