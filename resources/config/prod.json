@@ -52,6 +52,7 @@
         "pyLibrary.sql.sqlite.DEBUG": false,
         "pyLibrary.sql.sqlite.TOO_LONG_TO_HOLD_TRANSACTION": 30,
         "mo_hg.hg_mozilla_org.DAEMON_HG_INTERVAL": 0,
+		"mo_hg.hg_mozilla_org.WAIT_AFTER_CACHE_MISS": 0,
         "mo_hg.hg_branches.BRANCH_WHITELIST": ["mozilla-central", "try"]
     },
     "debug": {
