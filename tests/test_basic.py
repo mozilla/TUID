@@ -748,10 +748,14 @@ def test_try_rev_then_mc(service):
     test_file = ["browser/components/payments/test/browser/browser_host_name.js"]
     file_length = 34
 
-    res1, _ = service.get_tuids_from_files(test_file, try_revision, going_forward=True, use_thread=False)
+    res1, _ = service.get_tuids_from_files(
+        test_file, try_revision, repo='try', going_forward=True, use_thread=False
+    )
     assert len(res1[0][1]) == 0
 
-    res2, _ = service.get_tuids_from_files(test_file, mc_revision, going_forward=True, use_thread=False)
+    res2, _ = service.get_tuids_from_files(
+        test_file, mc_revision, repo='mozilla-central', going_forward=True, use_thread=False
+    )
     assert len(res2[0][1]) == file_length
 
     for tuid_map in res2[0][1]:
