@@ -743,7 +743,7 @@ def test_threaded_service_call(service):
 
 
 def test_try_rev_then_mc(service):
-    try_revision = "f29e9ee9401c"
+    try_revision = "4a0e5e6c2b73"
     mc_revision = "04cc917f68c5"
     test_file = ["browser/components/payments/test/browser/browser_host_name.js"]
     file_length = 34
