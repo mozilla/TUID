@@ -125,7 +125,7 @@ git clone https://github.com/mozilla/TUID.git
 
 cd ~/TUID/
 git checkout dev
-sudo pip-3.6 install -r requirements.txt
+sudo /usr/bin/python3 -m pip install -r requirements.txt
 
 
 
