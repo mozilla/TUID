@@ -4,6 +4,7 @@
             "name": "resources/tuid_app.db"
         },
         "hg": {
+            "url": "https://hg.mozilla.org",
             "branch": "mozilla-central"
         },
         "hg_cache": {
@@ -16,7 +17,7 @@
                 "port": 9200,
                 "index": "branches",
                 "type": "branch",
-                "tjson": false,
+                "typed": false,
                 "timeout": 300,
                 "consistency": "one", // WE ONLY NEED ONE SHARD TO BE AVAILABLE
                 "debug": false,
@@ -27,7 +28,7 @@
                 "port": 9200,
                 "index": "repo",
                 "type": "revision",
-                "tjson": false,
+                "typed": false,
                 "timeout": 300,
                 "consistency": "one", // WE ONLY NEED ONE SHARD TO BE AVAILABLE
                 "debug": false,
@@ -49,17 +50,22 @@
     "constants": {
         "tuid.service.DEBUG": false,
         "tuid.service.ENABLE_TRY": true,
+        "tuid.service.ANNOTATE_DEBUG": true,
         "tuid.clogger.MINIMUM_PERMANENT_CSETS": 10,
         "tuid.clogger.CSET_BACKFILL_WAIT_TIME": 5,
         "tuid.clogger.CSET_MAINTENANCE_WAIT_TIME": 15,
         "tuid.clogger.MAXIMUM_NONPERMANENT_CSETS": 100,
-        "tuid.clogger.SIGNAL_MAINTENACE_CSETS": 120,
+        "tuid.clogger.SIGNAL_MAINTENANCE_CSETS": 120,
         "tuid.clogger.CSET_DELETION_WAIT_TIME": 5,
         "tuid.clogger.CSET_TIP_WAIT_TIME": 40,
-        "pyLibrary.env.http.DEBUG": true,
-        "pyLibrary.env.http.default_headers": {"Referer": "https://github.com/mozilla/TUID"},
+        "pyLibrary.env.http.DEBUG": false,
+        "pyLibrary.env.http.default_headers": {
+            "Referer": "https://github.com/mozilla/TUID",
+            "User-Agent": "TUID Service"
+        },
         "pyLibrary.sql.sqlite.DEBUG": false,
         "mo_hg.hg_mozilla_org.DAEMON_HG_INTERVAL": 0,
+        "mo_hg.hg_mozilla_org.WAIT_AFTER_CACHE_MISS": 0,
         "mo_hg.hg_branches.BRANCH_WHITELIST": ["mozilla-central", "try"]
     },
     "debug": {

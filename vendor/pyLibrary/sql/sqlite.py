@@ -17,6 +17,7 @@ import re
 import sys
 from collections import Mapping, namedtuple
 
+from jx_base.expressions import jx_expression
 from mo_dots import Data, coalesce, unwraplist, Null
 from mo_files import File
 from mo_future import allocate_lock as _allocate_lock, text_type
@@ -29,7 +30,7 @@ from mo_threads import Queue, Thread, Lock, Till
 from mo_times import Date, Duration
 from mo_times.timer import Timer
 from pyLibrary import convert
-from pyLibrary.sql import DB, SQL, SQL_TRUE, SQL_FALSE, SQL_NULL, SQL_SELECT, sql_iso
+from pyLibrary.sql import DB, SQL, SQL_TRUE, SQL_FALSE, SQL_NULL, SQL_SELECT, sql_iso, sql_list
 
 DEBUG = False
 TRACE = True
@@ -286,7 +287,7 @@ class Sqlite(DB):
     def _process_command_item(self, command_item):
         query, result, signal, trace, transaction = command_item
 
-        with Timer("SQL Timing", debug=DEBUG):
+        with Timer("SQL Timing", silent=not DEBUG):
             if transaction is None:
                 # THIS IS A TRANSACTIONLESS QUERY, DELAY IT IF THERE IS A CURRENT TRANSACTION
                 if self.transaction_stack:
@@ -493,6 +494,9 @@ def quote_value(value):
     else:
         return SQL(text_type(value))
 
+
+def quote_list(list):
+    return sql_iso(sql_list(map(quote_value, list)))
 
 def join_column(a, b):
     a = quote_column(a)

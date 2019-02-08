@@ -10,25 +10,22 @@ from __future__ import unicode_literals
 
 import time
 
-from jx_python import jx
-from mo_dots import Null, coalesce, wrap
-from mo_future import text_type
-from mo_hg.hg_mozilla_org import HgMozillaOrg
-from mo_files.url import URL
-from mo_logs import Log
-from mo_times import Timer
-from mo_times.durations import DAY
-from mo_threads import Till, Thread, Lock, Queue, Signal
-from pyLibrary.env import http
-from pyLibrary.sql import sql_list, quote_set
-from tuid import sql
-
 # Use import as follows to prevent
 # circular dependency conflict for
 # TUIDService, which makes use of the
 # Clogger
 import tuid.service
-
+from jx_python import jx
+from mo_dots import Null, coalesce
+from mo_hg.hg_mozilla_org import HgMozillaOrg
+from mo_logs import Log
+from mo_threads import Till, Thread, Lock, Queue, Signal
+from mo_threads.threads import ALL
+from mo_times.durations import DAY
+from pyLibrary.env import http
+from pyLibrary.sql import sql_list, quote_set
+from tuid import sql
+from tuid.util import HG_URL, insert_into_db_chunked
 
 RETRY = {"times": 3, "sleep": 5}
 SQL_CSET_BATCH_SIZE = 500
@@ -38,43 +35,61 @@ CSET_MAINTENANCE_WAIT_TIME = 30 * 60 # seconds
 CSET_DELETION_WAIT_TIME = 1 * 60 # seconds
 TUID_EXISTENCE_WAIT_TIME = 1 * 60 # seconds
 TIME_TO_KEEP_ANNOTATIONS = 5 * DAY
-MAX_TIPFILL_CLOGS = 60  # changeset logs
-MAX_BACKFILL_CLOGS = 200 # changeset logs
+MAX_TIPFILL_CLOGS = 400  # changeset logs
+MAX_BACKFILL_CLOGS = 1000 # changeset logs
 CHANGESETS_PER_CLOG = 20 # changesets
 BACKFILL_REVNUM_TIMEOUT = int(MAX_BACKFILL_CLOGS * 2.5) # Assume 2.5 seconds per clog
-MINIMUM_PERMANENT_CSETS = 1000 # changesets
-MAXIMUM_NONPERMANENT_CSETS = 20000 # changesets
-SIGNAL_MAINTENACE_CSETS = MAXIMUM_NONPERMANENT_CSETS + (0.1 * MAXIMUM_NONPERMANENT_CSETS)
+MINIMUM_PERMANENT_CSETS = 200 # changesets
+MAXIMUM_NONPERMANENT_CSETS = 1500 # changesets
+SIGNAL_MAINTENANCE_CSETS = int(MAXIMUM_NONPERMANENT_CSETS + (0.2 * MAXIMUM_NONPERMANENT_CSETS))
 UPDATE_VERY_OLD_FRONTIERS = False
 
-HG_URL = tuid.service.HG_URL
-
+SINGLE_CLOGGER = None
 
 class Clogger:
-    def __init__(self, conn=None, tuid_service=None, kwargs=None):
+
+    # Singleton of the look-ahead scanner Clogger
+    SINGLE_CLOGGER = None
+    def __new__(cls, *args, **kwargs):
+        if cls.SINGLE_CLOGGER is None:
+            cls.SINGLE_CLOGGER = object.__new__(cls)
+        return cls.SINGLE_CLOGGER
+
+
+    def __init__(self, conn=None, tuid_service=None, start_workers=True, new_table=False, kwargs=None):
         try:
             self.config = kwargs
-
             self.conn = conn if conn else sql.Sql(self.config.database.name)
             self.hg_cache = HgMozillaOrg(kwargs=self.config.hg_cache, use_cache=True) if self.config.hg_cache else Null
 
             self.tuid_service = tuid_service if tuid_service else tuid.service.TUIDService(
-                database=None, hg=None, kwargs=self.config, conn=self.conn, clogger=self
+                kwargs=self.config.tuid, conn=self.conn, clogger=self
             )
             self.rev_locker = Lock()
             self.working_locker = Lock()
+
+            if new_table:
+                with self.conn.transaction() as t:
+                    t.execute("DROP TABLE IF EXISTS csetLog")
 
             self.init_db()
             self.next_revnum = coalesce(self.conn.get_one("SELECT max(revnum)+1 FROM csetLog")[0], 1)
             self.csets_todo_backwards = Queue(name="Clogger.csets_todo_backwards")
             self.deletions_todo = Queue(name="Clogger.deletions_todo")
             self.maintenance_signal = Signal(name="Clogger.maintenance_signal")
-            self.config = self.config.tuid
+
+            if 'tuid' in self.config:
+                self.config = self.config.tuid
 
             self.disable_backfilling = False
             self.disable_tipfilling = False
             self.disable_deletion = False
             self.disable_maintenance = False
+
+            self.backfill_thread = None
+            self.tipfill_thread = None
+            self.deletion_thread = None
+            self.maintenance_thread = None
 
             # Make sure we are filled before allowing queries
             numrevs = self.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
@@ -92,18 +107,42 @@ class Clogger:
                 )
 
             Log.note(
-                "Table is filled with atleast {{minim}} entries. Starting workers...",
+                "Table is filled with atleast {{minim}} entries.",
                 minim=MINIMUM_PERMANENT_CSETS
             )
 
-            Thread.run('clogger-tip', self.fill_forward_continuous)
-            Thread.run('clogger-backfill', self.fill_backward_with_list)
-            Thread.run('clogger-maintenance', self.csetLog_maintenance)
-            Thread.run('clogger-deleter', self.csetLog_deleter)
-
-            Log.note("Started clogger workers.")
+            if start_workers:
+                self.start_workers()
         except Exception as e:
             Log.warning("Cannot setup clogger: {{cause}}", cause=str(e))
+
+
+    def start_backfilling(self):
+        if not self.backfill_thread:
+            self.backfill_thread = Thread.run('clogger-backfill', self.fill_backward_with_list)
+
+
+    def start_tipfillling(self):
+        if not self.tipfill_thread:
+            self.tipfill_thread = Thread.run('clogger-tip', self.fill_forward_continuous)
+
+
+    def start_maintenance(self):
+        if not self.maintenance_thread:
+            self.maintenance_thread = Thread.run('clogger-maintenance', self.csetLog_maintenance)
+
+
+    def start_deleter(self):
+        if not self.deletion_thread:
+            self.deletion_thread = Thread.run('clogger-deleter', self.csetLog_deleter)
+
+
+    def start_workers(self):
+        self.start_tipfillling()
+        self.start_backfilling()
+        self.start_maintenance()
+        self.start_deleter()
+        Log.note("Started clogger workers.")
 
 
     def init_db(self):
@@ -114,6 +153,13 @@ class Clogger:
                 revision       CHAR(12) NOT NULL,
                 timestamp      INTEGER
             );''')
+
+
+    def disable_all(self):
+        self.disable_tipfilling = True
+        self.disable_backfilling = True
+        self.disable_maintenance = True
+        self.disable_deletion = True
 
 
     def revnum(self):
@@ -205,7 +251,8 @@ class Clogger:
         :return:
         '''
         numrevs = self.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
-        if numrevs >= SIGNAL_MAINTENACE_CSETS:
+        Log.note("Number of csets in csetLog table: {{num}}", num=numrevs)
+        if numrevs >= SIGNAL_MAINTENANCE_CSETS:
             return True
         return False
 
@@ -271,6 +318,7 @@ class Clogger:
 
         # Start a maintenance run if needed
         if self.check_for_maintenance():
+            Log.note("Scheduling maintenance run on clogger.")
             self.maintenance_signal.go()
 
 
@@ -305,7 +353,7 @@ class Clogger:
         clogs_seen = 0
         final_rev = child_cset
         while not found_parent and clogs_seen < MAX_BACKFILL_CLOGS:
-            clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
+            clog_url = str(HG_URL) + "/" + self.config.hg.branch + "/json-log/" + final_rev
             clog_obj = self._get_clog(clog_url)
             clog_csets_list = list(clog_obj['changesets'])
             for clog_cset in clog_csets_list[:-1]:
@@ -355,6 +403,45 @@ class Clogger:
             )
             return None
         return csets_to_add
+
+
+    def initialize_to_range(self, old_rev, new_rev, delete_old=True):
+        '''
+        Used in service testing to get to very old
+        changesets quickly.
+        :param old_rev: The oldest revision to keep
+        :param new_rev: The revision to start searching from
+        :return:
+        '''
+        old_settings = [
+            self.disable_tipfilling,
+            self.disable_backfilling,
+            self.disable_maintenance,
+            self.disable_deletion
+        ]
+        self.disable_tipfilling = True
+        self.disable_backfilling = True
+        self.disable_maintenance = True
+        self.disable_deletion = True
+
+        old_rev = old_rev[:12]
+        new_rev = new_rev[:12]
+
+        with self.working_locker:
+            if delete_old:
+                with self.conn.transaction() as t:
+                    t.execute("DELETE FROM csetLog")
+            with self.conn.transaction() as t:
+                t.execute(
+                    "INSERT INTO csetLog (revision, timestamp) VALUES " +
+                    quote_set((new_rev, -1))
+                )
+            self._fill_in_range(old_rev, new_rev, timestamp=True, number_forward=False)
+
+        self.disable_tipfilling = old_settings[0]
+        self.disable_backfilling = old_settings[1]
+        self.disable_maintenance = old_settings[2]
+        self.disable_deletion = old_settings[3]
 
 
     def fill_backward_with_list(self, please_stop=None):
@@ -409,7 +496,9 @@ class Clogger:
         if an update has taken place.
         :return:
         '''
-        clog_obj = self._get_clog(HG_URL / self.config.hg.branch / 'json-log' / 'tip')
+        clog_obj = self._get_clog(
+            str(HG_URL) + "/" + self.config.hg.branch + "/json-log/tip"
+        )
 
         # Get current tip in DB
         with self.conn.transaction() as t:
@@ -452,7 +541,7 @@ class Clogger:
                 # Get the next page
                 clogs_seen += 1
                 final_rev = clog_csets_list[-1]['node'][:12]
-                clog_url = HG_URL / self.config.hg.branch / 'json-log' / final_rev
+                clog_url = str(HG_URL) + "/" + self.config.hg.branch + "/json-log/" + final_rev
                 clog_obj = self._get_clog(clog_url)
 
         if clogs_seen >= MAX_TIPFILL_CLOGS:
@@ -473,23 +562,11 @@ class Clogger:
     def fill_forward_continuous(self, please_stop=None):
         while not please_stop:
             try:
-                waiting_a_bit = False
-                if self.disable_tipfilling:
-                    waiting_a_bit = True
-
-                if not waiting_a_bit:
-                    # If an update was done, check if there are
-                    # more changesets that have arrived just in case,
-                    # otherwise, we wait.
-                    did_an_update = self.update_tip()
-                    if not did_an_update:
-                        waiting_a_bit = True
-
-                if waiting_a_bit:
-                    (please_stop | Till(seconds=CSET_TIP_WAIT_TIME)).wait()
-                    continue
+                while not please_stop and not self.disable_tipfilling and self.update_tip():
+                    pass
+                (please_stop | Till(seconds=CSET_TIP_WAIT_TIME)).wait()
             except Exception as e:
-                Log.warning("Unknown error occurred during tip maintenance:", cause=e)
+                Log.warning("Unknown error occurred during tip filling:", cause=e)
 
 
     def csetLog_maintenance(self, please_stop=None):
@@ -510,6 +587,11 @@ class Clogger:
                     break
                 if self.disable_maintenance:
                     continue
+
+                Log.warning(
+                    "Starting clog maintenance. Since this doesn't start often, "
+                    "we need to explicitly see when it's started with this warning."
+                )
 
                 # Reset signal so we don't request
                 # maintenance infinitely.
@@ -617,12 +699,10 @@ class Clogger:
                     # Update table and schedule a deletion
                     if modified:
                         with self.conn.transaction() as t:
-                            t.execute(
-                                "INSERT OR REPLACE INTO csetLog (revnum, revision, timestamp) VALUES " +
-                                sql_list(
-                                    quote_set(cset_entry)
-                                    for cset_entry in new_data2
-                                )
+                            insert_into_db_chunked(
+                                t,
+                                new_data2,
+                                "INSERT OR REPLACE INTO csetLog (revnum, revision, timestamp) VALUES "
                             )
                     if not deleted_data:
                         continue

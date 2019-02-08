@@ -34,10 +34,10 @@ def clogger(config, new_db):
     global _conn
     _conn = sql.Sql(config.tuid.database.name)
     if new_db == 'yes':
-        return Clogger(conn=_conn, kwargs=config)
+        return Clogger(conn=_conn, new_table=True, kwargs=config)
     elif new_db == 'no':
         if _clogger is None:
-            _clogger = Clogger(conn=_conn, kwargs=config)
+            _clogger = Clogger(conn=_conn, new_table=True, kwargs=config)
         return _clogger
     else:
         Log.error("expecting 'yes' or 'no'")
@@ -50,7 +50,7 @@ def test_initializing(clogger):
 
 
 def test_tipfilling(clogger):
-    clogger.disable_tipfilling = False
+    clogger.disable_tipfilling = True
     clogger.disable_backfilling = True
     clogger.disable_deletion = True
     clogger.disable_maintenance = True
@@ -62,19 +62,17 @@ def test_tipfilling(clogger):
         current_tip = t.get_one("SELECT max(revnum) AS revnum, revision FROM csetLog")[1]
         t.execute("DELETE FROM csetLog")
 
+    clogger.disable_tipfilling = False
+
     new_tip = None
     while num_trys > 0:
-        nothing_exists = True
-        new_tip = None
-        while nothing_exists:
-            new_tip = clogger.conn.get_one("SELECT max(revnum) AS revnum, revision FROM csetLog")[1]
-            if new_tip:
-                nothing_exists = False
-            else:
-                Till(seconds=wait_time).wait()
-        if current_tip == new_tip:
-            break
+        new_tip = clogger.conn.get_one("SELECT max(revnum) AS revnum, revision FROM csetLog")
+        if new_tip:
+            if current_tip == new_tip[1]:
+                new_tip = new_tip[1]
+                break
         num_trys -= 1
+        Till(seconds=wait_time).wait()
 
     assert num_trys > 0
     assert current_tip == new_tip
@@ -188,6 +186,7 @@ def test_maintenance_and_deletion(clogger):
         _, tail_cset = clogger.get_tail(t)
 
     clogger.csets_todo_backwards.add((extra_to_add, True))
+    clogger.disable_backfilling = False
     new_tail = None
     tmp_num_trys = 0
     while tmp_num_trys < num_trys:
