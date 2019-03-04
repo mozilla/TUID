@@ -10,7 +10,7 @@ mo-threads>=1.7
 jx_python
 toposort
 whatthepatch
-flask
+Flask
 beautifulsoup4
 psutil
 objgraph
