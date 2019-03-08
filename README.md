@@ -17,7 +17,7 @@ More details can be gleaned from the [motivational document](https://github.com/
 
 ## Running tests
 
-Running any tests requires access to an Elastic Search cluster for `mo_hg` on localhost:9201.
+Running any tests requires access to an Elastic Search cluster for `mo_hg` on localhost:9201. This requires [Elastic Search version 6.2.4](https://www.elastic.co/downloads/past-releases/elasticsearch-6-2-4).
 
 After cloning the repo into `~/TUID`:
 
