@@ -308,7 +308,7 @@ We can aggregate coverage over time, in much the same way we did for a single fi
         ],
         "from":"coverage",
         "where": {"and":[
-            {"gte":{"repo.push.date":{"date":{"today-week"}}}}
+            {"gte":{"repo.push.date":{"date":"today-week"}}}
         ]}
     }
 
