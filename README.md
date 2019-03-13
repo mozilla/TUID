@@ -118,6 +118,7 @@ database. This `TuidClient` was made for the ActiveData-ETL pipeline, so it
 has methods specifically suited for that project; but one method, called 
 `get_tuid()`, you may find useful.
 
+## Examples using this service
 
-
+1. [Web-extension for Phabricator](https://github.com/gmierz/web-extensions/tree/master/tuid_annotate). See the README in that repo for installation instructions.
 
