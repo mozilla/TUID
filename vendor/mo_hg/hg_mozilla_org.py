@@ -86,6 +86,7 @@ class HgMozillaOrg(object):
         self,
         hg=None,        # CONNECT TO hg
         repo=None,      # CONNECTION INFO FOR ES CACHE
+        moves=None,
         branches=None,  # CONNECTION INFO FOR ES CACHE
         use_cache=False,   # True IF WE WILL USE THE ES FOR DOWNLOADING BRANCHES
         timeout=30 * SECOND,
@@ -94,7 +95,8 @@ class HgMozillaOrg(object):
         if not _hg_branches:
             _late_imports()
 
-        self.es_locker = Lock()
+        self.repo_locker = Lock()
+        self.moves_locker = Lock()
         self.todo = mo_threads.Queue("todo for hg daemon", max=DAEMON_QUEUE_SIZE)
 
         self.settings = kwargs
@@ -106,20 +108,24 @@ class HgMozillaOrg(object):
 
         if branches == None:
             self.branches = _hg_branches.get_branches(kwargs=kwargs)
-            self.es = None
+            self.repo = None
+            self.moves = None
             return
 
         self.last_cache_miss = Date.now()
 
         set_default(repo, {"schema": revision_schema})
-        self.es = elasticsearch.Cluster(kwargs=repo).get_or_create_index(kwargs=repo)
+        self.repo = elasticsearch.Cluster(kwargs=repo).get_or_create_index(kwargs=repo)
+        self.moves = elasticsearch.Cluster(kwargs=repo).get_or_create_index(kwargs=repo)
 
         def setup_es(please_stop):
             with suppress_exception:
-                self.es.add_alias()
+                self.repo.add_alias()
+                self.moves.add_alias()
 
             with suppress_exception:
-                self.es.set_refresh_interval(seconds=1)
+                self.repo.set_refresh_interval(seconds=1)
+                self.moves.set_refresh_interval(seconds=1)
 
         Thread.run("setup_es", setup_es)
         self.branches = _hg_branches.get_branches(kwargs=kwargs)
@@ -250,7 +256,7 @@ class HgMozillaOrg(object):
 
     def _get_from_elasticsearch(self, revision, locale=None, get_diff=False, get_moves=True):
         rev = revision.changeset.id
-        if self.es.cluster.version.startswith("1.7."):
+        if self.repo.cluster.version.startswith("1.7."):
             query = {
                 "query": {"filtered": {
                     "query": {"match_all": {}},
@@ -276,8 +282,8 @@ class HgMozillaOrg(object):
 
         for attempt in range(3):
             try:
-                with self.es_locker:
-                    docs = self.es.search(query).hits.hits
+                with self.repo_locker:
+                    docs = self.repo.search(query).hits.hits
                 if len(docs) == 0:
                     return None
                 best = docs[0]._source
@@ -319,7 +325,7 @@ class HgMozillaOrg(object):
 
     @cache(duration=HOUR, lock=True)
     def _get_push(self, branch, changeset_id):
-        if self.es.cluster.version.startswith("1.7."):
+        if self.repo.cluster.version.startswith("1.7."):
             query = {
                 "query": {"filtered": {
                     "query": {"match_all": {}},
@@ -341,8 +347,8 @@ class HgMozillaOrg(object):
 
         try:
             # ALWAYS TRY ES FIRST
-            with self.es_locker:
-                response = self.es.search(query)
+            with self.repo_locker:
+                response = self.repo.search(query)
                 json_push = response.hits.hits[0]._source.push
             if json_push:
                 return json_push
@@ -429,8 +435,9 @@ class HgMozillaOrg(object):
 
         try:
             _id = coalesce(rev.changeset.id12, "") + "-" + rev.branch.name + "-" + coalesce(rev.branch.locale, DEFAULT_LOCALE)
-            with self.es_locker:
-                self.es.add({"id": _id, "value": rev})
+            with self.repo_locker:
+                self.repo.add({"id": _id, "value": rev})
+                self.moves.add({"id": _id, "value": rev})
         except Exception as e:
             e = Except.wrap(e)
             Log.warning("Did not save to ES, waiting {{duration}} seconds", duration=WAIT_AFTER_NODE_FAILURE, cause=e)
@@ -538,7 +545,7 @@ class HgMozillaOrg(object):
         """
         @cache(duration=MINUTE, lock=True)
         def inner(changeset_id):
-            if self.es.cluster.version.startswith("1.7."):
+            if self.repo.cluster.version.startswith("1.7."):
                 query = {
                     "query": {"filtered": {
                         "query": {"match_all": {}},
@@ -560,8 +567,8 @@ class HgMozillaOrg(object):
 
             try:
                 # ALWAYS TRY ES FIRST
-                with self.es_locker:
-                    response = self.es.search(query)
+                with self.repo_locker:
+                    response = self.repo.search(query)
                     json_diff = response.hits.hits[0]._source.changeset.diff
                 if json_diff:
                     return json_diff
@@ -597,7 +604,7 @@ class HgMozillaOrg(object):
         """
         @cache(duration=MINUTE, lock=True)
         def inner(changeset_id):
-            if self.es.cluster.version.startswith("1.7."):
+            if self.moves.cluster.version.startswith("1.7."):
                 query = {
                     "query": {"filtered": {
                         "query": {"match_all": {}},
@@ -619,8 +626,8 @@ class HgMozillaOrg(object):
 
             try:
                 # ALWAYS TRY ES FIRST
-                with self.es_locker:
-                    response = self.es.search(query)
+                with self.moves_locker:
+                    response = self.moves.search(query)
                     moves = response.hits.hits[0]._source.changeset.moves
                 if moves:
                     return moves
