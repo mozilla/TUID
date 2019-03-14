@@ -39,8 +39,13 @@ After cloning the repo into `~/TUID`:
 
 Some tests take long, and you want to run just one of them. Here is an example:
 
-    python -m pytest tests\test_basic.py::test_one_http_call_required
+**For Linux**
 
+    python -m pytest tests/test_basic.py::test_one_http_call_required
+    
+**For windows**
+
+    python -m pytest tests\test_basic.py::test_one_http_call_required
 
 ## Running the web application for development
 
