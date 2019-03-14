@@ -86,6 +86,7 @@ class HgMozillaOrg(object):
         self,
         hg=None,        # CONNECT TO hg
         repo=None,      # CONNECTION INFO FOR ES CACHE
+        moves=None,
         branches=None,  # CONNECTION INFO FOR ES CACHE
         use_cache=False,   # True IF WE WILL USE THE ES FOR DOWNLOADING BRANCHES
         timeout=30 * SECOND,
@@ -107,19 +108,23 @@ class HgMozillaOrg(object):
         if branches == None:
             self.branches = _hg_branches.get_branches(kwargs=kwargs)
             self.es = None
+            self.moves = None
             return
 
         self.last_cache_miss = Date.now()
 
         set_default(repo, {"schema": revision_schema})
         self.es = elasticsearch.Cluster(kwargs=repo).get_or_create_index(kwargs=repo)
+        self.moves = elasticsearch.Cluster(kwargs=moves).get_or_create_index(kwargs=moves)
 
         def setup_es(please_stop):
             with suppress_exception:
                 self.es.add_alias()
+                self.moves.add_alias()
 
             with suppress_exception:
                 self.es.set_refresh_interval(seconds=1)
+                self.moves.set_refresh_interval(seconds=1)
 
         Thread.run("setup_es", setup_es)
         self.branches = _hg_branches.get_branches(kwargs=kwargs)
