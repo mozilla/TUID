@@ -17,7 +17,7 @@ More details can be gleaned from the [motivational document](https://github.com/
 
 ## Running tests
 
-Running any tests requires access to an Elastic Search cluster for `mo_hg` on localhost:9201. This requires [Elastic Search version 6.2.4](https://www.elastic.co/downloads/past-releases/elasticsearch-6-2-4).
+Running any tests requires access to an Elastic Search cluster for `mo_hg` on localhost:9201. This requires [Elastic Search version 6.2.4](https://www.elastic.co/downloads/past-releases/elasticsearch-6-2-4). To look at the Elastic Search cluster, you can use Elasticsearch-head, [found here](https://github.com/mobz/elasticsearch-head).
 
 After cloning the repo into `~/TUID`:
 
@@ -26,14 +26,16 @@ After cloning the repo into `~/TUID`:
     cd ~/TUID
     pip install -r ./tests/requirements.txt
     export PYTHONPATH=.:vendor
-    python -m pytest ./tests
+    python -m pytest -m first_run --capture=no ./tests
+    python -m pytest -m 'not first_run' --capture=no ./tests
 
 **Windows**
 
     cd %userprofile%\TUID
     pip install -r .\tests\requirements.txt
     set PYTHONPATH=.;vendor
-    python -m pytest .\tests
+    python -m pytest -m first_run --capture=no tests
+    python -m pytest -m 'not first_run' --capture=no tests
 
 **Just one test**
 
@@ -46,6 +48,8 @@ Some tests take long, and you want to run just one of them. Here is an example:
 **For windows**
 
     python -m pytest tests\test_basic.py::test_one_http_call_required
+
+If there are issues that arise concerning a `private.json` file, you may be required to set the following environment variable: `TUID_CONFIG=tests/travis/config.json`
 
 ## Running the web application for development
 
