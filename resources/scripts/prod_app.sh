@@ -3,4 +3,4 @@ cd ~/TUID
 export PYTHONPATH=.:vendor
 
 
-python tuid/app.py --config=resources/config/prod.json
+/usr/bin/python3 tuid/app.py --config=resources/config/prod.json
