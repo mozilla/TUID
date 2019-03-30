@@ -52,8 +52,9 @@ class Sqlite(DB):
     """
 
     @override
-    def __init__(self, filename=None, db=None, get_trace=None, upgrade=True, load_functions=False, kwargs=None):
+    def __init__(self, version, filename=None, db=None, get_trace=None, upgrade=True, load_functions=False, kwargs=None):
         """
+        :param version: current version of the database
         :param filename:  FILE TO USE FOR DATABASE
         :param db: AN EXISTING sqlite3 DB YOU WOULD LIKE TO USE (INSTEAD OF USING filename)
         :param get_trace: GET THE STACK TRACE AND THREAD FOR EVERY DB COMMAND (GOOD FOR DEBUGGING)
@@ -84,6 +85,7 @@ class Sqlite(DB):
             Log.error("could not open file {{filename}}", filename=self.filename, cause=e)
         load_functions and self._load_functions()
 
+        self.version = version
         self.locker = Lock()
         self.available_transactions = []  # LIST OF ALL THE TRANSACTIONS BEING MANAGED
         self.queue = Queue("sql commands")   # HOLD (command, result, signal, stacktrace) TUPLES
@@ -100,7 +102,30 @@ class Sqlite(DB):
         self.delayed_transactions = []
         self.worker = Thread.run("sqlite db thread", self._worker)
 
+        # Check whether version_table exists and also version number is correct
+        self.check_version()
+
         DEBUG and Log.note("Sqlite version {{version}}", version=self.query("select sqlite_version()").data[0][0])
+
+    def check_version(self):
+        temp = self.query("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='version_table' ")
+        if temp == 0:
+            self.init_db()
+
+        req_ver = self.query("SELECT version FROM version_table")
+        try:
+            assert (req_ver == self.version)
+        except AssertionError as e:
+            Log.Error(e)
+            raise Exception("Delete the database and start fresh as TUID db version does not match with the version in config file")
+
+    def init_db(self):
+            self.query('''
+            CREATE TABLE IF NOT EXISTS version_table (
+                    version INTEGER PRIMARY KEY
+            );''')
+
+            self.query("INSERT INTO version_table VALUE (1)")
 
     def _enhancements(self):
         def regex(pattern, value):
