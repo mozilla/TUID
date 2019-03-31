@@ -410,6 +410,19 @@ class TUIDService:
 
         This function assumes the newest file names are given, if they
         are not, then no TUIDs are returned for that file.
+        
+        The following is a very simplified overview of how this function works:
+        (1) When a file is requested, we check if it exists in the annotations
+            and latestFileMods table.
+            (i) If not, we get the annotation from hg.mozilla.org and give tuids
+                to each of the lines and return this as a result.
+        (2) If it does exist but it's at an older or newer revision,
+            then we get it's frontier, which is the latest revision of the file available
+            in the annotations table.
+        (3) Using that frontier, we use the Clogger (csetLog table) to get us a range of
+            revisions that we have to apply to the file at the given frontier to either
+            move it forwards or backwards in time.
+        (4) After this diff application stage, we now have tuids for the modified file.
 
         IMPORTANT:
         If repo is set to None, the service will check if the revision is in
