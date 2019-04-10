@@ -195,11 +195,13 @@ class TUIDService:
         # have information on the requested file.
         return coalesce(transaction, self.conn).get_one(GET_LATEST_MODIFICATION, (file,))
 
-
     def stringify_tuids(self, tuid_list):
         # Turns the TuidMap list to a string for storage in
         # the annotations table.
-        return "\n".join([','.join([str(x.tuid), str(x.line)]) for x in tuid_list])
+        tempList = []
+        for x in tuid_list:
+            tempList.insert(x.line, x.tuid)
+        return "\n".join([str(tuid) for tuid in tempList])
 
 
     def destringify_tuids(self, tuids_string):
@@ -207,10 +209,7 @@ class TUIDService:
         try:
             lines = tuids_string.splitlines()
             line_origins = []
-            for line in lines:
-                if not line:
-                    continue
-                tuid, linenum = line.split(',')
+            for tuid, linenum in enumerate(lines):
                 line_origins.append(
                     TuidMap(int(tuid), int(linenum))
                 )
@@ -491,7 +490,7 @@ class TUIDService:
             # Check if the file has already been collected at
             # this revision and get the result if so
             if already_ann:
-                result.append((file,self.destringify_tuids(already_ann)))
+                result.append((file, self.destringify_tuids(already_ann)))
                 latestFileMod_inserts[file] = (file, revision)
                 log_existing_files.append('exists|' + file)
                 continue
