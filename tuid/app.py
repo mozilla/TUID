@@ -193,9 +193,9 @@ def _default(path):
     )
 
 
-if __name__ in ("__main__",):
-    Log.note("Starting TUID Service App...")
-    flask_app = TUIDApp(__name__)
+Log.note("Starting TUID Service App...")
+flask_app = TUIDApp(__name__)
+if True:
     flask_app.add_url_rule(str('/'), None, tuid_endpoint, defaults={'path': ''}, methods=[str('GET'), str('POST')])
     flask_app.add_url_rule(str('/<path:path>'), None, tuid_endpoint, methods=[str('GET'), str('POST')])
 
@@ -223,6 +223,8 @@ if __name__ in ("__main__",):
         finally:
             Log.stop()
 
+
+if __name__ in ("__main__",):
     if config.flask:
         if config.flask.port and config.args.process_num:
             config.flask.port += config.args.process_num
