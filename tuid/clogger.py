@@ -16,13 +16,14 @@ import time
 # Clogger
 import tuid.service
 from jx_python import jx
-from mo_dots import Null, coalesce
+from mo_dots import Null, coalesce, set_default
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_logs import Log
+from mo_logs.exceptions import suppress_exception
 from mo_threads import Till, Thread, Lock, Queue, Signal
 from mo_threads.threads import ALL
 from mo_times.durations import DAY
-from pyLibrary.env import http
+from pyLibrary.env import http, elasticsearch
 from pyLibrary.sql import sql_list, quote_set
 from tuid import sql
 from tuid.util import HG_URL, insert_into_db_chunked
@@ -67,12 +68,14 @@ class Clogger:
             )
             self.rev_locker = Lock()
             self.working_locker = Lock()
+            self.csetLog_locker = Lock()
 
             if new_table:
                 with self.conn.transaction() as t:
                     t.execute("DROP TABLE IF EXISTS csetLog")
 
             self.init_db()
+            self.init_es()
             self.next_revnum = coalesce(self.conn.get_one("SELECT max(revnum)+1 FROM csetLog")[0], 1)
             self.csets_todo_backwards = Queue(name="Clogger.csets_todo_backwards")
             self.deletions_todo = Queue(name="Clogger.deletions_todo")
@@ -153,6 +156,30 @@ class Clogger:
                 revision       CHAR(12) NOT NULL,
                 timestamp      INTEGER
             );''')
+
+    #function to create index for csetLog in ES
+    def init_es(self):
+        csetLog_schema = {
+            "settings": {
+                "index.number_of_replicas": 1,
+                "index.number_of_shards": 1
+            },
+            "mappings": {
+                "csetlogtype": {
+                    "_all": {
+                        "enabled": False
+                    },
+                    "properties": {
+                        "revnum": {"type": "integer", "store": True},
+                        "revision": {"type": "keyword", "store": True},
+                        "timestamp": {"type": "integer", "store": True}
+                    }
+                }
+            }
+        }
+        csetLog = self.config.tuid.clogger.csetLog
+        set_default(csetLog, {"schema": csetLog_schema})
+        self.es = elasticsearch.Cluster(kwargs=csetLog).get_or_create_index(kwargs=csetLog)
 
 
     def disable_all(self):
