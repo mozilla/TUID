@@ -157,28 +157,11 @@ class Clogger:
                 timestamp      INTEGER
             );''')
 
+
     #function to create index for csetLog in ES
     def init_es(self):
-        csetLog_schema = {
-            "settings": {
-                "index.number_of_replicas": 1,
-                "index.number_of_shards": 1
-            },
-            "mappings": {
-                "csetlogtype": {
-                    "_all": {
-                        "enabled": False
-                    },
-                    "properties": {
-                        "revnum": {"type": "integer", "store": True},
-                        "revision": {"type": "keyword", "store": True},
-                        "timestamp": {"type": "integer", "store": True}
-                    }
-                }
-            }
-        }
         csetLog = self.config.tuid.clogger.csetLog
-        set_default(csetLog, {"schema": csetLog_schema})
+        set_default(csetLog, {"schema": CSETLOG_SCHEMA})
         self.es = elasticsearch.Cluster(kwargs=csetLog).get_or_create_index(kwargs=csetLog)
 
 
@@ -876,3 +859,23 @@ class Clogger:
             result,
             key=lambda x: int(x[0])
         )
+
+
+CSETLOG_SCHEMA = {
+    "settings": {
+        "index.number_of_replicas": 1,
+        "index.number_of_shards": 1
+    },
+    "mappings": {
+        "csetlogtype": {
+            "_all": {
+                "enabled": False
+            },
+            "properties": {
+                "revnum": {"type": "integer", "store": True},
+                "revision": {"type": "keyword", "store": True},
+                "timestamp": {"type": "integer", "store": True}
+            }
+        }
+    }
+}
