@@ -33,6 +33,17 @@
                 "consistency": "one", // WE ONLY NEED ONE SHARD TO BE AVAILABLE
                 "debug": false,
                 "limit_replicas": false
+            },
+            "moves": {
+                "host": "http://localhost",
+                "port": 9200,
+                "index": "moves",
+                "type": "revision",
+                "typed": false,
+                "timeout": 300,
+                "consistency": "one", // WE ONLY NEED ONE SHARD TO BE AVAILABLE
+                "debug": false,
+                "limit_replicas": false
             }
         }
     },

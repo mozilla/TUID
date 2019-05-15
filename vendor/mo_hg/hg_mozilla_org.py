@@ -115,16 +115,19 @@ class HgMozillaOrg(object):
         self.last_cache_miss = Date.now()
 
         set_default(repo, {"schema": revision_schema})
+        set_default(moves, {"schema": revision_schema})
         self.repo = elasticsearch.Cluster(kwargs=repo).get_or_create_index(kwargs=repo)
-        self.moves = elasticsearch.Cluster(kwargs=repo).get_or_create_index(kwargs=repo)
+        self.moves = elasticsearch.Cluster(kwargs=moves).get_or_create_index(kwargs=moves)
 
         def setup_es(please_stop):
             with suppress_exception:
                 self.repo.add_alias()
+            with suppress_exception:
                 self.moves.add_alias()
 
             with suppress_exception:
                 self.repo.set_refresh_interval(seconds=1)
+            with suppress_exception:
                 self.moves.set_refresh_interval(seconds=1)
 
         Thread.run("setup_es", setup_es)
@@ -436,8 +439,9 @@ class HgMozillaOrg(object):
         try:
             _id = coalesce(rev.changeset.id12, "") + "-" + rev.branch.name + "-" + coalesce(rev.branch.locale, DEFAULT_LOCALE)
             with self.repo_locker:
-                self.repo.add({"id": _id, "value": rev})
-                self.moves.add({"id": _id, "value": rev})
+                with self.moves_locker:
+                    self.repo.add({"id": _id, "value": rev})
+                    self.moves.add({"id": _id, "value": rev})
         except Exception as e:
             e = Except.wrap(e)
             Log.warning("Did not save to ES, waiting {{duration}} seconds", duration=WAIT_AFTER_NODE_FAILURE, cause=e)
