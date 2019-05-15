@@ -93,6 +93,7 @@ limited:
     {
         "from":"files"
         "where": {"and": [
+            {"eq": {"branch": "<BRANCH>"}},
             {"eq": {"revision": "<REVISION>"}},
             {"in": {"path": ["<PATH1>", "<PATH2>", "...", "<PATHN>"]}}
         ]}
@@ -100,7 +101,7 @@ limited:
 
 Here is an example curl:
 
-    curl -XGET http://localhost:5000/tuid -d "{\"from\":\"files\", \"where\":{\"and\":[{\"eq\":{\"revision\":\"9cb650de48f9\"}}, {\"eq\":{\"path\":\"modules/libpref/init/all.js\"}}]}}"
+    curl -XGET http://localhost:5000/tuid -d "{\"from\":\"files\", \"where\":{\"and\":[{\"eq\":{\"branch\":\"mozilla-central\"}}, {\"eq\":{\"revision\":\"9cb650de48f9\"}}, {\"eq\":{\"path\":\"modules/libpref/init/all.js\"}}]}}"
 
 After some time (70sec as of March 23, 2018) we get a response (formatted 
 and clipped for clarity):
