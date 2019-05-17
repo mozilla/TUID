@@ -39,7 +39,7 @@
             "moves": {
                 "host": "http://localhost",
                 "port": 9201,
-                "index": "moves",
+                "index": "repo-moves",
                 "type": "revision",
                 "typed": false,
                 "timeout": 300,

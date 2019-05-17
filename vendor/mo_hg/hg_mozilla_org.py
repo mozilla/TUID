@@ -433,14 +433,15 @@ class HgMozillaOrg(object):
         # ADD THE DIFF
         if get_diff:
             rev.changeset.diff = self._get_json_diff_from_hg(rev)
-        if get_moves:
-            rev.changeset.moves = self._get_moves_from_hg(rev)
 
         try:
             _id = coalesce(rev.changeset.id12, "") + "-" + rev.branch.name + "-" + coalesce(rev.branch.locale, DEFAULT_LOCALE)
             with self.repo_locker:
-                with self.moves_locker:
                     self.repo.add({"id": _id, "value": rev})
+
+            if get_moves:
+                rev.changeset.moves = self._get_moves_from_hg(rev)
+                with self.moves_locker:
                     self.moves.add({"id": _id, "value": rev})
         except Exception as e:
             e = Except.wrap(e)
