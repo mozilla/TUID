@@ -62,6 +62,7 @@ class Clogger:
             self.config = kwargs
             self.conn = conn if conn else sql.Sql(self.config.database.name)
             self.hg_cache = HgMozillaOrg(kwargs=self.config.hg_cache, use_cache=True) if self.config.hg_cache else Null
+            self.es = elasticsearch.Cluster(kwargs=self.config.tuid.clogger.csetLog)
 
             self.tuid_service = tuid_service if tuid_service else tuid.service.TUIDService(
                 kwargs=self.config.tuid, conn=self.conn, clogger=self
@@ -74,9 +75,19 @@ class Clogger:
                 with self.conn.transaction() as t:
                     t.execute("DROP TABLE IF EXISTS csetLog")
 
+            if new_table:
+                try:
+                    index = self.es.get_canonical_index(self.config.tuid.clogger.csetLog.index)
+                    response = self.es.delete_index(index)
+                except Exception as e:
+                    Log.warning("could not delete csetlog index because (mostly index has not yet created): {{cause}}", cause=str(e))
+
+
             self.init_db()
             self.init_es()
+            query = self.min_max_dsl("max")
             self.next_revnum = coalesce(self.conn.get_one("SELECT max(revnum)+1 FROM csetLog")[0], 1)
+            self.next_revnum = coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)),0)+1
             self.csets_todo_backwards = Queue(name="Clogger.csets_todo_backwards")
             self.deletions_todo = Queue(name="Clogger.deletions_todo")
             self.maintenance_signal = Signal(name="Clogger.maintenance_signal")
@@ -118,6 +129,26 @@ class Clogger:
                 self.start_workers()
         except Exception as e:
             Log.warning("Cannot setup clogger: {{cause}}", cause=str(e))
+
+
+    def min_max_dsl(self, query_required):
+        query = None
+        if query_required == "min":
+            query = {
+                "size" : 0,
+                "aggs" : {
+                    "value" : { "min" : { "field" : "revnum" } }
+                }
+            }
+
+        elif query_required == "max":
+            query = {
+                "size" : 0,
+                "aggs" : {
+                    "value" : { "max" : { "field" : "revnum" } }
+                }
+            }
+        return query
 
 
     def start_backfilling(self):
@@ -162,7 +193,9 @@ class Clogger:
     def init_es(self):
         csetLog = self.config.tuid.clogger.csetLog
         set_default(csetLog, {"schema": CSETLOG_SCHEMA})
-        self.es = elasticsearch.Cluster(kwargs=csetLog).get_or_create_index(kwargs=csetLog)
+        self.csetlog = self.es.get_or_create_index(kwargs=csetLog)
+        with suppress_exception:
+            self.csetlog.add_alias()
 
 
     def disable_all(self):
