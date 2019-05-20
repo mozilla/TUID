@@ -35,6 +35,17 @@
                 "consistency": "one", // WE ONLY NEED ONE SHARD TO BE AVAILABLE
                 "debug": false,
                 "limit_replicas": false
+            },
+            "moves": {
+                "host": "http://localhost",
+                "port": 9201,
+                "index": "repo-moves",
+                "type": "revision",
+                "typed": false,
+                "timeout": 300,
+                "consistency": "one", // WE ONLY NEED ONE SHARD TO BE AVAILABLE
+                "debug": false,
+                "limit_replicas": false
             }
         },
         "clogger": {

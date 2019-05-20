@@ -122,7 +122,9 @@ class Clogger:
                     "sort": [{ "revnum": { "order": "asc" }}],
                     "size": 1
                 }
-                tmp = self.csetlog.search(query).hits.hits._source.revision
+                tmp = self.csetlog.search(query).hits.hits
+                if tmp:
+                    oldest_rev = tmp
                 self._fill_in_range(
                     MINIMUM_PERMANENT_CSETS - numrevs,
                     oldest_rev,
@@ -227,7 +229,7 @@ class Clogger:
             "size": 1
         }
         result = self.csetlog.search(query)
-        tmp = [result.hits.hits.sort[0], result.hits.hits._source.revision]
+        tmp = (result.hits.hits[0].sort[0], result.hits.hits[0]._source.revision)
         tmp = transaction.get_one("SELECT max(revnum) as revnum, revision FROM csetLog")
         return tmp
 
@@ -239,7 +241,7 @@ class Clogger:
             "size": 1
         }
         result = self.csetlog.search(query)
-        tmp = [result.hits.hits.sort[0],result.hits.hits._source.revision]
+        tmp = (result.hits.hits[0].sort[0],result.hits.hits[0]._source.revision)
         tmp = transaction.get_one("SELECT min(revnum) as revnum, revision FROM csetLog")
         return tmp
 
@@ -267,7 +269,7 @@ class Clogger:
                     "must": [
                         {
                             "term": {
-                                "revnum": rev
+                                "revision": rev
                             }
                         }
                     ]
@@ -301,7 +303,9 @@ class Clogger:
         high_num = max(revnum1, revnum2)
         low_num = min(revnum1, revnum2)
 
+        total = self.csetlog.search({"size": 0})
         query = {
+            "size": total.hits.total,
             "_source": {"includes": ["revnum", "revision"]},
             "query": {
                 "bool": {
@@ -317,7 +321,7 @@ class Clogger:
         ).data
         return temp
 
-    #need to change tomorrow
+
     def recompute_table_revnums(self):
         '''
         Recomputes the revnums for the csetLog table
@@ -344,6 +348,25 @@ class Clogger:
 
             t.execute("DROP TABLE csetLog;")
             t.execute("ALTER TABLE temp RENAME TO csetLog;")
+
+
+        #since auto incremental is not available with ES
+        total = self.csetlog.search({"size":0})
+        query = {"size": total.hits.total, "query": { "match_all": {} }}
+        #very memory expensive
+        records = self.csetlog.search(query)
+        index = self.es.get_canonical_index(self.config.clogger.csetLog.index)
+        response = self.es.delete_index(index)
+
+        temp = self.config.clogger.csetLog
+        set_default(temp, {"schema": CSETLOG_SCHEMA})
+        self.csetlog = self.es.get_or_create_index(kwargs=temp)
+        with suppress_exception:
+            self.csetlog.add_alias()
+
+        for i, record in zip(range(1,int(total.hits.total)+1), records.hits.hits):
+            r = {"revnum": i, "revision": record._source.revision, "timestamp": record._source.timestamp}
+            self.csetlog.add({"value":r})
 
 
     def check_for_maintenance(self):
@@ -427,8 +450,9 @@ class Clogger:
                     )
                 )
 
-                record = None
-                self.csetlog.add(record)
+                for revnum, revision, timestamp in tmp_insert_list:
+                    record={"revnum":revnum, "revision":revision, "timestamp":timestamp}
+                    self.csetlog.add({"value":record})
 
             # Move the revision numbers forward if needed
             self.recompute_table_revnums()
@@ -560,8 +584,9 @@ class Clogger:
                     quote_set((new_rev, -1))
                 )
 
-            record = None
-            self.csetlog.add(record)
+            record = {"revnum": 1, "revision": new_rev, "timestamp": -1}
+            self.csetlog.add({"value": record})
+
             self._fill_in_range(old_rev, new_rev, timestamp=True, number_forward=False)
 
         self.disable_tipfilling = old_settings[0]
@@ -727,14 +752,17 @@ class Clogger:
                 with self.working_locker:
                     all_data = None
                     with self.conn.transaction() as t:
+                        total = self.csetlog.search({"size":0})
                         query = {
+                            "size": total.hits.total,
                             "_source": {"includes": ["revnum","revision","timestamp"]},
                             "sort": [{"revnum": {"order": "asc"}}]
                         }
                         temp = self.csetlog.search(query)
-                        all_data = None
-                        for i in temp.hit.hits:
-                            all_data.append([i.revnum,i.revision,i.timestamp])
+                        all_data = []
+                        for i in temp.hits.hits:
+                            all_data.append((i._source.revnum,i._source.revision,i._source.timestamp))
+
                         all_data = sorted(
                             t.get("SELECT revnum, revision, timestamp FROM csetLog"),
                             key=lambda x: int(x[0])
@@ -838,6 +866,11 @@ class Clogger:
                                 new_data2,
                                 "INSERT OR REPLACE INTO csetLog (revnum, revision, timestamp) VALUES "
                             )
+
+                        for revnum, revision, timestamp in new_data2:
+                            record = {"revnum": revnum, "revision": revision, "timestamp": timestamp}
+                            self.csetlog.add({"value": record})
+
                     if not deleted_data:
                         continue
 
@@ -877,7 +910,9 @@ class Clogger:
                     # one transaction with no interruptions.
                     with self.conn.transaction() as t:
                         revnum = self._get_one_revnum(t, first_cset)[0]
+                        total = self.csetlog.search({"size": 0})
                         query = {
+                            "size": total.hits.total,
                             "_source": {"includes": ["revnum", "revision"]},
                             "query": {
                                 "bool": {
@@ -885,7 +920,11 @@ class Clogger:
                                 }
                             }
                         }
-                        csets_to_del = self.csetlog.search(query)
+                        csets_to_del_temp = self.csetlog.search(query)
+                        csets_to_del = []
+                        for r in csets_to_del_temp.hits.hits:
+                            csets_to_del.append((r._source.revnum, r._source.revision))
+
                         csets_to_del = t.get(
                             "SELECT revnum, revision FROM csetLog WHERE revnum <= ?", (revnum,)
                         )
@@ -927,7 +966,7 @@ class Clogger:
                             "DELETE FROM csetLog WHERE revision IN " +
                             quote_set(csets_to_del)
                         )
-                        filter = {"terms": {"revision":[1, 2, 3]}}
+                        filter = {"terms": {"revision": csets_to_del}}
                         self.csetlog.delete_record(filter)
 
                     # Recalculate the revnums
