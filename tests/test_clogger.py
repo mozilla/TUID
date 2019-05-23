@@ -342,9 +342,6 @@ def test_partial_tipfilling(clogger):
             "DELETE FROM csetLog WHERE revnum >= " + str(max_tip_num) + " - 5"
         )
 
-    #with clogger.working_locker:
-    #    clogger.recompute_table_revnums()
-
     clogger.disable_tipfilling = False
     tmp_num_trys = 0
     while tmp_num_trys < num_trys:
@@ -383,11 +380,8 @@ def test_get_revnum_range_backfill(clogger):
 
     assert len(revnums) == 11
 
-    curr_revnum = -1
     for revnum, revision in revnums:
         assert revision
-        # assert revnum > curr_revnum
-        # curr_revnum = revnum
 
 
 def test_get_revnum_range_tipfill(clogger):
@@ -412,11 +406,8 @@ def test_get_revnum_range_tipfill(clogger):
 
     assert len(revnums) == 7
 
-    curr_revnum = -1
     for revnum, revision in revnums:
         assert revision
-        #assert revnum > curr_revnum
-        #curr_revnum = revnum
 
 
 def test_get_revnum_range_tipnback(clogger):
@@ -464,8 +455,5 @@ def test_get_revnum_range_tipnback(clogger):
 
         assert len(revnums) == expected_total_revs
 
-        curr_revnum = -1
         for revnum, revision in revnums:
             assert revision
-            #assert revnum > curr_revnum
-            #curr_revnum = revnum
