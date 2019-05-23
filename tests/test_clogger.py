@@ -58,9 +58,6 @@ def test_tipfilling(clogger):
     num_trys = 50
     wait_time = 2
     current_tip = None
-    #with clogger.conn.transaction() as t:
-        # current_tip = t.get_one("SELECT max(revnum) AS revnum, revision FROM csetLog")[1]
-        # t.execute("DELETE FROM csetLog")
     query = {
         "_source": {"includes": ["revision", "revnum"]},
         "sort": [{"revnum": {"order": "desc"}}],
@@ -76,7 +73,6 @@ def test_tipfilling(clogger):
 
     new_tip = None
     while num_trys > 0:
-        #new_tip = clogger.conn.get_one("SELECT max(revnum) AS revnum, revision FROM csetLog")
         result = clogger.csetlog.search(query)
         new_tip = (result.hits.hits[0]._source.revnum, result.hits.hits[0]._source.revision)
         if new_tip:
@@ -100,8 +96,6 @@ def test_backfilling_to_revision(clogger):
     wait_time = 2
     num_to_go_back = 10
 
-    #oldest_revnum, oldest_rev = clogger.conn.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")
-
     query = {
         "_source": {"includes": ["revision", "revnum"]},
         "sort": [{"revnum": {"order": "asc"}}],
@@ -123,7 +117,6 @@ def test_backfilling_to_revision(clogger):
 
     new_ending = None
     while num_trys > 0:
-        #new_ending = clogger.conn.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")[1]
         query = {
             "_source": {"includes": ["revision", "revnum"]},
             "sort": [{"revnum": {"order": "asc"}}],
@@ -143,8 +136,6 @@ def test_backfilling_to_revision(clogger):
 
     # Check that revnum's were properly handled
     expected_revnum = oldest_revnum - num_to_go_back
-    # with clogger.conn.transaction() as t:
-    #     new_revnum = t.get_one("SELECT revnum FROM csetLog WHERE revision=?", (oldest_rev,))[0]
     query = {
             "_source": {"includes": ["revnum"]},
             "query": { "bool": { "must": [ { "term": { "revision": new_ending } } ] } },
@@ -165,7 +156,6 @@ def test_backfilling_by_count(clogger):
     wait_time = 2
     num_to_go_back = 10
 
-    #oldest_revnum, oldest_rev = clogger.conn.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")
     query = {
         "_source": {"includes": ["revision", "revnum"]},
         "sort": [{"revnum": {"order": "asc"}}],
@@ -189,7 +179,6 @@ def test_backfilling_by_count(clogger):
     new_revnum = None
     while num_trys > 0:
         with clogger.conn.transaction() as t:
-            #new_ending = t.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")[1]
             query = {
                 "_source": {"includes": ["revision", "revnum"]},
                 "sort": [{"revnum": {"order": "asc"}}],
@@ -199,7 +188,6 @@ def test_backfilling_by_count(clogger):
             new_ending = result.hits.hits[0]._source.revision
             DEBUG and Log.note("{{data}}", data=(oldest_rev, new_old_rev, new_ending))
             if new_ending == new_old_rev:
-                #new_revnum = t.get_one("SELECT revnum FROM csetLog WHERE revision=?", (oldest_rev,))[0]
                 query = {
                     "_source": {"includes": ["revnum"]},
                     "query": {"bool": {"must": [{"term": {"revision": new_ending}}]}},
@@ -233,7 +221,6 @@ def test_maintenance_and_deletion(clogger):
     num_trys = 50
     wait_time = 2
     with clogger.conn.transaction() as t:
-        # revnums_in_db = t.get_one("SELECT count(revnum) as revnum FROM csetLog")[0]
         query = {
             "aggs": {"output": {"value_count": {"field": "revnum"}}},
             "size": 0
@@ -283,8 +270,6 @@ def test_maintenance_and_deletion(clogger):
                 for i in inserts_list_annotations
             )
         )
-
-        #revnums_in_db = t.get_one("SELECT count(revnum) as revnum FROM csetLog")[0]
         query = {
             "aggs": {"output": {"value_count": {"field": "revnum"}}},
             "size": 0
@@ -303,7 +288,6 @@ def test_maintenance_and_deletion(clogger):
     tmp_num_trys = 0
     while tmp_num_trys < num_trys:
         Till(seconds=wait_time).wait()
-        #revnums_in_db = clogger.conn.get_one("SELECT count(revnum) as revnum FROM csetLog")[0]
         query = {
             "aggs": {"output": {"value_count": {"field": "revnum"}}},
             "size": 0
@@ -336,7 +320,6 @@ def test_deleting_old_annotations(clogger):
     new_timestamp = 1
 
     # Add extra non-permanent revisions if needed
-    #total_revs = clogger.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
     query = {
             "aggs": {"output": {"value_count": {"field": "revnum"}}},
             "size": 0
@@ -354,7 +337,6 @@ def test_deleting_old_annotations(clogger):
                 "size": 0
             }
             new_total_revs = int(clogger.csetlog.search(query).aggregations.output.value)
-            #new_total_revs = clogger.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
             if new_total_revs > total_revs:
                 break
             tmp_num_trys += 1
@@ -389,14 +371,10 @@ def test_deleting_old_annotations(clogger):
                 for i in inserts_list_annotations
             )
         )
-        # t.execute(
-        #     "INSERT OR REPLACE INTO csetLog (revnum, revision, timestamp) VALUES " +
-        #     sql_iso(sql_list(map(quote_value, (tail_tipnum, tail_cset, new_timestamp))))
-        # )
         for revnum, revision, timestamp in [(tail_tipnum, tail_cset, new_timestamp)]:
             record = {"revnum": revnum, "revision": revision, "timestamp": timestamp}
             clogger.csetlog.add({"value": record})
-            while revnum == clogger._get_revnum_exists("t", revnum):
+            while revnum != clogger._get_revnum_exists("t", revnum):
                 Till(seconds=.001).wait()
 
     # Start maintenance
@@ -422,7 +400,6 @@ def test_partial_tipfilling(clogger):
 
     num_trys = 50
     wait_time = 2
-    #prev_total_revs = clogger.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
     query = {
         "aggs": {"output": {"value_count": {"field": "revnum"}}},
         "size": 0
@@ -430,9 +407,6 @@ def test_partial_tipfilling(clogger):
     prev_total_revs = int(clogger.csetlog.search(query).aggregations.output.value)
     with clogger.conn.transaction() as t:
         max_tip_num, _ = clogger.get_tip(t)
-        # t.execute(
-        #     "DELETE FROM csetLog WHERE revnum >= " + str(max_tip_num) + " - 5"
-        # )
         filter = {"bool": { "must": [{"range": {"revnum": {"gte": max_tip_num-5}}}] } }
         clogger.csetlog.delete_record(filter)
         query = {"query": filter}
@@ -440,9 +414,6 @@ def test_partial_tipfilling(clogger):
         while len(result.hits.hits) != 0:
             Till(seconds=.001).wait()
             result = clogger.csetlog.search(query)
-
-    # with clogger.working_locker:
-    #     clogger.recompute_table_revnums()
 
     clogger.disable_tipfilling = False
     tmp_num_trys = 0
@@ -453,7 +424,6 @@ def test_partial_tipfilling(clogger):
             "size": 0
         }
         revnums_in_db = int(clogger.csetlog.search(query).aggregations.output.value)
-        # revnums_in_db = clogger.conn.get_one("SELECT count(revnum) as revnum FROM csetLog")[0]
         if revnums_in_db == prev_total_revs:
             break
         tmp_num_trys += 1
@@ -487,11 +457,8 @@ def test_get_revnum_range_backfill(clogger):
 
     assert len(revnums) == 11
 
-    curr_revnum = -1
     for revnum, revision in revnums:
         assert revision
-        # assert revnum > curr_revnum
-        # curr_revnum = revnum
 
 
 def test_get_revnum_range_tipfill(clogger):
@@ -504,9 +471,14 @@ def test_get_revnum_range_tipfill(clogger):
     # revnum range up to a known revision
     with clogger.conn.transaction() as t:
         tip_num, tip_rev = clogger.get_tip(t)
-        t.execute(
-            "DELETE FROM csetLog WHERE revnum >= " + str(tip_num) + " - 5"
-        )
+        filter = {"bool": { "must": [{"range": {"revnum": {"gte": tip_num-5}}}] } }
+        clogger.csetlog.delete_record(filter)
+        query = {"query": filter}
+        result = clogger.csetlog.search(query)
+        while len(result.hits.hits) != 0:
+            Till(seconds=.001).wait()
+            result = clogger.csetlog.search(query)
+
         _, new_tip_rev = clogger.get_tip(t)
 
     assert tip_rev and new_tip_rev
@@ -516,11 +488,8 @@ def test_get_revnum_range_tipfill(clogger):
 
     assert len(revnums) == 7
 
-    curr_revnum = -1
     for revnum, revision in revnums:
         assert revision
-        # assert revnum > curr_revnum
-        # curr_revnum = revnum
 
 
 def test_get_revnum_range_tipnback(clogger):
@@ -531,7 +500,11 @@ def test_get_revnum_range_tipnback(clogger):
 
     for ordering in range(2):
         # Used for testing output
-        prev_total_revs = clogger.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
+        query = {
+            "aggs": {"output": {"value_count": {"field": "revnum"}}},
+            "size": 0
+        }
+        prev_total_revs = int(clogger.csetlog.search(query).aggregations.output.value)
         expected_total_revs = prev_total_revs + 10
 
         # Get the current tail, go 10 changesets back and request
@@ -543,9 +516,14 @@ def test_get_revnum_range_tipnback(clogger):
         # to a non-existent (backfill required) revision in the past.
         with clogger.conn.transaction() as t:
             tip_num, tip_rev = clogger.get_tip(t)
-            t.execute(
-                "DELETE FROM csetLog WHERE revnum >= " + str(tip_num) + " - 5"
-            )
+            filter = {"bool": {"must": [{"range": {"revnum": {"gte": tip_num - 5}}}]}}
+            clogger.csetlog.delete_record(filter)
+            query = {"query": filter}
+            result = clogger.csetlog.search(query)
+            while len(result.hits.hits) != 0:
+                Till(seconds=.001).wait()
+                result = clogger.csetlog.search(query)
+
             _, new_tip_rev = clogger.get_tip(t)
 
         num_to_go_back = 10
@@ -568,8 +546,5 @@ def test_get_revnum_range_tipnback(clogger):
 
         assert len(revnums) == expected_total_revs
 
-        curr_revnum = -1
         for revnum, revision in revnums:
             assert revision
-            # assert revnum > curr_revnum
-            # curr_revnum = revnum
