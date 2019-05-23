@@ -366,6 +366,7 @@ def test_one_addition_many_files(service):
     tmp = [dir + f for f in files][:1]  # TEST WITH SOME OTHER NUMBER OF FILES
     test_file = test_file_change + tmp
 
+    service.clogger.csetlog.flush(forced=True)
     service.clogger.disable_all()
     service.clogger.initialize_to_range(old_rev, test_rev)
     service.clogger.disable_backfilling = False

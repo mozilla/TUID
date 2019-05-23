@@ -46,7 +46,7 @@
                 "limit_replicas": false
             }
         },
-        "clogger": {
+        "esclogger": {
             "csetLog": {
                 "host": "http://localhost",
                 "port": 9200,

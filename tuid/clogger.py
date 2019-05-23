@@ -62,7 +62,12 @@ class Clogger:
             self.config = kwargs
             self.conn = conn if conn else sql.Sql(self.config.database.name)
             self.hg_cache = HgMozillaOrg(kwargs=self.config.hg_cache, use_cache=True) if self.config.hg_cache else Null
-            self.es = elasticsearch.Cluster(kwargs=self.config.tuid.clogger.csetLog)
+            self.esconfig = None
+            if self.config.tuid:
+                self.esconfig = self.config.tuid.esclogger.csetLog
+            else:
+                self.esconfig = self.config.esclogger.csetLog
+            self.es = elasticsearch.Cluster(kwargs=self.esconfig)
 
             self.tuid_service = tuid_service if tuid_service else tuid.service.TUIDService(
                 kwargs=self.config.tuid, conn=self.conn, clogger=self
@@ -73,7 +78,7 @@ class Clogger:
 
             if new_table:
                 try:
-                    index = self.es.get_canonical_index(self.config.tuid.clogger.csetLog.index)
+                    index = self.es.get_canonical_index(self.esconfig.index)
                     response = self.es.delete_index(index)
                 except Exception as e:
                     Log.warning("could not delete csetlog index because (mostly index has not yet created): {{cause}}", cause=str(e))
@@ -185,9 +190,13 @@ class Clogger:
 
 
     def init_db(self):
-        csetLog = self.config.tuid.clogger.csetLog
+        csetLog = self.esconfig
         set_default(csetLog, {"schema": CSETLOG_SCHEMA})
         self.csetlog = self.es.get_or_create_index(kwargs=csetLog)
+
+        total = self.csetlog.search({"size": 0})
+        while not total.hits:
+            total = self.csetlog.search({"size": 0})
         with suppress_exception:
             self.csetlog.add_alias()
 
@@ -508,7 +517,7 @@ class Clogger:
             max_revnum = coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)), 0) + 1
             record = {"revnum": max_revnum, "revision": new_rev, "timestamp": -1}
             self.csetlog.add({"value": record})
-            while 1 != self._get_revnum_exists("t", 1) or new_rev != self._get_one_revision(new_rev):
+            while 1 != self._get_revnum_exists("t", 1) or new_rev != self._get_one_revision("t", (-1, new_rev, -1)):
                 Till(seconds=.001).wait()
 
             self._fill_in_range(old_rev, new_rev, timestamp=True, number_forward=False)
@@ -781,6 +790,15 @@ class Clogger:
                     if modified:
                         for revnum, revision, timestamp in new_data2:
                             record = {"revnum": revnum, "revision": revision, "timestamp": timestamp}
+                            if revnum == self._get_revnum_exists("t", revnum):
+                                filter = {"term": {"revnum": revnum}}
+                                self.csetlog.delete_record(filter)
+                                query = {"query": {"term": {"revnum": revnum}}}
+                                result = self.csetlog.search(query)
+                                while len(result.hits.hits) != 0:
+                                    Till(seconds=.001).wait()
+                                    result = self.csetlog.search(query)
+
                             self.csetlog.add({"value": record})
                             while revnum != self._get_revnum_exists("t", revnum) or revision != self._get_one_revision('t', (-1, revision, -1)):
                                 Till(seconds=.001).wait()
