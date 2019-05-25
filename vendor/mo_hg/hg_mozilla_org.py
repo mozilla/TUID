@@ -285,8 +285,13 @@ class HgMozillaOrg(object):
 
         for attempt in range(3):
             try:
-                with self.repo_locker:
-                    docs = self.repo.search(query).hits.hits
+                docs = None
+                if get_moves:
+                    with self.moves_locker:
+                        docs = self.moves.search(query).hits.hits
+                else:
+                    with self.repo_locker:
+                        docs = self.repo.search(query).hits.hits
                 if len(docs) == 0:
                     return None
                 best = docs[0]._source

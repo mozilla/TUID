@@ -193,6 +193,7 @@ class Clogger:
         csetLog = self.esconfig
         set_default(csetLog, {"schema": CSETLOG_SCHEMA})
         self.csetlog = self.es.get_or_create_index(kwargs=csetLog)
+        self.csetlog.refresh()
 
         total = self.csetlog.search({"size": 0})
         while not total.hits:
@@ -385,6 +386,7 @@ class Clogger:
                 for revnum, revision, timestamp in tmp_insert_list:
                     record={"revnum":revnum, "revision":revision, "timestamp":timestamp}
                     self.csetlog.add({"value":record})
+                    self.csetlog.refresh()
                     while revnum != self._get_revnum_exists("t", revnum) or revision != self._get_one_revision('t', (-1, revision, -1)):
                         Till(seconds=.001).wait()
 
@@ -505,6 +507,7 @@ class Clogger:
             if delete_old:
                 filter = { "match_all": {} }
                 self.csetlog.delete_record(filter)
+                self.csetlog.refresh()
                 query = { "size": 0 }
                 result = self.csetlog.search(query)
                 while result.hits.total != 0:
@@ -517,6 +520,7 @@ class Clogger:
             max_revnum = coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)), 0) + 1
             record = {"revnum": max_revnum, "revision": new_rev, "timestamp": -1}
             self.csetlog.add({"value": record})
+            self.csetlog.refresh()
             while 1 != self._get_revnum_exists("t", 1) or new_rev != self._get_one_revision("t", (-1, new_rev, -1)):
                 Till(seconds=.001).wait()
 
@@ -793,6 +797,7 @@ class Clogger:
                             if revnum == self._get_revnum_exists("t", revnum):
                                 filter = {"term": {"revnum": revnum}}
                                 self.csetlog.delete_record(filter)
+                                self.csetlog.refresh()
                                 query = {"query": {"term": {"revnum": revnum}}}
                                 result = self.csetlog.search(query)
                                 while len(result.hits.hits) != 0:
@@ -800,6 +805,7 @@ class Clogger:
                                     result = self.csetlog.search(query)
 
                             self.csetlog.add({"value": record})
+                            self.csetlog.refresh()
                             while revnum != self._get_revnum_exists("t", revnum) or revision != self._get_one_revision('t', (-1, revision, -1)):
                                 Till(seconds=.001).wait()
 
@@ -894,6 +900,7 @@ class Clogger:
 
                         filter = {"terms": {"revision": csets_to_del}}
                         self.csetlog.delete_record(filter)
+                        self.csetlog.refresh()
                         query = { "query": {"terms": { "revision": csets_to_del } } }
                         result = self.csetlog.search(query)
                         while len(result.hits.hits) != 0:
