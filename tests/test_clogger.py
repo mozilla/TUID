@@ -390,8 +390,11 @@ def test_get_revnum_range_backfill(clogger):
 
     assert len(revnums) == 11
 
+    curr_revnum = rev1 - 11
     for revnum, revision in revnums:
         assert revision
+        assert revnum > curr_revnum
+        curr_revnum = revnum
 
 
 def test_get_revnum_range_tipfill(clogger):
@@ -404,6 +407,7 @@ def test_get_revnum_range_tipfill(clogger):
     # revnum range up to a known revision
     with clogger.conn.transaction() as t:
         tip_num, tip_rev = clogger.get_tip(t)
+        tail_num, _ = clogger.get_tail(t)
         t.execute(
             "DELETE FROM csetLog WHERE revnum >= " + str(tip_num) + " - 5"
         )
@@ -416,8 +420,11 @@ def test_get_revnum_range_tipfill(clogger):
 
     assert len(revnums) == 7
 
+    curr_revnum = tail_num - 1
     for revnum, revision in revnums:
         assert revision
+        assert revnum > curr_revnum
+        curr_revnum = revnum
 
 
 def test_get_revnum_range_tipnback(clogger):
@@ -465,5 +472,8 @@ def test_get_revnum_range_tipnback(clogger):
 
         assert len(revnums) == expected_total_revs
 
+        curr_revnum = rev1 - 11
         for revnum, revision in revnums:
             assert revision
+            assert revnum > curr_revnum
+            curr_revnum = revnum
