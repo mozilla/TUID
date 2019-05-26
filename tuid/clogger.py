@@ -217,7 +217,7 @@ class Clogger:
         tmp = coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)),0)
         return tmp
 
-    def get_tip(self, transaction):
+    def get_tip(self):
         query = {
             "_source": {"includes": ["revision"]},
             "sort": [{"revnum": {"order": "desc"}}],
@@ -228,7 +228,7 @@ class Clogger:
         return tmp
 
 
-    def get_tail(self, transaction):
+    def get_tail(self):
         query = {
             "_source": {"includes": ["revision"]},
             "sort": [{"revnum": {"order": "asc"}}],
@@ -252,7 +252,7 @@ class Clogger:
             )
 
 
-    def _get_one_revision(self, transaction, cset_entry):
+    def _get_one_revision(self, cset_entry):
         # Returns a single revision if it exists
         _, rev, _ = cset_entry
         query = {
@@ -267,7 +267,7 @@ class Clogger:
             return None
 
 
-    def _get_one_revnum(self, transaction, rev):
+    def _get_one_revnum(self, rev):
         # Returns a single revnum if it exists
         query = {
             "_source": {"includes": ["revnum"]},
@@ -285,7 +285,7 @@ class Clogger:
             return None
 
 
-    def _get_revnum_exists(self, transaction, rev):
+    def _get_revnum_exists(self, rev):
         # Returns a single revnum if it exists
         query = {
             "_source": {"includes": ["revnum"]},
@@ -303,7 +303,7 @@ class Clogger:
             return None
 
 
-    def _get_revnum_range(self, transaction, revnum1, revnum2):
+    def _get_revnum_range(self, revnum1, revnum2):
         # Returns a range of revision numbers (that is inclusive)
         high_num = max(revnum1, revnum2)
         low_num = min(revnum1, revnum2)
@@ -359,43 +359,42 @@ class Clogger:
                          where X is the length of ordered_rev_list
         :return:
         '''
-        with self.conn.transaction() as t:
 
-            query = self.min_max_dsl("min")
-            current_min = coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)), 0)
-            query = self.min_max_dsl("max")
-            current_max = coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)), 0)
+        query = self.min_max_dsl("min")
+        current_min = coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)), 0)
+        query = self.min_max_dsl("max")
+        current_max = coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)), 0)
 
-            direction = -1
-            start = current_min - 1
-            if number_forward:
-                direction = 1
-                start = current_max + 1
-                ordered_rev_list = ordered_rev_list[::-1]
+        direction = -1
+        start = current_min - 1
+        if number_forward:
+            direction = 1
+            start = current_max + 1
+            ordered_rev_list = ordered_rev_list[::-1]
 
-            insert_list = [
-                (
-                    start + direction * count,
-                    rev,
-                    int(time.time()) if timestamp else -1
-                )
-                for count, rev in enumerate(ordered_rev_list)
-            ]
+        insert_list = [
+            (
+                start + direction * count,
+                rev,
+                int(time.time()) if timestamp else -1
+            )
+            for count, rev in enumerate(ordered_rev_list)
+        ]
 
-            # In case of overlapping requests
-            fmt_insert_list = []
-            for cset_entry in insert_list:
-                tmp = self._get_one_revision(t, cset_entry)
-                if not tmp:
-                    fmt_insert_list.append(cset_entry)
+        # In case of overlapping requests
+        fmt_insert_list = []
+        for cset_entry in insert_list:
+            tmp = self._get_one_revision(cset_entry)
+            if not tmp:
+                fmt_insert_list.append(cset_entry)
 
-            for _, tmp_insert_list in jx.groupby(fmt_insert_list, size=SQL_CSET_BATCH_SIZE):
-                for revnum, revision, timestamp in tmp_insert_list:
-                    record={"_id":revnum, "revnum":revnum, "revision":revision, "timestamp":timestamp}
-                    self.csetlog.add({"value":record})
-                    self.csetlog.refresh()
-                    while not self._get_revnum_exists("t", revnum):
-                        Till(seconds=.001).wait()
+        for _, tmp_insert_list in jx.groupby(fmt_insert_list, size=SQL_CSET_BATCH_SIZE):
+            for revnum, revision, timestamp in tmp_insert_list:
+                record={"_id":revnum, "revnum":revnum, "revision":revision, "timestamp":timestamp}
+                self.csetlog.add({"value":record})
+                self.csetlog.refresh()
+                while not self._get_revnum_exists(revnum):
+                    Till(seconds=.001).wait()
 
         # Start a maintenance run if needed
         if self.check_for_maintenance():
@@ -528,7 +527,7 @@ class Clogger:
             record = {"_id":max_revnum, "revnum": max_revnum, "revision": new_rev, "timestamp": -1}
             self.csetlog.add({"value": record})
             self.csetlog.refresh()
-            while not self._get_revnum_exists("t", max_revnum):
+            while not self._get_revnum_exists(max_revnum):
                 Till(seconds=.001).wait()
 
             self._fill_in_range(old_rev, new_rev, timestamp=True, number_forward=False)
@@ -566,13 +565,11 @@ class Clogger:
                     continue
 
                 with self.working_locker:
-                    with self.conn.transaction() as t:
-                        parent_revnum = self._get_one_revnum(t, parent_cset)
+                    parent_revnum = self._get_one_revnum(parent_cset)
                     if parent_revnum:
                         continue
 
-                    with self.conn.transaction() as t:
-                        _, oldest_revision = self.get_tail(t)
+                    _, oldest_revision = self.get_tail()
 
                     self._fill_in_range(
                         parent_cset,
@@ -595,9 +592,7 @@ class Clogger:
             str(HG_URL) + "/" + self.config.hg.branch + "/json-log/tip"
         )
 
-        # Get current tip in DB
-        with self.conn.transaction() as t:
-            _, newest_known_rev = self.get_tip(t)
+        _, newest_known_rev = self.get_tip()
 
         # If we are still at the newest, wait for CSET_TIP_WAIT_TIME seconds
         # before checking again.
@@ -696,17 +691,16 @@ class Clogger:
 
                 with self.working_locker:
                     all_data = None
-                    with self.conn.transaction() as t:
-                        total = self.csetlog.search({"size":0})
-                        query = {
-                            "size": total.hits.total,
-                            "_source": {"includes": ["revnum","revision","timestamp"]},
-                            "sort": [{"revnum": {"order": "asc"}}]
-                        }
-                        temp = self.csetlog.search(query)
-                        all_data = []
-                        for i in temp.hits.hits:
-                            all_data.append((i._source.revnum,i._source.revision,i._source.timestamp))
+                    total = self.csetlog.search({"size":0})
+                    query = {
+                        "size": total.hits.total,
+                        "_source": {"includes": ["revnum","revision","timestamp"]},
+                        "sort": [{"revnum": {"order": "asc"}}]
+                    }
+                    temp = self.csetlog.search(query)
+                    all_data = []
+                    for i in temp.hits.hits:
+                        all_data.append((i._source.revnum,i._source.revision,i._source.timestamp))
 
                     # Restore maximum permanents (if overflowing)
                     new_data = []
@@ -802,7 +796,7 @@ class Clogger:
                     if modified:
                         for revnum, revision, timestamp in new_data2:
                             record = {"_id":revnum, "revnum": revnum, "revision": revision, "timestamp": timestamp}
-                            if not self._get_revnum_exists("t", revnum):
+                            if not self._get_revnum_exists(revnum):
                                 filter = {"term": {"revnum": revnum}}
                                 self.csetlog.delete_record(filter)
                                 self.csetlog.refresh()
@@ -814,7 +808,7 @@ class Clogger:
 
                             self.csetlog.add({"value": record})
                             self.csetlog.refresh()
-                            while not self._get_revnum_exists("t", revnum):
+                            while not self._get_revnum_exists(revnum):
                                 Till(seconds=.001).wait()
 
                     if not deleted_data:
@@ -855,7 +849,7 @@ class Clogger:
                     # TUID tables, we need everything to be contained in
                     # one transaction with no interruptions.
                     with self.conn.transaction() as t:
-                        revnum = self._get_one_revnum(t, first_cset)[0]
+                        revnum = self._get_one_revnum(first_cset)[0]
                         total = self.csetlog.search({"size": 0})
                         query = {
                             "size": total.hits.total,
@@ -927,8 +921,7 @@ class Clogger:
         revnum = None
         timeout = Till(seconds=BACKFILL_REVNUM_TIMEOUT)
         while not timeout:
-            with self.conn.transaction() as t:
-                revnum = self._get_one_revnum(t, revision)
+            revnum = self._get_one_revnum(revision)
 
             if revnum:
                 break
@@ -946,31 +939,26 @@ class Clogger:
 
 
     def get_revnnums_from_range(self, revision1, revision2):
-        with self.conn.transaction() as t:
-            revnum1 = self._get_one_revnum(t, revision1)
-            revnum2 = self._get_one_revnum(t, revision2)
+        revnum1 = self._get_one_revnum(revision1)
+        revnum2 = self._get_one_revnum(revision2)
         if not revnum1 or not revnum2:
             did_an_update = self.update_tip()
             if did_an_update:
-                with self.conn.transaction() as t:
-                    revnum1 = self._get_one_revnum(t, revision1)
-                    revnum2 = self._get_one_revnum(t, revision2)
+                revnum1 = self._get_one_revnum(revision1)
+                revnum2 = self._get_one_revnum(revision2)
 
             if not revnum1:
                 revnum1 = self.get_old_cset_revnum(revision1)
                 # Refresh the second entry
-                with self.conn.transaction() as t:
-                    revnum2 = self._get_one_revnum(t, revision2)
+                revnum2 = self._get_one_revnum(revision2)
 
             if not revnum2:
                 revnum2 = self.get_old_cset_revnum(revision2)
 
                 # The first revnum might change also
-                with self.conn.transaction() as t:
-                    revnum1 = self._get_one_revnum(t, revision1)
+                revnum1 = self._get_one_revnum(revision1)
 
-        with self.conn.transaction() as t:
-            result = self._get_revnum_range(t, revnum1[0], revnum2[0])
+        result = self._get_revnum_range(revnum1[0], revnum2[0])
         return sorted(
             result,
             key=lambda x: int(x[0])
