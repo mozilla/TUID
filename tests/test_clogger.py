@@ -113,11 +113,16 @@ def test_backfilling_to_revision(clogger):
     assert num_trys > 0
     assert new_old_rev == new_ending
 
-    # Check that revnum's were properly handled
-    expected_revnum = oldest_revnum + num_to_go_back
+    expected_old_revnum = oldest_revnum
     with clogger.conn.transaction() as t:
-        new_revnum = t.get_one("SELECT revnum FROM csetLog WHERE revision=?", (oldest_rev,))[0]
-    assert expected_revnum == new_revnum
+        old_oldest_revnum = t.get_one("SELECT revnum FROM csetLog WHERE revision=?", (oldest_rev,))[0]
+    assert expected_old_revnum == old_oldest_revnum
+
+    # Check that revnum's were properly handled
+    expected_new_revnum = oldest_revnum - num_to_go_back
+    with clogger.conn.transaction() as t:
+        new_oldest_revnum = t.get_one("SELECT revnum FROM csetLog WHERE revision=?", (new_ending,))[0]
+    assert expected_new_revnum == new_oldest_revnum
 
 
 def test_backfilling_by_count(clogger):
@@ -143,13 +148,15 @@ def test_backfilling_by_count(clogger):
     clogger.csets_todo_backwards.add((num_to_go_back, True))
 
     new_ending = None
-    new_revnum = None
+    old_oldest_revnum = None
+    new_oldest_revnum = None
     while num_trys > 0:
         with clogger.conn.transaction() as t:
             new_ending = t.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")[1]
             DEBUG and Log.note("{{data}}", data=(oldest_rev, new_old_rev, new_ending))
             if new_ending == new_old_rev:
-                new_revnum = t.get_one("SELECT revnum FROM csetLog WHERE revision=?", (oldest_rev,))[0]
+                old_oldest_revnum = t.get_one("SELECT revnum FROM csetLog WHERE revision=?", (oldest_rev,))[0]
+                new_oldest_revnum = t.get_one("SELECT revnum FROM csetLog WHERE revision=?", (new_ending,))[0]
                 break
         if new_ending != new_old_rev:
             Till(seconds=wait_time).wait()
@@ -158,9 +165,12 @@ def test_backfilling_by_count(clogger):
     assert num_trys > 0
     assert new_old_rev == new_ending
 
+    expected_old_revnum = oldest_revnum
+    assert expected_old_revnum == old_oldest_revnum
+
     # Check that revnum's were properly handled
-    expected_revnum = oldest_revnum + num_to_go_back
-    assert expected_revnum == new_revnum
+    expected_new_revnum = oldest_revnum - num_to_go_back
+    assert expected_new_revnum == new_oldest_revnum
 
 
 def test_maintenance_and_deletion(clogger):
@@ -342,9 +352,6 @@ def test_partial_tipfilling(clogger):
             "DELETE FROM csetLog WHERE revnum >= " + str(max_tip_num) + " - 5"
         )
 
-    with clogger.working_locker:
-        clogger.recompute_table_revnums()
-
     clogger.disable_tipfilling = False
     tmp_num_trys = 0
     while tmp_num_trys < num_trys:
@@ -383,7 +390,7 @@ def test_get_revnum_range_backfill(clogger):
 
     assert len(revnums) == 11
 
-    curr_revnum = -1
+    curr_revnum = rev1 - 11
     for revnum, revision in revnums:
         assert revision
         assert revnum > curr_revnum
@@ -400,6 +407,7 @@ def test_get_revnum_range_tipfill(clogger):
     # revnum range up to a known revision
     with clogger.conn.transaction() as t:
         tip_num, tip_rev = clogger.get_tip(t)
+        tail_num, _ = clogger.get_tail(t)
         t.execute(
             "DELETE FROM csetLog WHERE revnum >= " + str(tip_num) + " - 5"
         )
@@ -412,7 +420,7 @@ def test_get_revnum_range_tipfill(clogger):
 
     assert len(revnums) == 7
 
-    curr_revnum = -1
+    curr_revnum = tail_num - 1
     for revnum, revision in revnums:
         assert revision
         assert revnum > curr_revnum
@@ -464,7 +472,7 @@ def test_get_revnum_range_tipnback(clogger):
 
         assert len(revnums) == expected_total_revs
 
-        curr_revnum = -1
+        curr_revnum = rev1 - 11
         for revnum, revision in revnums:
             assert revision
             assert revnum > curr_revnum

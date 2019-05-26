@@ -216,34 +216,6 @@ class Clogger:
         ).data
 
 
-    def recompute_table_revnums(self):
-        '''
-        Recomputes the revnums for the csetLog table
-        by creating a new table, and copying csetLog to
-        it. The INTEGER PRIMARY KEY in the temp table auto increments
-        as rows are added.
-
-        IMPORTANT: Only call this after acquiring the
-                   lock `self.working_locker`.
-        :return:
-        '''
-        with self.conn.transaction() as t:
-            t.execute('''
-            CREATE TABLE temp (
-                revnum         INTEGER PRIMARY KEY,
-                revision       CHAR(12) NOT NULL,
-                timestamp      INTEGER
-            );''')
-
-            t.execute(
-                "INSERT INTO temp (revision, timestamp) "
-                "SELECT revision, timestamp FROM csetlog ORDER BY revnum ASC"
-            )
-
-            t.execute("DROP TABLE csetLog;")
-            t.execute("ALTER TABLE temp RENAME TO csetLog;")
-
-
     def check_for_maintenance(self):
         '''
         Returns True if the maintenance worker should be run now,
@@ -312,9 +284,6 @@ class Clogger:
                         for revnum, revision, timestamp in tmp_insert_list
                     )
                 )
-
-            # Move the revision numbers forward if needed
-            self.recompute_table_revnums()
 
         # Start a maintenance run if needed
         if self.check_for_maintenance():
@@ -785,8 +754,6 @@ class Clogger:
                             quote_set(csets_to_del)
                         )
 
-                    # Recalculate the revnums
-                    self.recompute_table_revnums()
             except Exception as e:
                 Log.warning("Unexpected error occured while deleting from csetLog:", cause=e)
                 Till(seconds=CSET_DELETION_WAIT_TIME).wait()
@@ -802,10 +769,8 @@ class Clogger:
             with self.conn.transaction() as t:
                 revnum = self._get_one_revnum(t, revision)
 
-            if revnum and revnum[0] >= 0:
+            if revnum:
                 break
-            elif revnum[0] < 0:
-                Log.note("Waiting for table to recompute...")
             else:
                 Log.note("Waiting for backfill to complete...")
             Till(seconds=CSET_BACKFILL_WAIT_TIME).wait()
