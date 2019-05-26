@@ -54,7 +54,7 @@ def test_tipfilling(clogger):
     clogger.disable_backfilling = True
     clogger.disable_deletion = True
     clogger.disable_maintenance = True
-    clogger.csetlog.flush(forced=True)
+    clogger.csetlog.refresh()
 
     num_trys = 50
     wait_time = 2
@@ -69,6 +69,7 @@ def test_tipfilling(clogger):
 
     filter = {"match_all": {}}
     clogger.csetlog.delete_record(filter)
+    clogger.csetlog.refresh()
 
     clogger.disable_tipfilling = False
 
@@ -88,11 +89,11 @@ def test_tipfilling(clogger):
 
 
 def test_backfilling_to_revision(clogger):
+    clogger.csetlog.refresh()
     clogger.disable_backfilling = False
     clogger.disable_tipfilling = True
     clogger.disable_deletion = True
     clogger.disable_maintenance = True
-    clogger.csetlog.flush(forced=True)
 
     num_trys = 50
     wait_time = 2
@@ -149,11 +150,11 @@ def test_backfilling_to_revision(clogger):
 
 
 def test_backfilling_by_count(clogger):
+    clogger.csetlog.refresh()
     clogger.disable_backfilling = False
     clogger.disable_tipfilling = True
     clogger.disable_deletion = True
     clogger.disable_maintenance = True
-    clogger.csetlog.flush(forced=True)
 
     num_trys = 50
     wait_time = 2
@@ -218,7 +219,7 @@ def test_maintenance_and_deletion(clogger):
     # Temporarily disable these workers
     clogger.disable_maintenance = True
     clogger.disable_deletion = True
-    clogger.csetlog.flush(forced=True)
+    clogger.csetlog.refresh()
 
     max_revs = 100
     extra_to_add = 50
@@ -318,7 +319,7 @@ def test_deleting_old_annotations(clogger):
     clogger.disable_backfilling = True
     clogger.disable_maintenance = True
     clogger.disable_deletion = True
-    clogger.csetlog.flush(forced=True)
+    clogger.csetlog.refresh()
 
     min_permanent = 10
     num_trys = 50
@@ -330,7 +331,6 @@ def test_deleting_old_annotations(clogger):
             "aggs": {"output": {"value_count": {"field": "revnum"}}},
             "size": 0
         }
-    clogger.csetlog.flush(forced=True)
     total_revs = int(clogger.csetlog.search(query).aggregations.output.value)
     if total_revs <= min_permanent:
         clogger.csets_todo_backwards.add((50, True))
@@ -379,9 +379,10 @@ def test_deleting_old_annotations(clogger):
             )
         )
         for revnum, revision, timestamp in [(tail_tipnum, tail_cset, new_timestamp)]:
-            record = {"revnum": revnum, "revision": revision, "timestamp": timestamp}
+            record = {"_id":revnum, "revnum": revnum, "revision": revision, "timestamp": timestamp}
             clogger.csetlog.add({"value": record})
-            while revnum != clogger._get_revnum_exists("t", revnum):
+            clogger.csetlog.refresh()
+            while not clogger._get_revnum_exists("t", revnum):
                 Till(seconds=.001).wait()
 
     # Start maintenance
@@ -400,25 +401,27 @@ def test_deleting_old_annotations(clogger):
 
 
 def test_partial_tipfilling(clogger):
-    clogger.csetlog.flush(forced=True)
     clogger.disable_tipfilling = True
     clogger.disable_backfilling = True
     clogger.disable_maintenance = True
     clogger.disable_deletion = True
-    clogger.csetlog.flush(forced=True)
+    clogger.csetlog.refresh()
 
     num_trys = 50
     wait_time = 2
-    clogger.csetlog.flush(forced=True)
     query = {
         "aggs": {"output": {"value_count": {"field": "revnum"}}},
         "size": 0
     }
-    prev_total_revs = int(clogger.csetlog.search(query).aggregations.output.value)
+
+    with clogger.csetLog_locker:
+        prev_total_revs = int(clogger.csetlog.search(query).aggregations.output.value)
+
     with clogger.conn.transaction() as t:
         max_tip_num, _ = clogger.get_tip(t)
         filter = {"bool": { "must": [{"range": {"revnum": {"gte": max_tip_num-5}}}] } }
         clogger.csetlog.delete_record(filter)
+        clogger.csetlog.refresh()
         query = {"query": filter}
         result = clogger.csetlog.search(query)
         while len(result.hits.hits) != 0:
@@ -445,7 +448,7 @@ def test_get_revnum_range_backfill(clogger):
     clogger.disable_backfilling = True
     clogger.disable_maintenance = True
     clogger.disable_deletion = True
-    clogger.csetlog.flush(forced=True)
+    clogger.csetlog.refresh()
 
     # Get the current tail, go 10 changesets back and request
     # the final one as the second revision.
@@ -477,7 +480,7 @@ def test_get_revnum_range_tipfill(clogger):
     clogger.disable_backfilling = True
     clogger.disable_maintenance = True
     clogger.disable_deletion = True
-    clogger.csetlog.flush(forced=True)
+    clogger.csetlog.refresh()
 
     # Get the current tip, delete it, then request it's
     # revnum range up to a known revision
@@ -485,6 +488,7 @@ def test_get_revnum_range_tipfill(clogger):
         tip_num, tip_rev = clogger.get_tip(t)
         filter = {"bool": { "must": [{"range": {"revnum": {"gte": tip_num-5}}}] } }
         clogger.csetlog.delete_record(filter)
+        clogger.csetlog.refresh()
         query = {"query": filter}
         result = clogger.csetlog.search(query)
         while len(result.hits.hits) != 0:
@@ -509,7 +513,7 @@ def test_get_revnum_range_tipnback(clogger):
     clogger.disable_backfilling = True
     clogger.disable_maintenance = True
     clogger.disable_deletion = True
-    clogger.csetlog.flush(forced=True)
+    clogger.csetlog.refresh()
 
     for ordering in range(2):
         # Used for testing output
@@ -531,6 +535,7 @@ def test_get_revnum_range_tipnback(clogger):
             tip_num, tip_rev = clogger.get_tip(t)
             filter = {"bool": {"must": [{"range": {"revnum": {"gte": tip_num - 5}}}]}}
             clogger.csetlog.delete_record(filter)
+            clogger.csetlog.refresh()
             query = {"query": filter}
             result = clogger.csetlog.search(query)
             while len(result.hits.hits) != 0:

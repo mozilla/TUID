@@ -326,6 +326,7 @@ def test_many_files_one_revision(service):
     first_front = "739c536d2cd6"
     test_rev = "159e1105bdc7"
 
+    service.clogger.csetlog.refresh()
     service.clogger.disable_all()
     service.clogger.initialize_to_range(first_front, test_rev)
     service.clogger.disable_backfilling = False
@@ -366,7 +367,7 @@ def test_one_addition_many_files(service):
     tmp = [dir + f for f in files][:1]  # TEST WITH SOME OTHER NUMBER OF FILES
     test_file = test_file_change + tmp
 
-    service.clogger.csetlog.flush(forced=True)
+    service.clogger.csetlog.refresh()
     service.clogger.disable_all()
     service.clogger.initialize_to_range(old_rev, test_rev)
     service.clogger.disable_backfilling = False
@@ -549,10 +550,13 @@ def test_one_http_call_required(service):
         "dom/media/MediaManager.cpp": 1
     }
 
+    service.clogger.csetlog.refresh()
     service.clogger.disable_all()
     service.clogger.initialize_to_range("d63ed14ed622", "14dc6342ec50")
+    service.clogger.csetlog.refresh()
     service.clogger.disable_backfilling = False
     service.clogger.start_backfilling()
+    service.clogger.csetlog.refresh()
 
     # SETUP
     proc_files = ['/dom/base/Link.cpp'] + files[-10:] + [k for k in changed_files] # Useful in testing
@@ -643,6 +647,7 @@ def test_out_of_order_get_tuids_from_files(service):
     rev_latest = "4e9446f9e8f0"
     rev_middle = "9b7db28b360d"
     test_file = ["dom/base/nsWrapperCache.cpp"]
+    service.clogger.csetlog.refresh()
     service.clogger.disable_all()
     service.clogger.initialize_to_range(rev_initial, rev_latest)
     test_file = ["dom/base/nsWrapperCache.cpp"]
@@ -680,6 +685,7 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
     rev_latest2 = "9dfb7673f106393b79226"
     rev_middle = "9b7db28b360d"
 
+    service.clogger.csetlog.refresh()
     service.clogger.disable_all()
     service.clogger.initialize_to_range(rev_initial, rev_latest2)
     test_file = ["dom/base/nsWrapperCache.cpp"]
@@ -770,6 +776,8 @@ def test_merged_changes(service):
     test_files = [
         "js/src/wasm/WasmTextToBinary.cpp"
     ]
+
+    service.clogger.csetlog.refresh()
     service.clogger.disable_all()
     service.clogger.initialize_to_range(old_rev, new_rev)
     with service.conn.transaction() as t:
@@ -814,6 +822,8 @@ def test_very_distant_files(service):
     test_files = [
         "docshell/base/nsDocShell.cpp"
     ]
+
+    service.clogger.csetlog.refresh()
     service.clogger.disable_all()
     service.clogger.initialize_to_range(old_rev, new_rev)
 

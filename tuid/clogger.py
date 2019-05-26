@@ -260,9 +260,11 @@ class Clogger:
             "query": { "bool": { "must": [ { "term": { "revision": rev } } ] } },
             "size": 1
         }
-
         temp = self.csetlog.search(query).hits.hits[0]._source.revision
-        return temp
+        if temp == 0 or temp:
+            return (temp, )
+        else:
+            return None
 
 
     def _get_one_revnum(self, transaction, rev):
@@ -277,7 +279,10 @@ class Clogger:
             "size": 1
         }
         temp = self.csetlog.search(query).hits.hits[0]._source.revnum
-        return temp
+        if temp == 0 or temp:
+            return (temp, )
+        else:
+            return None
 
 
     def _get_revnum_exists(self, transaction, rev):
@@ -292,8 +297,10 @@ class Clogger:
             "size": 1
         }
         temp = self.csetlog.search(query).hits.hits[0]._source.revnum
-        return temp
-
+        if temp == 0 or temp:
+            return (temp, )
+        else:
+            return None
 
 
     def _get_revnum_range(self, transaction, revnum1, revnum2):
@@ -384,10 +391,10 @@ class Clogger:
 
             for _, tmp_insert_list in jx.groupby(fmt_insert_list, size=SQL_CSET_BATCH_SIZE):
                 for revnum, revision, timestamp in tmp_insert_list:
-                    record={"revnum":revnum, "revision":revision, "timestamp":timestamp}
+                    record={"_id":revnum, "revnum":revnum, "revision":revision, "timestamp":timestamp}
                     self.csetlog.add({"value":record})
                     self.csetlog.refresh()
-                    while revnum != self._get_revnum_exists("t", revnum) or revision != self._get_one_revision('t', (-1, revision, -1)):
+                    while not self._get_revnum_exists("t", revnum):
                         Till(seconds=.001).wait()
 
         # Start a maintenance run if needed
@@ -518,10 +525,10 @@ class Clogger:
             #since no auto addition possible
             query = self.min_max_dsl("max")
             max_revnum = coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)), 0) + 1
-            record = {"revnum": max_revnum, "revision": new_rev, "timestamp": -1}
+            record = {"_id":max_revnum, "revnum": max_revnum, "revision": new_rev, "timestamp": -1}
             self.csetlog.add({"value": record})
             self.csetlog.refresh()
-            while 1 != self._get_revnum_exists("t", 1) or new_rev != self._get_one_revision("t", (-1, new_rev, -1)):
+            while not self._get_revnum_exists("t", max_revnum):
                 Till(seconds=.001).wait()
 
             self._fill_in_range(old_rev, new_rev, timestamp=True, number_forward=False)
@@ -683,6 +690,7 @@ class Clogger:
 
                 # Reset signal so we don't request
                 # maintenance infinitely.
+                self.csetlog.refresh()
                 with self.maintenance_signal.lock:
                     self.maintenance_signal._go = False
 
@@ -793,8 +801,8 @@ class Clogger:
                     # Update table and schedule a deletion
                     if modified:
                         for revnum, revision, timestamp in new_data2:
-                            record = {"revnum": revnum, "revision": revision, "timestamp": timestamp}
-                            if revnum == self._get_revnum_exists("t", revnum):
+                            record = {"_id":revnum, "revnum": revnum, "revision": revision, "timestamp": timestamp}
+                            if not self._get_revnum_exists("t", revnum):
                                 filter = {"term": {"revnum": revnum}}
                                 self.csetlog.delete_record(filter)
                                 self.csetlog.refresh()
@@ -806,7 +814,7 @@ class Clogger:
 
                             self.csetlog.add({"value": record})
                             self.csetlog.refresh()
-                            while revnum != self._get_revnum_exists("t", revnum) or revision != self._get_one_revision('t', (-1, revision, -1)):
+                            while not self._get_revnum_exists("t", revnum):
                                 Till(seconds=.001).wait()
 
                     if not deleted_data:
@@ -962,7 +970,7 @@ class Clogger:
                     revnum1 = self._get_one_revnum(t, revision1)
 
         with self.conn.transaction() as t:
-            result = self._get_revnum_range(t, revnum1, revnum2)
+            result = self._get_revnum_range(t, revnum1[0], revnum2[0])
         return sorted(
             result,
             key=lambda x: int(x[0])
