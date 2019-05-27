@@ -39,6 +39,7 @@ def clogger(config, new_db):
     elif new_db == "no":
         if _clogger is None:
             _clogger = Clogger(conn=_conn, new_table=True, kwargs=config)
+        _clogger.csetlog.refresh()
         return _clogger
     else:
         Log.error("expecting 'yes' or 'no'")
@@ -55,7 +56,6 @@ def test_tipfilling(clogger):
     clogger.disable_backfilling = True
     clogger.disable_deletion = True
     clogger.disable_maintenance = True
-    clogger.csetlog.refresh()
 
     num_trys = 50
     wait_time = 2
@@ -93,7 +93,6 @@ def test_tipfilling(clogger):
 
 
 def test_backfilling_to_revision(clogger):
-    clogger.csetlog.refresh()
     clogger.disable_backfilling = False
     clogger.disable_tipfilling = True
     clogger.disable_deletion = True
@@ -154,7 +153,6 @@ def test_backfilling_to_revision(clogger):
 
 
 def test_backfilling_by_count(clogger):
-    clogger.csetlog.refresh()
     clogger.disable_backfilling = False
     clogger.disable_tipfilling = True
     clogger.disable_deletion = True
@@ -220,7 +218,6 @@ def test_partial_tipfilling(clogger):
     clogger.disable_backfilling = True
     clogger.disable_maintenance = True
     clogger.disable_deletion = True
-    clogger.csetlog.refresh()
 
     num_trys = 50
     wait_time = 2
@@ -255,7 +252,6 @@ def test_get_revnum_range_backfill(clogger):
     clogger.disable_backfilling = True
     clogger.disable_maintenance = True
     clogger.disable_deletion = True
-    clogger.csetlog.refresh()
 
     # Get the current tail, go 10 changesets back and request
     # the final one as the second revision.
@@ -286,7 +282,6 @@ def test_get_revnum_range_tipfill(clogger):
     clogger.disable_backfilling = True
     clogger.disable_maintenance = True
     clogger.disable_deletion = True
-    clogger.csetlog.refresh()
 
     # Get the current tip, delete it, then request it's
     # revnum range up to a known revision
@@ -318,7 +313,6 @@ def test_get_revnum_range_tipnback(clogger):
     clogger.disable_backfilling = True
     clogger.disable_maintenance = True
     clogger.disable_deletion = True
-    clogger.csetlog.refresh()
 
     for ordering in range(2):
         # Used for testing output
@@ -375,7 +369,6 @@ def test_maintenance_and_deletion(clogger):
     # Temporarily disable these workers
     clogger.disable_maintenance = True
     clogger.disable_deletion = True
-    clogger.csetlog.refresh()
 
     max_revs = 100
     extra_to_add = 50
@@ -460,7 +453,6 @@ def test_deleting_old_annotations(clogger):
     clogger.disable_backfilling = True
     clogger.disable_maintenance = True
     clogger.disable_deletion = True
-    clogger.csetlog.refresh()
 
     min_permanent = 10
     num_trys = 50

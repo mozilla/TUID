@@ -273,10 +273,7 @@ class Clogger:
             "size": 1,
         }
         temp = self.csetlog.search(query).hits.hits[0]._source.revision
-        if temp == 0 or temp:
-            return (temp,)
-        else:
-            return None
+        return temp
 
     def _get_one_revnum(self, rev):
         # Returns a single revnum if it exists
@@ -286,10 +283,7 @@ class Clogger:
             "size": 1,
         }
         temp = self.csetlog.search(query).hits.hits[0]._source.revnum
-        if temp == 0 or temp:
-            return (temp,)
-        else:
-            return None
+        return temp
 
     def _get_revnum_exists(self, rev):
         # Returns a single revnum if it exists
@@ -298,11 +292,8 @@ class Clogger:
             "query": {"bool": {"must": [{"term": {"revnum": rev}}]}},
             "size": 1,
         }
-        temp = self.csetlog.search(query).hits.hits[0]._source.revnum
-        if temp == 0 or temp:
-            return (temp,)
-        else:
-            return None
+        temp = len(self.csetlog.search(query).hits.hits)
+        return temp
 
     def _get_revnum_range(self, revnum1, revnum2):
         # Returns a range of revision numbers (that is inclusive)
@@ -577,7 +568,7 @@ class Clogger:
 
                 with self.working_locker:
                     parent_revnum = self._get_one_revnum(parent_cset)
-                    if parent_revnum:
+                    if parent_revnum != None:
                         continue
 
                     _, oldest_revision = self.get_tail()
@@ -883,7 +874,7 @@ class Clogger:
                     # TUID tables, we need everything to be contained in
                     # one transaction with no interruptions.
                     with self.conn.transaction() as t:
-                        revnum = self._get_one_revnum(first_cset)[0]
+                        revnum = self._get_one_revnum(first_cset)
                         total = self.csetlog.search({"size": 0})
                         query = {
                             "size": total.hits.total,
@@ -961,7 +952,7 @@ class Clogger:
         while not timeout:
             revnum = self._get_one_revnum(revision)
 
-            if revnum:
+            if revnum != None:
                 break
             else:
                 Log.note("Waiting for backfill to complete...")
@@ -978,24 +969,24 @@ class Clogger:
     def get_revnnums_from_range(self, revision1, revision2):
         revnum1 = self._get_one_revnum(revision1)
         revnum2 = self._get_one_revnum(revision2)
-        if not revnum1 or not revnum2:
+        if revnum1 == None or revnum2 == None:
             did_an_update = self.update_tip()
             if did_an_update:
                 revnum1 = self._get_one_revnum(revision1)
                 revnum2 = self._get_one_revnum(revision2)
 
-            if not revnum1:
+            if revnum1 == None:
                 revnum1 = self.get_old_cset_revnum(revision1)
                 # Refresh the second entry
                 revnum2 = self._get_one_revnum(revision2)
 
-            if not revnum2:
+            if revnum2 == None:
                 revnum2 = self.get_old_cset_revnum(revision2)
 
                 # The first revnum might change also
                 revnum1 = self._get_one_revnum(revision1)
 
-        result = self._get_revnum_range(revnum1[0], revnum2[0])
+        result = self._get_revnum_range(revnum1, revnum2)
         return sorted(result, key=lambda x: int(x[0]))
 
 
