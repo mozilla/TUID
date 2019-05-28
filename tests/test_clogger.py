@@ -140,16 +140,26 @@ def test_backfilling_to_revision(clogger):
     assert num_trys > 0
     assert new_old_rev == new_ending
 
+    expected_old_revnum = oldest_revnum
+    query = {
+        "_source": {"includes": ["revnum"]},
+        "query": {"bool": {"must": [{"term": {"revision": oldest_rev}}]}},
+        "size": 1,
+    }
+    result = clogger.csetlog.search(query)
+    old_oldest_revnum = result.hits.hits[0]._source.revnum
+    assert expected_old_revnum == old_oldest_revnum
+
     # Check that revnum's were properly handled
-    expected_revnum = oldest_revnum - num_to_go_back
+    expected_new_revnum = oldest_revnum - num_to_go_back
     query = {
         "_source": {"includes": ["revnum"]},
         "query": {"bool": {"must": [{"term": {"revision": new_ending}}]}},
         "size": 1,
     }
     result = clogger.csetlog.search(query)
-    new_revnum = result.hits.hits[0]._source.revnum
-    assert expected_revnum == new_revnum
+    new_oldest_revnum = result.hits.hits[0]._source.revnum
+    assert expected_new_revnum == new_oldest_revnum
 
 
 def test_backfilling_by_count(clogger):
@@ -273,8 +283,11 @@ def test_get_revnum_range_backfill(clogger):
 
     assert len(revnums) == 11
 
+    curr_revnum = rev1 - 11
     for revnum, revision in revnums:
         assert revision
+        assert revnum > curr_revnum
+        curr_revnum = revnum
 
 
 def test_get_revnum_range_tipfill(clogger):
@@ -286,6 +299,7 @@ def test_get_revnum_range_tipfill(clogger):
     # Get the current tip, delete it, then request it's
     # revnum range up to a known revision
     tip_num, tip_rev = clogger.get_tip()
+    tail_num, _ = clogger.get_tail()
     filter = {"bool": {"must": [{"range": {"revnum": {"gte": tip_num - 5}}}]}}
     clogger.csetlog.delete_record(filter)
     clogger.csetlog.refresh()
@@ -304,8 +318,11 @@ def test_get_revnum_range_tipfill(clogger):
 
     assert len(revnums) == 7
 
+    curr_revnum = tail_num - 1
     for revnum, revision in revnums:
         assert revision
+        assert revnum > curr_revnum
+        curr_revnum = revnum
 
 
 def test_get_revnum_range_tipnback(clogger):
@@ -358,8 +375,11 @@ def test_get_revnum_range_tipnback(clogger):
 
         assert len(revnums) == expected_total_revs
 
+        curr_revnum = rev1 - 11
         for revnum, revision in revnums:
             assert revision
+            assert revnum > curr_revnum
+            curr_revnum = revnum
 
 
 def test_maintenance_and_deletion(clogger):
