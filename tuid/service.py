@@ -12,17 +12,18 @@ import gc
 import copy
 
 from jx_python import jx
-from mo_dots import Null, coalesce, wrap
+from mo_dots import Null, coalesce, wrap, set_default
 from mo_future import text_type
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_hg.apply import apply_diff, apply_diff_backwards
 from mo_files.url import URL
 from mo_kwargs import override
 from mo_logs import Log
+from mo_logs.exceptions import suppress_exception
 from mo_math.randoms import Random
 from mo_threads import Till, Thread, Lock
 from mo_times.durations import SECOND, HOUR, MINUTE, DAY
-from pyLibrary.env import http
+from pyLibrary.env import http, elasticsearch
 from pyLibrary.meta import cache
 from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value, quote_list
@@ -49,7 +50,6 @@ FILES_TO_PROCESS_THRESH = 5
 ENABLE_TRY = False
 DAEMON_WAIT_AT_NEWEST = 30 * SECOND # Time to wait at the newest revision before polling again.
 
-GET_TUID_QUERY = "SELECT tuid FROM temporal WHERE file=? and revision=? and line=?"
 GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and file=?"
 GET_LATEST_MODIFICATION = "SELECT revision FROM latestFileMod WHERE file=?"
 
@@ -65,8 +65,13 @@ class TUIDService:
             self.hg_cache = HgMozillaOrg(kwargs=self.config.hg_cache, use_cache=True) if self.config.hg_cache else Null
             self.hg_url = URL(hg.url)
 
+            self.esconfig = self.config.esservice.temporal
+            self.es = elasticsearch.Cluster(kwargs=self.esconfig)
+
             if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
+            else:
+                self.init_db(True)
 
             self.locker = Lock()
             self.request_locker = Lock()
@@ -76,8 +81,10 @@ class TUIDService:
             self.num_requests = 0
             self.ann_threads_running = 0
             self.service_threads_running = 0
-            self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid)+1 FROM temporal")[0], 1)
+            query = {"size": 0, "aggs": {"value": {"max": {"field": "tuid"}}}}
+            self.next_tuid = coalesce( eval(str(self.temporal.search(query).aggregations.value.value)), 0) + 1
             self.total_locker = Lock()
+            self.temporal_locker = Lock()
             self.total_files_requested = 0
             self.total_tuids_mapped = 0
 
@@ -103,21 +110,28 @@ class TUIDService:
                 self.next_tuid += 1
 
 
-    def init_db(self):
+    def init_db(self, temporal_only=False):
         '''
         Creates all the tables, and indexes needed for the service.
 
         :return: None
         '''
-        with self.conn.transaction() as t:
-            t.execute('''
-            CREATE TABLE temporal (
-                tuid     INTEGER,
-                revision CHAR(12) NOT NULL,
-                file     TEXT,
-                line     INTEGER
-            );''')
 
+        temporal = self.esconfig
+        set_default(temporal, {"schema": TEMPORAL_SCHEMA})
+        # what would be the _id here
+        self.temporal = self.es.get_or_create_index(kwargs=temporal)
+        self.temporal.refresh()
+
+        total = self.temporal.search({"size": 0})
+        while not total.hits:
+            total = self.temporal.search({"size": 0})
+        with suppress_exception:
+            self.temporal.add_alias()
+        if temporal_only:
+            return
+
+        with self.conn.transaction() as t:
             t.execute('''
             CREATE TABLE annotations (
                 revision       CHAR(12) NOT NULL,
@@ -134,15 +148,25 @@ class TUIDService:
                 PRIMARY KEY(file)
             );''')
 
-            t.execute("CREATE UNIQUE INDEX temporal_rev_file ON temporal(revision, file, line)")
         Log.note("Tables created successfully")
 
 
-    def _dummy_tuid_exists(self, transaction, file_name, rev):
+    def _get_tuid(self, file, revision, line):
+        query = { "_source": {"includes": ["tuid"]},
+                  "query": {"bool": {"must": [{"term": {"file": file}}, {"term": {"revision": revision}}, {"term": {"line": line}}]}},
+                  "size": 1}
+        temp = self.temporal.search(query).hits.hits[0]._source.tuid
+        return temp
+
+
+    def _dummy_tuid_exists(self, file_name, rev):
         # True if dummy, false if not.
         # None means there is no entry.
-        return None != transaction.get_one("select 1 from temporal where file=? and revision=? and line=?",
-                                         (file_name, rev, 0))
+        query = { "_source": {"includes": ["tuid"]},
+                  "query": {"bool": {"must": [{"term": {"file": file_name}}, {"term": {"revision": rev}}, {"term": {"line": 0}}]}},
+                  "size": 1}
+        temp = len(self.temporal.search(query).hits.hits)
+        return 0 != temp
 
 
     def _dummy_annotate_exists(self, transaction, file_name, rev):
@@ -152,13 +176,14 @@ class TUIDService:
                                          (file_name, rev))
 
 
-    def insert_tuid_dummy(self, transaction, rev, file_name, commit=True):
+    def insert_tuid_dummy(self, rev, file_name, commit=True):
         # Inserts a dummy tuid: (-1,rev,file_name,0)
-        if not self._dummy_tuid_exists(transaction, file_name, rev):
-            transaction.execute(
-                "INSERT INTO temporal (tuid, revision, file, line) VALUES (?, ?, ?, ?)",
-                (-1, rev[:12], file_name, 0)
-            )
+        if not self._dummy_tuid_exists(file_name, rev):
+            record = { "tuid": -1, "revision": rev[:12], "file": file_name, "line": 0 }
+            self.csetlog.add({"value": record})
+            self.csetlog.refresh()
+            while not self._dummy_tuid_exists(file_name, rev):
+                Till(seconds=0.001).wait()
         return MISSING
 
 
@@ -184,11 +209,13 @@ class TUIDService:
 
 
     def _get_one_tuid(self, transaction, cset, path, line):
-        # Returns a single TUID if it exists
-        return transaction.get_one(
-            "select tuid from temporal where revision=? and file=? and line=?",
-            (cset, path, int(line))
-        )
+        # Returns a single TUID if it exists else None
+        query = {"_source": {"includes": ["tuid"]},
+                 "query": {
+                     "bool": {"must": [{"term": {"file": path}}, {"term": {"revision": cset}}, {"term": {"line": int(line)}}]}},
+                 "size": 1}
+        temp = self.temporal.search(query).hits.hits[0]._source.tuid
+        return temp
 
     def _get_latest_revision(self, file, transaction):
         # Returns the latest revision that we
@@ -697,11 +724,11 @@ class TUIDService:
             for change in f_diff:
                 if change.action == '+':
                     tuid_tmp = self._get_one_tuid(transaction, cset, file, change.line+1)
-                    if not tuid_tmp:
+                    if tuid_tmp == None:
                         new_tuid = self.tuid()
                         list_to_insert.append((new_tuid, cset, file, change.line+1))
                     else:
-                        new_tuid = tuid_tmp[0]
+                        new_tuid = tuid_tmp
                     new_ann = add_one(TuidMap(new_tuid, change.line+1), new_ann)
                 elif change.action == '-':
                     new_ann = remove_one(change.line+1, new_ann)
@@ -710,11 +737,11 @@ class TUIDService:
         if len(list_to_insert) > 0:
             count = 0
             for _, inserts_list in jx.groupby(list_to_insert, size=SQL_BATCH_SIZE):
-                transaction.execute(
-                    "INSERT INTO temporal (tuid, revision, file, line)"
-                    " VALUES " +
-                    sql_list(quote_list(tp) for tp in inserts_list)
-                )
+                record = {"_id":inserts_list[2]+inserts_list[1], "tuid":inserts_list[0], "file":inserts_list[1], "revision":inserts_list[2], "line":inserts_list[3]}
+                self.temporal.add({"value": record})
+                self.temporal.refresh()
+                while self._get_tuid(inserts_list[1], inserts_list[2], inserts_list[3]) == None:
+                    Till(seconds=0.001).wait()
 
         return new_ann, file
 
@@ -1347,16 +1374,12 @@ class TUIDService:
             lines_to_insert = new_line_origins.values()
 
         for _, part_of_insert in jx.groupby(lines_to_insert, size=SQL_BATCH_SIZE):
-            transaction.execute(
-                "INSERT INTO temporal (tuid, file, revision, line)"
-                " VALUES " +
-                sql_list(
-                    sql_iso(
-                        sql_list(map(quote_value, (tuid, f, rev, line_num)))
-                    ) for tuid, f, rev, line_num in list(part_of_insert)
-                )
-            )
-
+            for tuid, f, rev, line_num in list(part_of_insert):
+                record = {"_id":rev+file, "tuid":tuid, "file":f, "revision":rev, "line":line_num}
+                self.temporal.add({"value": record})
+                self.temporal.refresh()
+                while self._get_tuid(f, rev, line_num) == None:
+                    Till(seconds=0.001).wait()
         return new_line_origins
 
 
@@ -1370,15 +1393,22 @@ class TUIDService:
         file_names = list(set([f for f, _, _ in line_origins]))
         revs_to_find = list(set([rev for _, rev, _ in line_origins]))
         lines_to_find = list(set([line for _, _, line in line_origins]))
-        existing_tuids_tmp = {
-            str((file, revision, line)): tuid
-            for tuid, file, revision, line in transaction.query(
-                "SELECT tuid, file, revision, line FROM temporal"
-                " WHERE file IN " + sql_iso(sql_list(map(quote_value, file_names))) +
-                " AND revision IN " + sql_iso(sql_list(map(quote_value, revs_to_find))) +
-                " AND line IN " + sql_iso(sql_list(map(quote_value, lines_to_find)))
-            ).data
-        }
+
+
+        query = {"size": 0}
+        count = self.temporal.search(query).hits.total
+        query = {
+            "size":count,
+            "_source": { "includes": ["tuid","file","revision","line"]},
+            "query": { "bool": {
+                "filter": [ { "terms": {"file": file_names}},
+                            {"terms": { "revision": revs_to_find }},
+                            {"terms": {"line": lines_to_find}}] }}}
+        result = self.temporal.search(query)
+        existing_tuids_tmp = {}
+        for r in result.hits.hits:
+            s= r._source
+            existing_tuids_tmp.update({str((s.file, s.revision, s.line)): s.tuid})
 
         # Explicitly remove reference cycle
         del file_names
@@ -1464,7 +1494,7 @@ class TUIDService:
 
             if errored:
                 Log.note("Inserting dummy entry...")
-                self.insert_tuid_dummy(transaction, revision, file, commit=commit)
+                self.insert_tuid_dummy(revision, file, commit=commit)
                 self.insert_annotate_dummy(transaction, revision, file, commit=commit)
                 results.append((file, []))
                 continue
@@ -1637,3 +1667,19 @@ class TUIDService:
 
             if not ran_changesets:
                 (please_stop | Till(seconds=DAEMON_WAIT_AT_NEWEST.seconds)).wait()
+
+
+TEMPORAL_SCHEMA = {
+    "settings": {"index.number_of_replicas": 1, "index.number_of_shards": 1},
+    "mappings": {
+        "temporaltype": {
+            "_all": {"enabled": False},
+            "properties": {
+                "tuid": {"type": "integer", "store": True},
+                "revision": {"type": "keyword", "store": True},
+                "file": {"type": "keyword", "store": True},
+                "line": {"type": "integer", "store": True}
+            },
+        }
+    },
+}

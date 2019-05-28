@@ -23,10 +23,10 @@ from mo_logs.exceptions import suppress_exception
 from mo_threads import Till, Thread, Lock, Queue, Signal
 from mo_threads.threads import ALL
 from mo_times.durations import DAY
-from pyLibrary.env import http, elasticsearch
+from pyLibrary.env import http,elasticsearch
 from pyLibrary.sql import sql_list, quote_set
 from tuid import sql
-from tuid.util import HG_URL, insert_into_db_chunked
+from tuid.util import HG_URL
 
 RETRY = {"times": 3, "sleep": 5}
 SQL_CSET_BATCH_SIZE = 500

@@ -15,7 +15,7 @@ from mo_files.url import URL
 from mo_hg.apply import Line, SourceFile
 from mo_logs import Log
 from pyLibrary.sql import quote_set, sql_list
-from pyLibrary.sql.sqlite import quote_value
+from mo_threads import Till
 
 HG_URL = URL('https://hg.mozilla.org/')
 
@@ -72,66 +72,75 @@ class AnnotateFile(SourceFile, object):
                 all_new_lines.append(line_obj.line)
             line_origins.append(line_entry)
 
-        with self.tuid_service.conn.transaction() as t:
-            # Get the new lines, excluding those that have existing tuids
-            existing_tuids = {}
-            if len(all_new_lines) > 0:
-                try:
-                    existing_tuids = {
-                        line: tuid
-                        for tuid, file, revision, line in t.query(
-                            "SELECT tuid, file, revision, line FROM temporal"
-                            " WHERE file = " + quote_value(self.filename)+
-                            " AND revision = " + quote_value(revision) +
-                            " AND line IN " + quote_set(all_new_lines)
-                        ).data
-                    }
-                except Exception as e:
-                    # Log takes out important output, use print instead
-                    self.failed_file = True
-                    print("Trying to find new lines: " + str(all_new_lines))
-                    Log.error("Error encountered:", cause=e)
+        # Get the new lines, excluding those that have existing tuids
+        existing_tuids = {}
+        if len(all_new_lines) > 0:
+            try:
+                query = {"size": 0}
+                count = self.tuid_service.temporal.search(query).hits.total
+                query = {
+                    "size": count,
+                    "_source": {"includes": ["tuid", "file", "revision", "line"]},
+                    "query": {"bool": {
+                        "filter": [{"term": {"file": self.filename}},
+                                   {"term": {"revision": revision}},
+                                   {"terms": {"line": all_new_lines}}]}}}
+                result = self.tuid_service.temporal.search(query)
+                existing_tuids = {}
 
-            insert_entries = []
-            insert_lines = set(all_new_lines) - set(existing_tuids.keys())
-            if len(insert_lines) > 0:
-                try:
-                    insert_entries = [
-                        (self.tuid_service.tuid(),) + line_origins[linenum-1]
-                        for linenum in insert_lines
-                    ]
-                    insert_into_db_chunked(
-                        t,
-                        insert_entries,
-                        "INSERT INTO temporal (tuid, file, revision, line) VALUES "
-                    )
-                except Exception as e:
-                    Log.note(
-                        "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
-                        file=self.filename,
-                        cause=e
-                    )
-                    self.failed_file = True
-                    return
+                if result.hits.hits == None:
+                    raise Exception("im good")
 
-            fmt_inserted_lines = {line: tuid for tuid, _, _, line in insert_entries}
-            for line_obj in self.lines:
-                # If a tuid already exists for this line,
-                # replace, otherwise, use the newly created one.
-                if line_obj.line in existing_tuids:
-                    line_obj.tuid = existing_tuids[line_obj.line]
-                elif line_obj.line in fmt_inserted_lines:
-                    line_obj.tuid = fmt_inserted_lines[line_obj.line]
+                for r in result.hits.hits:
+                    s = r._source
+                    existing_tuids.update({s.line: s.tuid})
+            except Exception as e:
+                # Log takes out important output, use print instead
+                self.failed_file = True
+                print("Trying to find new lines: " + str(all_new_lines))
+                Log.error("Error encountered:", cause=e)
 
-                if not line_obj.tuid:
-                    Log.warning(
-                        "Cannot find TUID at {{file}} and {{rev}}for: {{line}}",
-                        file=self.filename,
-                        rev=revision,
-                        line=str(line_obj)
-                    )
-                    self.failed_file = True
-                    return
+        insert_entries = []
+        insert_lines = set(all_new_lines) - set(existing_tuids.keys())
+        if len(insert_lines) > 0:
+            try:
+                insert_entries = [
+                    (self.tuid_service.tuid(),) + line_origins[linenum-1]
+                    for linenum in insert_lines
+                ]
+                for r in insert_entries:
+                    t = {"id":r[2]+r[1], "tuid":r[0], "file":r[1], "revision":r[2], "line":r[3]}
+                    self.tuid_service.temporal.add({"value": t})
+                    self.tuid_service.temporal.refresh()
+                    while self.tuid_service._get_tuid(r[1], r[2], r[3]) == None:
+                        Till(seconds=0.001).wait()
+            except Exception as e:
+                Log.note(
+                    "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
+                    file=self.filename,
+                    cause=e
+                )
+                self.failed_file = True
+                return
+
+        fmt_inserted_lines = {line: tuid for tuid, _, _, line in insert_entries}
+        for line_obj in self.lines:
+            # If a tuid already exists for this line,
+            # replace, otherwise, use the newly created one.
+            if line_obj.line in existing_tuids:
+                line_obj.tuid = existing_tuids[line_obj.line]
+            elif line_obj.line in fmt_inserted_lines:
+                line_obj.tuid = fmt_inserted_lines[line_obj.line]
+
+            if not line_obj.tuid:
+                Log.warning(
+                    "Cannot find TUID at {{file}} and {{rev}}for: {{line}}",
+                    file=self.filename,
+                    rev=revision,
+                    line=str(line_obj)
+                )
+                self.failed_file = True
+                return
 
 
 def insert_into_db_chunked(transaction, data, cmd, sql_chunk_size=500):
