@@ -179,10 +179,10 @@ class TUIDService:
     def insert_tuid_dummy(self, rev, file_name, commit=True):
         # Inserts a dummy tuid: (-1,rev,file_name,0)
         if not self._dummy_tuid_exists(file_name, rev):
-            record = { "tuid": -1, "revision": rev[:12], "file": file_name, "line": 0 }
-            self.csetlog.add({"value": record})
-            self.csetlog.refresh()
-            while not self._dummy_tuid_exists(file_name, rev):
+            record = {"_id":rev[:12]+file_name+str(0), "tuid": -1, "revision": rev[:12], "file": file_name, "line": 0 }
+            self.temporal.add({"value": record})
+            self.temporal.refresh()
+            while not self._dummy_tuid_exists(file_name, rev[:12]):
                 Till(seconds=0.001).wait()
         return MISSING
 
@@ -239,7 +239,7 @@ class TUIDService:
                     continue
                 tuid, linenum = line.split(',')
                 line_origins.append(
-                    TuidMap(int(tuid), int(linenum))
+                    TuidMap(int(float(tuid)), int(linenum))
                 )
             return line_origins
         except Exception as e:
@@ -737,7 +737,7 @@ class TUIDService:
         if len(list_to_insert) > 0:
             count = 0
             for _, inserts_list in jx.groupby(list_to_insert, size=SQL_BATCH_SIZE):
-                record = {"_id":inserts_list[2]+inserts_list[1], "tuid":inserts_list[0], "file":inserts_list[1], "revision":inserts_list[2], "line":inserts_list[3]}
+                record = {"_id":inserts_list[2]+inserts_list[1]+str(inserts_list[3]), "tuid":inserts_list[0], "file":inserts_list[1], "revision":inserts_list[2], "line":inserts_list[3]}
                 self.temporal.add({"value": record})
                 self.temporal.refresh()
                 while self._get_tuid(inserts_list[1], inserts_list[2], inserts_list[3]) == None:
@@ -1375,7 +1375,7 @@ class TUIDService:
 
         for _, part_of_insert in jx.groupby(lines_to_insert, size=SQL_BATCH_SIZE):
             for tuid, f, rev, line_num in list(part_of_insert):
-                record = {"_id":rev+file, "tuid":tuid, "file":f, "revision":rev, "line":line_num}
+                record = {"_id":rev+f+str(line_num), "tuid":tuid, "file":f, "revision":rev, "line":line_num}
                 self.temporal.add({"value": record})
                 self.temporal.refresh()
                 while self._get_tuid(f, rev, line_num) == None:
@@ -1394,11 +1394,8 @@ class TUIDService:
         revs_to_find = list(set([rev for _, rev, _ in line_origins]))
         lines_to_find = list(set([line for _, _, line in line_origins]))
 
-
-        query = {"size": 0}
-        count = self.temporal.search(query).hits.total
         query = {
-            "size":count,
+            "size":10000,
             "_source": { "includes": ["tuid","file","revision","line"]},
             "query": { "bool": {
                 "filter": [ { "terms": {"file": file_names}},

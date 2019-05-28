@@ -76,10 +76,8 @@ class AnnotateFile(SourceFile, object):
         existing_tuids = {}
         if len(all_new_lines) > 0:
             try:
-                query = {"size": 0}
-                count = self.tuid_service.temporal.search(query).hits.total
                 query = {
-                    "size": count,
+                    "size": 10000,
                     "_source": {"includes": ["tuid", "file", "revision", "line"]},
                     "query": {"bool": {
                         "filter": [{"term": {"file": self.filename}},
@@ -87,9 +85,6 @@ class AnnotateFile(SourceFile, object):
                                    {"terms": {"line": all_new_lines}}]}}}
                 result = self.tuid_service.temporal.search(query)
                 existing_tuids = {}
-
-                if result.hits.hits == None:
-                    raise Exception("im good")
 
                 for r in result.hits.hits:
                     s = r._source
@@ -109,7 +104,7 @@ class AnnotateFile(SourceFile, object):
                     for linenum in insert_lines
                 ]
                 for r in insert_entries:
-                    t = {"id":r[2]+r[1], "tuid":r[0], "file":r[1], "revision":r[2], "line":r[3]}
+                    t = {"id":r[2]+r[1]+str(r[3]), "tuid":r[0], "file":r[1], "revision":r[2], "line":r[3]}
                     self.tuid_service.temporal.add({"value": t})
                     self.tuid_service.temporal.refresh()
                     while self.tuid_service._get_tuid(r[1], r[2], r[3]) == None:
