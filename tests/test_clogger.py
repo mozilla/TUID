@@ -159,6 +159,7 @@ def test_backfilling_to_revision(clogger):
     }
     result = clogger.csetlog.search(query)
     new_oldest_revnum = result.hits.hits[0]._source.revnum
+
     assert expected_new_revnum == new_oldest_revnum
 
 
@@ -192,7 +193,8 @@ def test_backfilling_by_count(clogger):
     clogger.csets_todo_backwards.add((num_to_go_back, True))
 
     new_ending = None
-    new_revnum = None
+    old_oldest_revnum = None
+    new_oldest_revnum = None
     while num_trys > 0:
         query = {
             "_source": {"includes": ["revision", "revnum"]},
@@ -209,8 +211,17 @@ def test_backfilling_by_count(clogger):
                 "size": 1,
             }
             result = clogger.csetlog.search(query)
-            new_revnum = result.hits.hits[0]._source.revnum
+            new_oldest_revnum = result.hits.hits[0]._source.revnum
+
+            query = {
+                "_source": {"includes": ["revnum"]},
+                "query": {"bool": {"must": [{"term": {"revision": oldest_rev}}]}},
+                "size": 1,
+            }
+            result = clogger.csetlog.search(query)
+            old_oldest_revnum = result.hits.hits[0]._source.revnum
             break
+
         if new_ending != new_old_rev:
             Till(seconds=wait_time).wait()
             num_trys -= 1
@@ -218,9 +229,12 @@ def test_backfilling_by_count(clogger):
     assert num_trys > 0
     assert new_old_rev == new_ending
 
+    expected_old_revnum = oldest_revnum
+    assert expected_old_revnum == old_oldest_revnum
+
     # Check that revnum's were properly handled
-    expected_revnum = oldest_revnum - num_to_go_back
-    assert expected_revnum == new_revnum
+    expected_new_revnum = oldest_revnum - num_to_go_back
+    assert expected_new_revnum == new_oldest_revnum
 
 
 def test_partial_tipfilling(clogger):

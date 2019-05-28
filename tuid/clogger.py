@@ -316,6 +316,7 @@ class Clogger:
             temp.append((r._source.revnum, r._source.revision))
         return temp
 
+
     def check_for_maintenance(self):
         """
         Returns True if the maintenance worker should be run now,
@@ -392,6 +393,7 @@ class Clogger:
         if self.check_for_maintenance():
             Log.note("Scheduling maintenance run on clogger.")
             self.maintenance_signal.go()
+
 
     def _fill_in_range(
         self, parent_cset, child_cset, timestamp=False, number_forward=True
