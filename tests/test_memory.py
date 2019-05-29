@@ -63,7 +63,15 @@ def test_annotation_memory(service):
         #files_to_get = [random.choice(files) for _ in range(total_files)]
 
         with service.conn.transaction() as t:
-            t.execute("DELETE FROM temporal WHERE file IN " + quote_set(files_to_get))
+            filter = {"terms": {"file": files_to_get}}
+            service.temporal.delete_record(filter)
+            service.temporal.refresh()
+            query = {"query": {"terms": {"revision": files_to_get}}}
+            result = service.temporal.search(query)
+            while len(result.hits.hits) != 0:
+                Till(seconds=0.001).wait()
+                result = service.temporal.search(query)
+            service.temporal.delete_record(filter)
             t.execute("DELETE FROM annotations WHERE file IN " + quote_set(files_to_get))
             t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(files_to_get))
 
