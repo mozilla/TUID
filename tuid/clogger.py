@@ -766,10 +766,15 @@ class Clogger:
                                 "DELETE FROM latestFileMod WHERE revision IN "
                                 + quote_set(annrevs_to_del)
                             )
-                            t.execute(
-                                "DELETE FROM annotations WHERE revision IN "
-                                + quote_set(annrevs_to_del)
-                            )
+
+                        filter = {"terms": {"revision": annrevs_to_del}}
+                        self.tuid_service.annotations.delete_record(filter)
+                        self.tuid_service.annotations.refresh()
+                        query = {"query": {"terms": {"revision": annrevs_to_del}}}
+                        result = self.tuid_service.annotations.search(query)
+                        while len(result.hits.hits) != 0:
+                            Till(seconds=0.001).wait()
+                            result = self.tuid_service.annotations.search(query)
 
                     # Delete any overflowing entries
                     new_data2 = new_data1
@@ -920,10 +925,14 @@ class Clogger:
                             )
 
                         Log.note("Deleting annotations...")
-                        t.execute(
-                            "DELETE FROM annotations WHERE revision IN "
-                            + quote_set(csets_to_del)
-                        )
+                        filter = {"terms": {"revision": csets_to_del}}
+                        self.tuid_service.annotations.delete_record(filter)
+                        self.tuid_service.annotations.refresh()
+                        query = {"query": {"terms": {"revision": csets_to_del}}}
+                        result = self.tuid_service.annotations.search(query)
+                        while len(result.hits.hits) != 0:
+                            Till(seconds=0.001).wait()
+                            result = self.tuid_service.annotations.search(query)
 
                         Log.note(
                             "Deleting {{num_entries}} csetLog entries...",

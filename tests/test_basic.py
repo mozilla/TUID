@@ -337,10 +337,14 @@ def test_many_files_one_revision(service):
             "DELETE FROM latestFileMod WHERE file IN " +
             quote_set(test_file)
         )
-        t.execute(
-            "DELETE FROM annotations WHERE file IN " +
-            quote_set(test_file)
-        )
+        filter = {"terms": {"file": test_file}}
+        service.annotations.delete_record(filter)
+        service.annotations.refresh()
+        query = {"query": {"terms": {"file": test_file}}}
+        result = service.annotations.search(query)
+        while len(result.hits.hits) != 0:
+            Till(seconds=0.001).wait()
+            result = service.annotations.search(query)
 
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
@@ -378,10 +382,14 @@ def test_one_addition_many_files(service):
             "DELETE FROM latestFileMod WHERE file IN " +
             quote_set(test_file)
         )
-        t.execute(
-            "DELETE FROM annotations WHERE file IN " +
-            quote_set(test_file)
-        )
+        filter = {"terms": {"file": test_file}}
+        service.annotations.delete_record(filter)
+        service.annotations.refresh()
+        query = {"query": {"terms": {"file": test_file}}}
+        result = service.annotations.search(query)
+        while len(result.hits.hits) != 0:
+            Till(seconds=0.001).wait()
+            result = service.annotations.search(query)
 
     # Get current annotation
     result, _ = service.get_tuids_from_files(test_file_change, old_rev)
@@ -566,10 +574,14 @@ def test_one_http_call_required(service):
             "DELETE FROM latestFileMod WHERE file IN " +
             quote_set(proc_files)
         )
-        t.execute(
-            "DELETE FROM annotations WHERE file IN " +
-            quote_set(proc_files)
-        )
+        filter = {"terms": {"file": proc_files}}
+        service.annotations.delete_record(filter)
+        service.annotations.refresh()
+        query = {"query": {"terms": {"file": proc_files}}}
+        result = service.annotations.search(query)
+        while len(result.hits.hits) != 0:
+            Till(seconds=0.001).wait()
+            result = service.annotations.search(query)
 
     Log.note("Number of files to process: {{flen}}", flen=len(files))
     first_f_n_tuids, _ = service.get_tuids_from_files(
@@ -653,7 +665,14 @@ def test_out_of_order_get_tuids_from_files(service):
     test_file = ["dom/base/nsWrapperCache.cpp"]
     with service.conn.transaction() as t:
         t.execute("DELETE FROM latestFileMod WHERE file=" + quote_value(test_file[0]))
-        t.execute("DELETE FROM annotations WHERE file=" + quote_value(test_file[0]))
+        filter = {"term": {"file": test_file[0]}}
+        service.annotations.delete_record(filter)
+        service.annotations.refresh()
+        query = {"query": {"term": {"file": test_file[0]}}}
+        result = service.annotations.search(query)
+        while len(result.hits.hits) != 0:
+            Till(seconds=0.001).wait()
+            result = service.annotations.search(query)
 
     check_lines = [41]
 
@@ -691,7 +710,14 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
     test_file = ["dom/base/nsWrapperCache.cpp"]
     with service.conn.transaction() as t:
         t.execute("DELETE FROM latestFileMod WHERE file=" + quote_value(test_file[0]))
-        t.execute("DELETE FROM annotations WHERE file=" + quote_value(test_file[0]))
+        filter = {"term": {"file": test_file[0]}}
+        service.annotations.delete_record(filter)
+        service.annotations.refresh()
+        query = {"query": {"term": {"file": test_file[0]}}}
+        result = service.annotations.search(query)
+        while len(result.hits.hits) != 0:
+            Till(seconds=0.001).wait()
+            result = service.annotations.search(query)
 
     check_lines = [41]
 
@@ -782,7 +808,14 @@ def test_merged_changes(service):
     service.clogger.initialize_to_range(old_rev, new_rev)
     with service.conn.transaction() as t:
         t.execute("DELETE FROM latestFileMod WHERE file=" + quote_value(test_files[0]))
-        t.execute("DELETE FROM annotations WHERE file=" + quote_value(test_files[0]))
+        filter = {"term": {"file": test_files[0]}}
+        service.annotations.delete_record(filter)
+        service.annotations.refresh()
+        query = {"query": {"term": {"file": test_files[0]}}}
+        result = service.annotations.search(query)
+        while len(result.hits.hits) != 0:
+            Till(seconds=0.001).wait()
+            result = service.annotations.search(query)
 
     old_tuids, _ = service.get_tuids_from_files(test_files, old_rev, use_thread=False)
     new_tuids, _ = service.get_tuids_from_files(test_files, new_rev, use_thread=False)
@@ -828,7 +861,14 @@ def test_very_distant_files(service):
     service.clogger.initialize_to_range(old_rev, new_rev)
 
     with service.conn.transaction() as t:
-        t.execute("DELETE FROM annotations WHERE revision = " + quote_value(new_rev))
+        filter = {"term": {"revision": new_rev}}
+        service.annotations.delete_record(filter)
+        service.annotations.refresh()
+        query = {"query": {"term": {"revision": new_rev}}}
+        result = service.annotations.search(query)
+        while len(result.hits.hits) != 0:
+            Till(seconds=0.001).wait()
+            result = service.annotations.search(query)
         for file in test_files:
             t.execute(
                 "UPDATE latestFileMod SET revision = " + quote_value(old_rev) +

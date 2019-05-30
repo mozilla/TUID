@@ -440,12 +440,14 @@ def test_maintenance_and_deletion(clogger):
                 for i in inserts_list_latestFileMod
             )
         )
-        t.execute(
-            "INSERT OR REPLACE INTO annotations (file, revision, annotation) VALUES "
-            + sql_list(
-                sql_iso(sql_list(map(quote_value, i))) for i in inserts_list_annotations
-            )
-        )
+
+        for data in inserts_list_annotations:
+            record = {"_id":data[1]+data[0], "revision": data[1], "file": data[0], "annotation": data[2] }
+            clogger.tuid_service.annotations.add({"value": record})
+            clogger.tuid_service.annotations.refresh()
+            while not clogger.tuid_service._annotation_record_exists(data[1], data[0]):
+                Till(seconds=0.001).wait()
+
         query = {"aggs": {"output": {"value_count": {"field": "revnum"}}}, "size": 0}
         revnums_in_db = int(clogger.csetlog.search(query).aggregations.output.value)
     if revnums_in_db <= max_revs:
@@ -476,9 +478,11 @@ def test_maintenance_and_deletion(clogger):
     assert not latest_rev
 
     # Check that annotations were deleted.
-    annotates = clogger.conn.get_one(
-        "SELECT 1 FROM annotations WHERE revision=?", (new_tail,)
-    )
+    query = {"_source": {"includes": ["revision"]},
+             "query": {
+                 "bool": {"must": [{"term": {"revision": new_tail}}]}},
+             "size": 1}
+    annotates = len(clogger.tuid_service.annotations.search(query).hits.hits)
     assert not annotates
 
 
@@ -530,12 +534,14 @@ def test_deleting_old_annotations(clogger):
                 for i in inserts_list_latestFileMod
             )
         )
-        t.execute(
-            "INSERT OR REPLACE INTO annotations (file, revision, annotation) VALUES "
-            + sql_list(
-                sql_iso(sql_list(map(quote_value, i))) for i in inserts_list_annotations
-            )
-        )
+
+        for data in inserts_list_annotations:
+            record = {"_id":data[0]+data[1], "file": data[0], "revision": data[1], "annotation": data[2] }
+            clogger.tuid_service.annotations.add({"value": record})
+            clogger.tuid_service.annotations.refresh()
+            while not clogger.tuid_service._annotation_record_exists(data[1], data[0]):
+                Till(seconds=0.001).wait()
+
         for revnum, revision, timestamp in [(tail_tipnum, tail_cset, new_timestamp)]:
             record = {
                 "_id": revnum,
@@ -558,9 +564,11 @@ def test_deleting_old_annotations(clogger):
         latest_rev = clogger.conn.get_one(
             "SELECT 1 FROM latestFileMod WHERE revision=?", (tail_cset,)
         )
-        annotates = clogger.conn.get_one(
-            "SELECT 1 FROM annotations WHERE revision=?", (tail_cset,)
-        )
+        query = {"_source": {"includes": ["revision"]},
+                 "query": {
+                     "bool": {"must": [{"term": {"revision": tail_cset}}]}},
+                 "size": 1}
+        annotates = len(clogger.tuid_service.annotations.search(query).hits.hits)
         if not annotates and not latest_rev:
             break
         tmp_num_trys += 1

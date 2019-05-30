@@ -50,7 +50,6 @@ FILES_TO_PROCESS_THRESH = 5
 ENABLE_TRY = False
 DAEMON_WAIT_AT_NEWEST = 30 * SECOND # Time to wait at the newest revision before polling again.
 
-GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and file=?"
 GET_LATEST_MODIFICATION = "SELECT revision FROM latestFileMod WHERE file=?"
 
 
@@ -65,8 +64,9 @@ class TUIDService:
             self.hg_cache = HgMozillaOrg(kwargs=self.config.hg_cache, use_cache=True) if self.config.hg_cache else Null
             self.hg_url = URL(hg.url)
 
-            self.esconfig = self.config.esservice.temporal
-            self.es = elasticsearch.Cluster(kwargs=self.esconfig)
+            self.esconfig = self.config.esservice
+            self.es_temporal = elasticsearch.Cluster(kwargs=self.esconfig.temporal)
+            self.es_annotations = elasticsearch.Cluster(kwargs=self.esconfig.annotations)
 
             if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
@@ -116,11 +116,10 @@ class TUIDService:
 
         :return: None
         '''
-
-        temporal = self.esconfig
+        temporal = self.esconfig.temporal
         set_default(temporal, {"schema": TEMPORAL_SCHEMA})
         # what would be the _id here
-        self.temporal = self.es.get_or_create_index(kwargs=temporal)
+        self.temporal = self.es_temporal.get_or_create_index(kwargs=temporal)
         self.temporal.refresh()
 
         total = self.temporal.search({"size": 0})
@@ -128,17 +127,29 @@ class TUIDService:
             total = self.temporal.search({"size": 0})
         with suppress_exception:
             self.temporal.add_alias()
+
+        annotations = self.esconfig.annotations
+        set_default(annotations, {"schema": ANNOTATIONS_SCHEMA})
+        # what would be the _id here
+        self.annotations = self.es_annotations.get_or_create_index(kwargs=annotations)
+        self.annotations.refresh()
+
+        total = self.annotations.search({"size": 0})
+        while not total.hits:
+            total = self.annotations.search({"size": 0})
+        with suppress_exception:
+            self.annotations.add_alias()
         if temporal_only:
             return
 
         with self.conn.transaction() as t:
-            t.execute('''
-            CREATE TABLE annotations (
-                revision       CHAR(12) NOT NULL,
-                file           TEXT,
-                annotation     TEXT,
-                PRIMARY KEY(revision, file)
-            );''')
+            # t.execute('''
+            # CREATE TABLE annotations (
+            #     revision       CHAR(12) NOT NULL,
+            #     file           TEXT,
+            #     annotation     TEXT,
+            #     PRIMARY KEY(revision, file)
+            # );''')
 
             # Used in frontier updating
             t.execute('''
@@ -172,8 +183,11 @@ class TUIDService:
     def _dummy_annotate_exists(self, transaction, file_name, rev):
         # True if dummy, false if not.
         # None means there is no entry.
-        return None != transaction.get_one("select annotation from annotations where file=? and revision=?",
-                                         (file_name, rev))
+        query = { "_source": {"includes": ["annotation"]},
+                  "query": {"bool": {"must": [{"term": {"file": file_name}}, {"term": {"revision": rev}}]}},
+                  "size": 1}
+        temp = len(self.annotations.search(query).hits.hits)
+        return 0 != temp
 
 
     def insert_tuid_dummy(self, rev, file_name, commit=True):
@@ -193,19 +207,35 @@ class TUIDService:
             self.insert_annotations(transaction, [(rev[:12], file_name, '')])
 
 
-    def insert_annotations(self, transaction, data):
+    def insert_annotations(self, transaction, values):
         if VERIFY_TUIDS:
-            for _, _, tuids_string in data:
+            for _, _, tuids_string in values:
                 self.destringify_tuids(tuids_string)
 
-        transaction.execute(
-            "INSERT INTO annotations (revision, file, annotation) VALUES " +
-            sql_list(quote_list(row) for row in data)
-        )
+        for data in values:
+            record = {"_id":data[0]+data[1], "revision": data[0], "file": data[1], "annotation": data[2] }
+            self.annotations.add({"value": record})
+            self.annotations.refresh()
+            while not self._annotation_record_exists(data[0], data[1]):
+                Till(seconds=0.001).wait()
+
+
+    def _annotation_record_exists(self, rev, file):
+        query = {"_source": {"includes": ["revision"]},
+                 "query": {
+                     "bool": {"must": [{"term": {"revision": rev}}, {"term": {"file": file}}]}},
+                 "size": 1}
+        temp = self.annotations.search(query).hits.hits[0]._source.revision
+        return temp
 
 
     def _get_annotation(self, rev, file, transaction=None):
-        return coalesce(transaction, self.conn).get_one(GET_ANNOTATION_QUERY, (rev, file))[0]
+        query = {"_source": {"includes": ["annotation"]},
+                 "query": {
+                     "bool": {"must": [{"term": {"revision": rev}}, {"term": {"file": file}}]}},
+                 "size": 1}
+        temp = self.annotations.search(query).hits.hits[0]._source.annotation
+        return temp
 
 
     def _get_one_tuid(self, transaction, cset, path, line):
@@ -216,6 +246,7 @@ class TUIDService:
                  "size": 1}
         temp = self.temporal.search(query).hits.hits[0]._source.tuid
         return temp
+
 
     def _get_latest_revision(self, file, transaction):
         # Returns the latest revision that we
@@ -1676,6 +1707,20 @@ TEMPORAL_SCHEMA = {
                 "revision": {"type": "keyword", "store": True},
                 "file": {"type": "keyword", "store": True},
                 "line": {"type": "integer", "store": True}
+            },
+        }
+    },
+}
+
+ANNOTATIONS_SCHEMA = {
+    "settings": {"index.number_of_replicas": 1, "index.number_of_shards": 1},
+    "mappings": {
+        "annotationstype": {
+            "_all": {"enabled": False},
+            "properties": {
+                "revision": {"type": "keyword", "store": True},
+                "file": {"type": "keyword", "store": True},
+                "annotation": {"type": "keyword", "ignore_above": 20, "store": True}
             },
         }
     },
