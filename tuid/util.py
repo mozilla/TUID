@@ -17,11 +17,10 @@ from mo_logs import Log
 from pyLibrary.sql import quote_set, sql_list
 from mo_threads import Till
 
-HG_URL = URL('https://hg.mozilla.org/')
+HG_URL = URL("https://hg.mozilla.org/")
 
 
 class TuidLine(Line, object):
-
     def __init__(self, tuidmap, **kwargs):
         super(TuidLine, self).__init__(tuidmap.line, **kwargs)
         self.tuid = tuidmap.tuid
@@ -31,7 +30,6 @@ class TuidLine(Line, object):
 
 
 class AnnotateFile(SourceFile, object):
-
     def __init__(self, filename, lines, tuid_service=None):
         super(AnnotateFile, self).__init__(filename, lines)
         self.tuid_service = tuid_service
@@ -41,10 +39,7 @@ class AnnotateFile(SourceFile, object):
         self.lines = [TuidLine(tuidmap) for tuidmap in annotation]
 
     def lines_to_annotation(self):
-        return [
-            TuidMap(line_obj.tuid, line_obj.line)
-            for line_obj in self.lines
-        ]
+        return [TuidMap(line_obj.tuid, line_obj.line) for line_obj in self.lines]
 
     def replace_line_with_tuidline(self):
         new_lines = []
@@ -55,7 +50,7 @@ class AnnotateFile(SourceFile, object):
             new_line_obj = TuidLine(
                 TuidMap(None, line_obj.line),
                 filename=line_obj.filename,
-                is_new_line=True
+                is_new_line=True,
             )
             new_lines.append(new_line_obj)
         self.lines = new_lines
@@ -79,10 +74,16 @@ class AnnotateFile(SourceFile, object):
                 query = {
                     "size": 10000,
                     "_source": {"includes": ["tuid", "file", "revision", "line"]},
-                    "query": {"bool": {
-                        "filter": [{"term": {"file": self.filename}},
-                                   {"term": {"revision": revision}},
-                                   {"terms": {"line": all_new_lines}}]}}}
+                    "query": {
+                        "bool": {
+                            "filter": [
+                                {"term": {"file": self.filename}},
+                                {"term": {"revision": revision}},
+                                {"terms": {"line": all_new_lines}},
+                            ]
+                        }
+                    },
+                }
                 result = self.tuid_service.temporal.search(query)
                 existing_tuids = {}
 
@@ -100,20 +101,21 @@ class AnnotateFile(SourceFile, object):
         if len(insert_lines) > 0:
             try:
                 insert_entries = [
-                    (self.tuid_service.tuid(),) + line_origins[linenum-1]
+                    (self.tuid_service.tuid(),) + line_origins[linenum - 1]
                     for linenum in insert_lines
                 ]
-                for r in insert_entries:
-                    t = {"id":r[2]+r[1]+str(r[3]), "tuid":r[0], "file":r[1], "revision":r[2], "line":r[3]}
-                    self.tuid_service.temporal.add({"value": t})
+                for tuid, file, revision, line in insert_entries:
+                    self.tuid_service.temporal.add(
+                        self.tuid_service.make_record(tuid, revision, file, line)
+                    )
                     self.tuid_service.temporal.refresh()
-                    while self.tuid_service._get_tuid(r[1], r[2], r[3]) == None:
+                    while self.tuid_service._get_tuid(file, revision, line) == None:
                         Till(seconds=0.001).wait()
             except Exception as e:
                 Log.note(
                     "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
                     file=self.filename,
-                    cause=e
+                    cause=e,
                 )
                 self.failed_file = True
                 return
@@ -132,7 +134,7 @@ class AnnotateFile(SourceFile, object):
                     "Cannot find TUID at {{file}} and {{rev}}for: {{line}}",
                     file=self.filename,
                     rev=revision,
-                    line=str(line_obj)
+                    line=line_obj,
                 )
                 self.failed_file = True
                 return
@@ -144,10 +146,7 @@ def insert_into_db_chunked(transaction, data, cmd, sql_chunk_size=500):
     #
     # `data` must be a list of tuples.
     for _, inserts_list in jx.groupby(data, size=sql_chunk_size):
-        transaction.execute(
-            cmd +
-            sql_list(quote_set(entry) for entry in inserts_list)
-        )
+        transaction.execute(cmd + sql_list(quote_set(entry) for entry in inserts_list))
 
 
 def map_to_array(pairs):
@@ -162,7 +161,7 @@ def map_to_array(pairs):
         tuids = [None] * max_line
         for p in pairs:
             if p.line:  # line==0 IS A PLACEHOLDER FOR FILES THAT DO NOT EXIST
-                tuids[p.line-1] = p.tuid
+                tuids[p.line - 1] = p.tuid
         return tuids
     else:
         return None
@@ -172,4 +171,3 @@ def map_to_array(pairs):
 # Can be accessed with tmap_obj.line, tmap_obj.tuid
 TuidMap = namedtuple(str("TuidMap"), [str("tuid"), str("line")])
 MISSING = TuidMap(-1, 0)
-
