@@ -70,6 +70,10 @@
                 "consistency": "one",
                 "debug": false,
                 "limit_replicas": false
+            },
+            "client2":{
+                "endpoint": "http://localhost:5001/tuid",
+                "timeout": 60
             }
         }
     },
@@ -80,8 +84,19 @@
         "threaded": true,
         "processes": 1
     },
+    "flask2": {
+        "host": "0.0.0.0",
+        "port": 5001,
+        "debug": false,
+        "threaded": true,
+        "processes": 1
+    },
     "client":{
         "endpoint": "http://localhost:5000/tuid",
+        "timeout": 60
+    },
+    "client2":{
+        "endpoint": "http://localhost:5001/tuid",
         "timeout": 60
     },
     "constants": {

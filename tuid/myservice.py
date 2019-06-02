@@ -31,7 +31,6 @@ from tuid import sql
 from tuid.statslogger import StatsLogger
 from tuid.counter import Counter
 from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL
-from mo_times import Timer, Date
 
 import tuid.clogger
 
@@ -50,7 +49,7 @@ SQL_BATCH_SIZE = 500
 FILES_TO_PROCESS_THRESH = 5
 ENABLE_TRY = False
 DAEMON_WAIT_AT_NEWEST = (
-    30 * SECOND
+        30 * SECOND
 )  # Time to wait at the newest revision before polling again.
 
 GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and file=?"
@@ -60,18 +59,17 @@ GET_LATEST_MODIFICATION = "SELECT revision FROM latestFileMod WHERE file=?"
 class TUIDService:
     @override
     def __init__(
-        self,
-        database,
-        hg,
-        hg_cache=None,
-        conn=None,
-        clogger=None,
-        start_workers=True,
-        kwargs=None,
+            self,
+            database,
+            hg,
+            hg_cache=None,
+            conn=None,
+            clogger=None,
+            start_workers=True,
+            kwargs=None,
     ):
         try:
             self.config = kwargs
-            self.flask = self.config.esservice.client2
 
             self.conn = conn if conn else sql.Sql(self.config.database.name)
             self.hg_cache = (
@@ -85,7 +83,7 @@ class TUIDService:
             self.es = elasticsearch.Cluster(kwargs=self.esconfig)
 
             if not self.conn.get_one(
-                "SELECT name FROM sqlite_master WHERE type='table';"
+                    "SELECT name FROM sqlite_master WHERE type='table';"
             ):
                 self.init_db()
             else:
@@ -340,7 +338,7 @@ class TUIDService:
 
     # Gets an annotated file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(
-        self, cset, file, annotated_files, thread_num, repo, please_stop=None
+            self, cset, file, annotated_files, thread_num, repo, please_stop=None
     ):
         with self.ann_thread_locker:
             self.ann_threads_running += 1
@@ -411,7 +409,7 @@ class TUIDService:
         """
         result = []
         URL_TO_FILES = (
-            str(HG_URL) + "/" + self.config.hg.branch + "/json-info/" + revision
+                str(HG_URL) + "/" + self.config.hg.branch + "/json-info/" + revision
         )
         try:
             mozobject = http.get_json(url=URL_TO_FILES, retry=RETRY)
@@ -466,14 +464,14 @@ class TUIDService:
         return res
 
     def mthread_testing_get_tuids_from_files(
-        self,
-        files,
-        revision,
-        results,
-        res_position,
-        going_forward=False,
-        repo=None,
-        please_stop=None,
+            self,
+            files,
+            revision,
+            results,
+            res_position,
+            going_forward=False,
+            repo=None,
+            please_stop=None,
     ):
         """
         Same as `get_tuids_from_files` but for multi-threaded service _result_ testing.
@@ -505,13 +503,13 @@ class TUIDService:
         return threads_running
 
     def get_tuids_from_files(
-        self,
-        files,
-        revision,
-        going_forward=False,
-        repo=None,
-        use_thread=True,
-        max_csets_proc=30,
+            self,
+            files,
+            revision,
+            going_forward=False,
+            repo=None,
+            use_thread=True,
+            max_csets_proc=30,
     ):
         """
         Gets the TUIDs for a set of files, at a given revision.
@@ -525,7 +523,7 @@ class TUIDService:
 
         This function assumes the newest file names are given, if they
         are not, then no TUIDs are returned for that file.
-        
+
         The following is a very simplified overview of how this function works:
         (1) When a file is requested, we check if it exists in the annotations
             and latestFileMods table.
@@ -667,7 +665,7 @@ class TUIDService:
         if len(latestFileMod_inserts) > 0:
             with self.conn.transaction() as transaction:
                 for _, inserts_list in jx.groupby(
-                    latestFileMod_inserts.values(), size=SQL_BATCH_SIZE
+                        latestFileMod_inserts.values(), size=SQL_BATCH_SIZE
                 ):
                     transaction.execute(
                         "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES "
@@ -675,7 +673,7 @@ class TUIDService:
                     )
 
         def update_tuids_in_thread(
-            new_files, frontier_update_list, revision, using_thread, please_stop=None
+                new_files, frontier_update_list, revision, using_thread, please_stop=None
         ):
             # Processes the new files and files which need their frontier updated
             # outside of the main thread as this can take a long time.
@@ -710,7 +708,7 @@ class TUIDService:
                 if len(latestFileMod_inserts) > 0:
                     with self.conn.transaction() as transaction:
                         for _, inserts_list in jx.groupby(
-                            latestFileMod_inserts.values(), size=SQL_BATCH_SIZE
+                                latestFileMod_inserts.values(), size=SQL_BATCH_SIZE
                         ):
                             transaction.execute(
                                 "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES "
@@ -816,12 +814,12 @@ class TUIDService:
         def add_one(tl_tuple, lines):
             start = tl_tuple.line
             return (
-                lines[: start - 1]
-                + [tl_tuple]
-                + [
-                    TuidMap(tmap.tuid, int(tmap.line) + 1)
-                    for tmap in lines[start - 1 :]
-                ]
+                    lines[: start - 1]
+                    + [tl_tuple]
+                    + [
+                        TuidMap(tmap.tuid, int(tmap.line) + 1)
+                        for tmap in lines[start - 1:]
+                    ]
             )
 
         def remove_one(start, lines):
@@ -927,12 +925,12 @@ class TUIDService:
         curr_rev = revision
         mc_revision = ""
         jsonpushes_url = (
-            str(HG_URL)
-            + "/"
-            + repo
-            + "/"
-            + "json-pushes?full=1&changeset="
-            + str(revision)
+                str(HG_URL)
+                + "/"
+                + repo
+                + "/"
+                + "json-pushes?full=1&changeset="
+                + str(revision)
         )
         try:
             pushes_obj = http.get_json(jsonpushes_url, retry=RETRY)
@@ -945,8 +943,8 @@ class TUIDService:
             push_num = list(pushes_obj.keys())[0]
 
             if (
-                "changesets" not in pushes_obj[push_num]
-                or len(pushes_obj[push_num]["changesets"]) == 0
+                    "changesets" not in pushes_obj[push_num]
+                    or len(pushes_obj[push_num]["changesets"]) == 0
             ):
                 raise Exception("Cannot find any changesets in this push.")
 
@@ -1096,12 +1094,12 @@ class TUIDService:
         return result
 
     def _update_file_frontiers(
-        self,
-        frontier_list,
-        revision,
-        max_csets_proc=30,
-        going_forward=False,
-        initial_growth={},
+            self,
+            frontier_list,
+            revision,
+            max_csets_proc=30,
+            going_forward=False,
+            initial_growth={},
     ):
         """
         Update the frontier for all given files, up to the given revision.
@@ -1217,9 +1215,9 @@ class TUIDService:
                     # Process this file using the diffs found
                     tmp_ann = self._get_annotation(old_frontier, file, transaction)
                     if (
-                        tmp_ann is None
-                        or tmp_ann == ""
-                        or self.destringify_tuids(tmp_ann) is None
+                            tmp_ann is None
+                            or tmp_ann == ""
+                            or self.destringify_tuids(tmp_ann) is None
                     ):
                         Log.warning(
                             "{{file}} has frontier but can't find old annotation for it in {{rev}}, "
@@ -1355,7 +1353,7 @@ class TUIDService:
             # we perform an insert or replace any way.
             if len(latestFileMod_inserts) > 0:
                 for _, inserts_list in jx.groupby(
-                    latestFileMod_inserts.values(), size=SQL_BATCH_SIZE
+                        latestFileMod_inserts.values(), size=SQL_BATCH_SIZE
                 ):
                     transaction.execute(
                         "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES "
@@ -1501,32 +1499,15 @@ class TUIDService:
                 # threads are started at once.
                 del threads
 
-            temp = None
-            try:
-                request = wrap({
-                    "from": "files",
-                    "where": {"and": [
-                        {"eq": {"revision": revision}},
-                        {"eq": {"commit": commit}},
-                        {"eq": {"annotated_files": annotated_files}},
-                        {"in": {"path": annotations_to_get}},
-                        {"eq": {"branch": repo}}
-                    ]},
-                    "branch": repo,
-                    "meta": {
-                        "format": "list",
-                        "request_time": Date.now()
-                    }
-                })
-                temp = http.post_json(
-                    self.flask.endpoint,
-                    json=request,
-                    timeout=self.flask.timeout
+            results.extend(
+                self._get_tuids(
+                    annotations_to_get,
+                    revision,
+                    annotated_files,
+                    commit=commit,
+                    repo=repo,
                 )
-            except Exception as e:
-                Log.error("TUID generation service has problems.", cause=e)
-
-            results.extend(temp.data)
+            )
 
             del annotations_to_get[:]
             del annotated_files[:]
@@ -1536,7 +1517,7 @@ class TUIDService:
         return results
 
     def insert_tuids_with_duplicates(
-        self, transaction, file, revision, new_lines, line_origins
+            self, transaction, file, revision, new_lines, line_origins
     ):
         """
         Inserts new lines while creating tuids and handles duplicate entries.
@@ -1644,8 +1625,99 @@ class TUIDService:
         ) - set(existing_tuids.keys())
         return new_lines, existing_tuids
 
+    def actual_tuid_generator(self, file, revision, annotated_object, commit, repo):
+        cont = "continue"
+        results = []
+        # Make sure we are not adding the same thing another thread
+        # added.
+        tmp_ann = self._get_annotation(revision, file, transaction=transaction)
+        if tmp_ann != None:
+            results.append((file, self.destringify_tuids(tmp_ann)))
+            return (cont, results)
+
+        # If it's not defined at this revision, we need to add it in
+        errored = False
+        if isinstance(annotated_object, (text_type, str)):
+            errored = True
+            Log.warning(
+                "{{file}} does not exist in the revision={{cset}} branch={{branch_name}}",
+                branch_name=repo,
+                cset=revision,
+                file=file,
+            )
+        elif annotated_object is None:
+            Log.warning(
+                "Unexpected error getting annotation for: {{file}} in the revision={{cset}} branch={{branch_name}}",
+                branch_name=repo,
+                cset=revision,
+                file=file,
+            )
+            errored = True
+        elif "annotate" not in annotated_object:
+            Log.warning(
+                "Missing annotate, type got: {{ann_type}}, expecting:dict returned when getting "
+                "annotation for: {{file}} in the revision {{cset}}",
+                cset=revision,
+                file=file,
+                ann_type=type(annotated_object),
+            )
+            errored = True
+
+        if errored:
+            Log.note("Inserting dummy entry...")
+            self.insert_tuid_dummy(revision, file)
+            self.insert_annotate_dummy(transaction, revision, file, commit=commit)
+            results.append((file, []))
+            return (cont, results)
+
+        # Gather all missing csets and the
+        # corresponding lines.
+        line_origins = []
+        for node in annotated_object["annotate"]:
+            cset_len12 = node["node"][:12]
+
+            # If the line added by `cset_len12` is not known
+            # add it. Use the 'abspath' field to determine the
+            # name of the file it was created in (in case it was
+            # changed). Copy to make sure we don't create a reference
+            # here.
+            line_origins.append(
+                copy.deepcopy(
+                    (node["abspath"], cset_len12, int(node["targetline"]))
+                )
+            )
+
+        # Update DB with any revisions found in annotated
+        # object that are not in the DB.
+        new_line_origins = {}
+        new_lines, existing_tuids = self.get_new_lines(line_origins)
+        if len(new_lines) > 0:
+            try:
+                new_line_origins = self.insert_tuids_with_duplicates(
+                    transaction, file, revision, new_lines, line_origins
+                )
+
+                # Format so we don't have to use [0] to get at the tuids
+                for linenum in new_line_origins:
+                    new_line_origins[linenum] = new_line_origins[linenum][0]
+            except Exception as e:
+                # Something broke for this file, ignore it and go to the
+                # next one.
+                Log.note("Failed to insert new tuids {{cause}}", cause=e)
+                return (cont, results)
+
+        tuids = []
+        for line_ind, line_origin in enumerate(line_origins):
+            line_num = line_ind + 1
+            if line_num in existing_tuids:
+                tuids.append(TuidMap(existing_tuids[line_num], line_num))
+            else:
+                tuids.append(TuidMap(new_line_origins[line_num], line_num))
+
+        return (tuids, results)
+
     def _get_tuids(
-        self, files, revision, annotated_files, commit=True, repo=None
+            self, files, revision, annotated_files, commit=True, repo=None
     ):
         """
         Returns (TUID, line) tuples for a given file at a given revision.
@@ -1664,107 +1736,21 @@ class TUIDService:
         :return: List of TuidMap objects
         """
         results = []
-        completed = True
-        with self.conn.transaction() as transaction:
-            for fcount, annotated_object in enumerate(annotated_files):
-                file = files[fcount]
-                # TODO: Replace old empty annotation if a new one is found
-                # TODO: at the same revision and if it is not empty as well.
-                # Make sure we are not adding the same thing another thread
-                # added.
-                tmp_ann = self._get_annotation(revision, file, transaction=transaction)
-                if tmp_ann != None:
-                    results.append((file, self.destringify_tuids(tmp_ann)))
-                    continue
-
-                # If it's not defined at this revision, we need to add it in
-                errored = False
-                if isinstance(annotated_object, (text_type, str)):
-                    errored = True
-                    Log.warning(
-                        "{{file}} does not exist in the revision={{cset}} branch={{branch_name}}",
-                        branch_name=repo,
-                        cset=revision,
-                        file=file,
-                    )
-                elif annotated_object is None:
-                    Log.warning(
-                        "Unexpected error getting annotation for: {{file}} in the revision={{cset}} branch={{branch_name}}",
-                        branch_name=repo,
-                        cset=revision,
-                        file=file,
-                    )
-                    errored = True
-                elif "annotate" not in annotated_object:
-                    Log.warning(
-                        "Missing annotate, type got: {{ann_type}}, expecting:dict returned when getting "
-                        "annotation for: {{file}} in the revision {{cset}}",
-                        cset=revision,
-                        file=file,
-                        ann_type=type(annotated_object),
-                    )
-                    errored = True
-
-                if errored:
-                    Log.note("Inserting dummy entry...")
-                    self.insert_tuid_dummy(revision, file)
-                    self.insert_annotate_dummy(transaction, revision, file, commit=commit)
-                    results.append((file, []))
-                    completed = False
-                    continue
-
-                # Gather all missing csets and the
-                # corresponding lines.
-                line_origins = []
-                for node in annotated_object["annotate"]:
-                    cset_len12 = node["node"][:12]
-
-                    # If the line added by `cset_len12` is not known
-                    # add it. Use the 'abspath' field to determine the
-                    # name of the file it was created in (in case it was
-                    # changed). Copy to make sure we don't create a reference
-                    # here.
-                    line_origins.append(
-                        copy.deepcopy(
-                            (node["abspath"], cset_len12, int(node["targetline"]))
-                        )
-                    )
-
-                # Update DB with any revisions found in annotated
-                # object that are not in the DB.
-                new_line_origins = {}
-                new_lines, existing_tuids = self.get_new_lines(line_origins)
-                if len(new_lines) > 0:
-                    try:
-                        new_line_origins = self.insert_tuids_with_duplicates(
-                            transaction, file, revision, new_lines, line_origins
-                        )
-
-                        # Format so we don't have to use [0] to get at the tuids
-                        for linenum in new_line_origins:
-                            new_line_origins[linenum] = new_line_origins[linenum][0]
-                    except Exception as e:
-                        # Something broke for this file, ignore it and go to the
-                        # next one.
-                        Log.note("Failed to insert new tuids {{cause}}", cause=e)
-                        completed = False
-                        continue
-
-                tuids = []
-                for line_ind, line_origin in enumerate(line_origins):
-                    line_num = line_ind + 1
-                    if line_num in existing_tuids:
-                        tuids.append(TuidMap(existing_tuids[line_num], line_num))
-                    else:
-                        tuids.append(TuidMap(new_line_origins[line_num], line_num))
-
-                str_tuids = self.stringify_tuids(tuids)
-                entry = [(revision, file, str_tuids)]
-
+        for fcount, annotated_object in enumerate(annotated_files):
+            file = files[fcount]
+            # TODO: Replace old empty annotation if a new one is found
+            # TODO: at the same revision and if it is not empty as well.
+            tuids, results = self.actual_tuid_generator(transaction, file, revision, annotated_object, commit, repo)
+            if isinstance(tuids, str):
+                results.extend(results)
+                continue
+            str_tuids = self.stringify_tuids(tuids)
+            entry = [(revision, file, str_tuids)]
+            with self.conn.transaction() as transaction:
                 self.insert_annotations(transaction, entry)
-                results.append((copy.deepcopy(file), copy.deepcopy(tuids)))
+            results.append((copy.deepcopy(file), copy.deepcopy(tuids)))
 
-        return results, completed
+        return results
 
     def _daemon(self, please_stop, only_coverage_revisions=False):
         """
@@ -1813,11 +1799,11 @@ class TUIDService:
                 while not found_last_frontier:
                     # Get a changelog
                     clog_url = (
-                        str(HG_URL)
-                        + "/"
-                        + self.config.hg.branch
-                        + "/json-log/"
-                        + final_rev
+                            str(HG_URL)
+                            + "/"
+                            + self.config.hg.branch
+                            + "/json-log/"
+                            + final_rev
                     )
                     try:
                         clog_obj = self.get_clog(clog_url)
