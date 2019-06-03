@@ -295,6 +295,11 @@ class TUIDService:
         # the annotations table.
         return "\n".join([",".join([str(x.tuid), str(x.line)]) for x in tuid_list])
 
+    def int(value):
+        if not isinstance(value, int):
+            Log.error("expecting an int")
+        return value
+
     def destringify_tuids(self, tuids_string):
         # Builds up TuidMap list from annotation cache entry.
         try:
@@ -304,6 +309,7 @@ class TUIDService:
                 if not line:
                     continue
                 tuid, linenum = line.split(",")
+
                 line_origins.append(TuidMap(int(tuid), int(linenum)))
             return line_origins
         except Exception as e:
@@ -859,10 +865,10 @@ class TUIDService:
             ids = []
             records = []
             for inserts_list in list_to_insert:
-                for tuid, file, revision, line in [inserts_list]:
-                    record = self.make_record(tuid, file, revision, line)
-                    records.append(record)
-                    ids.append(record.value._id)
+                tuid, file, revision, line = inserts_list
+                record = self.make_record(tuid, file, revision, line)
+                records.append(record)
+                ids.append(record.value._id)
             self.temporal.extend(records)
             query = self._query_result_size({"_id": ids})
             self.temporal.refresh()
