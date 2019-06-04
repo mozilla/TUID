@@ -295,11 +295,6 @@ class TUIDService:
         # the annotations table.
         return "\n".join([",".join([str(x.tuid), str(x.line)]) for x in tuid_list])
 
-    def int(value):
-        if not isinstance(value, int):
-            Log.error("expecting an int")
-        return value
-
     def destringify_tuids(self, tuids_string):
         # Builds up TuidMap list from annotation cache entry.
         try:
