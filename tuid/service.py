@@ -293,19 +293,18 @@ class TUIDService:
     def stringify_tuids(self, tuid_list):
         # Turns the TuidMap list to a string for storage in
         # the annotations table.
-        return "\n".join([",".join([str(x.tuid), str(x.line)]) for x in tuid_list])
+        tuid_list.sort(key=lambda x: x.line)
+        return "\n".join([str(x.tuid) for x in tuid_list])
 
     def destringify_tuids(self, tuids_string):
         # Builds up TuidMap list from annotation cache entry.
         try:
             lines = tuids_string.splitlines()
             line_origins = []
-            for line in lines:
-                if not line:
+            for line_num, tuid in enumerate(lines):
+                if not tuid:
                     continue
-                tuid, linenum = line.split(",")
-
-                line_origins.append(TuidMap(int(tuid), int(linenum)))
+                line_origins.append(TuidMap(int(tuid), int(line_num+1)))
             return line_origins
         except Exception as e:
             Log.error(
