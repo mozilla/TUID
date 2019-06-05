@@ -23,7 +23,7 @@ from mo_logs.exceptions import suppress_exception
 from mo_threads import Till, Thread, Lock, Queue, Signal
 from mo_threads.threads import ALL
 from mo_times.durations import DAY
-from pyLibrary.env import http,elasticsearch
+from pyLibrary.env import http, elasticsearch
 from pyLibrary.sql import sql_list, quote_set
 from tuid import sql
 from tuid.util import HG_URL
@@ -175,6 +175,19 @@ class Clogger:
             query = {"size": 0, "aggs": {"value": {"max": {"field": "revnum"}}}}
         return query
 
+    def _query_result_size(self, terms):
+        query = {"size": 0, "query": {"terms": terms}}
+        return query
+
+    def _make_record_csetlog(self, revnum, revision, timestamp):
+        record = {
+            "_id": revnum,
+            "revnum": revnum,
+            "revision": revision,
+            "timestamp": timestamp,
+        }
+        return {"value": record}
+
     def start_backfilling(self):
         if not self.backfill_thread:
             self.backfill_thread = Thread.run(
@@ -290,9 +303,9 @@ class Clogger:
         query = {
             "_source": {"includes": ["revnum"]},
             "query": {"bool": {"must": [{"term": {"revnum": rev}}]}},
-            "size": 1,
+            "size": 0,
         }
-        temp = len(self.csetlog.search(query).hits.hits)
+        temp = self.csetlog.search(query).hits.total
         return temp
 
     def _get_revnum_range(self, revnum1, revnum2):
@@ -315,7 +328,6 @@ class Clogger:
         for r in result:
             temp.append((r._source.revnum, r._source.revision))
         return temp
-
 
     def check_for_maintenance(self):
         """
@@ -376,24 +388,23 @@ class Clogger:
             if not tmp:
                 fmt_insert_list.append(cset_entry)
 
-        for _, tmp_insert_list in jx.groupby(fmt_insert_list, size=SQL_CSET_BATCH_SIZE):
-            for revnum, revision, timestamp in tmp_insert_list:
-                record = {
-                    "_id": revnum,
-                    "revnum": revnum,
-                    "revision": revision,
-                    "timestamp": timestamp,
-                }
-                self.csetlog.add({"value": record})
-                self.csetlog.refresh()
-                while not self._get_revnum_exists(revnum):
-                    Till(seconds=0.001).wait()
+        # for _, tmp_insert_list in jx.groupby(fmt_insert_list, size=SQL_CSET_BATCH_SIZE):
+        records = []
+        revnums = []
+        for revnum, revision, timestamp in fmt_insert_list:
+            records.append(self._make_record_csetlog(revnum, revision, timestamp))
+            revnums.append(revnum)
+        self.csetlog.extend(records)
+        query = self._query_result_size({"revnum": revnums})
+        self.csetlog.refresh()
+        while self.csetlog.search(query).hits.total != len(revnums):
+            Till(seconds=0.001).wait()
+            self.csetlog.refresh()
 
         # Start a maintenance run if needed
         if self.check_for_maintenance():
             Log.note("Scheduling maintenance run on clogger.")
             self.maintenance_signal.go()
-
 
     def _fill_in_range(
         self, parent_cset, child_cset, timestamp=False, number_forward=True
@@ -524,13 +535,7 @@ class Clogger:
                 )
                 + 1
             )
-            record = {
-                "_id": max_revnum,
-                "revnum": max_revnum,
-                "revision": new_rev,
-                "timestamp": -1,
-            }
-            self.csetlog.add({"value": record})
+            self.csetlog.add(self._make_record_csetlog(max_revnum, new_rev, -1))
             self.csetlog.refresh()
             while not self._get_revnum_exists(max_revnum):
                 Till(seconds=0.001).wait()
@@ -816,27 +821,29 @@ class Clogger:
 
                     # Update table and schedule a deletion
                     if modified:
+                        records = []
+                        revnums = []
                         for revnum, revision, timestamp in new_data2:
-                            record = {
-                                "_id": revnum,
-                                "revnum": revnum,
-                                "revision": revision,
-                                "timestamp": timestamp,
-                            }
+                            records.append(
+                                self._make_record_csetlog(revnum, revision, timestamp)
+                            )
+                            revnums.append(revnum)
                             if not self._get_revnum_exists(revnum):
                                 filter = {"term": {"revnum": revnum}}
                                 self.csetlog.delete_record(filter)
                                 self.csetlog.refresh()
                                 query = {"query": {"term": {"revnum": revnum}}}
                                 result = self.csetlog.search(query)
-                                while len(result.hits.hits) != 0:
+                                while result.hits.total != 0:
                                     Till(seconds=0.001).wait()
                                     result = self.csetlog.search(query)
 
-                            self.csetlog.add({"value": record})
+                        self.csetlog.extend(records)
+                        query = self._query_result_size({"revnum": revnums})
+                        self.csetlog.refresh()
+                        while self.csetlog.search(query).hits.total != len(revnums):
+                            Till(seconds=0.001).wait()
                             self.csetlog.refresh()
-                            while not self._get_revnum_exists(revnum):
-                                Till(seconds=0.001).wait()
 
                     if not deleted_data:
                         continue
@@ -944,7 +951,7 @@ class Clogger:
                         self.csetlog.refresh()
                         query = {"query": {"terms": {"revision": csets_to_del}}}
                         result = self.csetlog.search(query)
-                        while len(result.hits.hits) != 0:
+                        while result.hits.total != 0:
                             Till(seconds=0.001).wait()
                             result = self.csetlog.search(query)
 
