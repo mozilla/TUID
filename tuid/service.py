@@ -31,6 +31,7 @@ from tuid import sql
 from tuid.statslogger import StatsLogger
 from tuid.counter import Counter
 from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL
+from mo_json import json2value, value2json
 
 import tuid.clogger
 
@@ -294,17 +295,20 @@ class TUIDService:
         # Turns the TuidMap list to a string for storage in
         # the annotations table.
         tuid_list.sort(key=lambda x: x.line)
-        return "\n".join([str(x.tuid) for x in tuid_list])
+        ordered_tuid = [-1] * len(tuid_list)
+        for tuid, line in tuid_list:
+            ordered_tuid[line-1] = tuid
+
+        return value2json(ordered_tuid)
 
     def destringify_tuids(self, tuids_string):
         # Builds up TuidMap list from annotation cache entry.
         try:
-            lines = tuids_string.splitlines()
-            line_origins = []
-            for line_num, tuid in enumerate(lines):
-                if not tuid:
-                    continue
-                line_origins.append(TuidMap(int(tuid), int(line_num+1)))
+            line_origins = [
+                TuidMap(tuid, line+1)
+                for line, tuid in enumerate(json2value(tuids_string if tuids_string else '[]'))
+            ]
+
             return line_origins
         except Exception as e:
             Log.error(
