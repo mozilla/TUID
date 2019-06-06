@@ -111,6 +111,7 @@ class AnnotateFile(SourceFile, object):
                     self.tuid_service.temporal.refresh()
                     while self.tuid_service._get_tuid(file, revision, line) == None:
                         Till(seconds=0.001).wait()
+                        self.tuid_service.temporal.refresh()
             except Exception as e:
                 Log.note(
                     "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
