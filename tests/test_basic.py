@@ -657,7 +657,7 @@ def test_one_http_call_required(service):
     http.DEBUG = False
 
     # assert num_http_calls <= 3  # 2 DIFFS FROM ES, AND ONE CALL TO hg.mo
-    assert timer.duration.seconds < 35
+    assert timer.duration.seconds < 30
     assert len(proc_files) == len(f_n_tuids)
 
     # Check removed files

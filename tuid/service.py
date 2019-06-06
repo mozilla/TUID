@@ -344,27 +344,29 @@ class TUIDService:
         )
 
     def stringify_tuids(self, tuid_list):
-        # Turns the TuidMap list to a string for storage in
-        # the annotations table.
+        # Turns the TuidMap list to a sorted list
         tuid_list.sort(key=lambda x: x.line)
         ordered_tuid = [-1] * len(tuid_list)
+        #checks any line number is missing
         for tuid, line in tuid_list:
-            ordered_tuid[line-1] = tuid
+            ordered_tuid[line - 1] = tuid
 
-        return value2json(ordered_tuid)
+        return ordered_tuid
 
-    def destringify_tuids(self, tuids_string):
+    def destringify_tuids(self, tuids_list):
         # Builds up TuidMap list from annotation cache entry.
         try:
             line_origins = [
-                TuidMap(tuid, line+1)
-                for line, tuid in enumerate(json2value(tuids_string if tuids_string else '[]'))
+                TuidMap(tuid, line + 1)
+                for line, tuid in enumerate(
+                    tuids_list
+                )
             ]
 
             return line_origins
         except Exception as e:
             Log.error(
-                "Invalid entry in tuids list:\n{{list}}", list=tuids_string, cause=e
+                "Invalid entry in tuids list:\n{{list}}", list=tuids_list, cause=e
             )
 
     # Gets a diff from a particular revision from https://hg.mozilla.org/
@@ -1119,7 +1121,6 @@ class TUIDService:
             # added by another thread.
             anns_added_by_other_thread = {}
             if len(ann_inserts) > 0:
-                ann_inserts = list(set(ann_inserts))
                 for _, tmp_inserts in jx.groupby(ann_inserts, size=SQL_ANN_BATCH_SIZE):
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
@@ -1418,7 +1419,6 @@ class TUIDService:
 
             anns_added_by_other_thread = {}
             if len(ann_inserts) > 0:
-                ann_inserts = list(set(ann_inserts))
                 for _, tmp_inserts in jx.groupby(ann_inserts, size=SQL_ANN_BATCH_SIZE):
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
