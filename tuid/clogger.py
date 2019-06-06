@@ -775,9 +775,9 @@ class Clogger:
                         filter = {"terms": {"revision": annrevs_to_del}}
                         self.tuid_service.annotations.delete_record(filter)
                         self.tuid_service.annotations.refresh()
-                        query = {"query": {"terms": {"revision": annrevs_to_del}}}
+                        query = {"size":0, "query": {"terms": {"revision": annrevs_to_del}}}
                         result = self.tuid_service.annotations.search(query)
-                        while len(result.hits.hits) != 0:
+                        while result.hits.total != 0:
                             Till(seconds=0.001).wait()
                             result = self.tuid_service.annotations.search(query)
 
@@ -937,7 +937,7 @@ class Clogger:
                         self.tuid_service.annotations.refresh()
                         query = {"query": {"terms": {"revision": csets_to_del}}}
                         result = self.tuid_service.annotations.search(query)
-                        while len(result.hits.hits) != 0:
+                        while result.hits.total != 0:
                             Till(seconds=0.001).wait()
                             result = self.tuid_service.annotations.search(query)
 

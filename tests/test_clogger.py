@@ -253,9 +253,9 @@ def test_partial_tipfilling(clogger):
     filter = {"bool": {"must": [{"range": {"revnum": {"gte": max_tip_num - 5}}}]}}
     clogger.csetlog.delete_record(filter)
     clogger.csetlog.refresh()
-    query = {"query": filter}
+    query = {"size":0, "query": filter}
     result = clogger.csetlog.search(query)
-    while len(result.hits.hits) != 0:
+    while result.hits.total != 0:
         Till(seconds=0.01).wait()
         result = clogger.csetlog.search(query)
 
@@ -317,9 +317,9 @@ def test_get_revnum_range_tipfill(clogger):
     filter = {"bool": {"must": [{"range": {"revnum": {"gte": tip_num - 5}}}]}}
     clogger.csetlog.delete_record(filter)
     clogger.csetlog.refresh()
-    query = {"query": filter}
+    query = {"size":0, "query": filter}
     result = clogger.csetlog.search(query)
-    while len(result.hits.hits) != 0:
+    while result.hits.total != 0:
         Till(seconds=0.001).wait()
         result = clogger.csetlog.search(query)
 
@@ -363,7 +363,7 @@ def test_get_revnum_range_tipnback(clogger):
         clogger.csetlog.refresh()
         query = {"query": filter}
         result = clogger.csetlog.search(query)
-        while len(result.hits.hits) != 0:
+        while result.hits.total != 0:
             Till(seconds=0.001).wait()
             result = clogger.csetlog.search(query)
 
@@ -442,7 +442,12 @@ def test_maintenance_and_deletion(clogger):
         )
 
         for data in inserts_list_annotations:
-            record = {"_id":data[1]+data[0], "revision": data[1], "file": data[0], "annotation": data[2] }
+            record = {
+                "_id": data[1] + data[0],
+                "revision": data[1],
+                "file": data[0],
+                "annotation": data[2],
+            }
             clogger.tuid_service.annotations.add({"value": record})
             clogger.tuid_service.annotations.refresh()
             while not clogger.tuid_service._annotation_record_exists(data[1], data[0]):
@@ -478,11 +483,12 @@ def test_maintenance_and_deletion(clogger):
     assert not latest_rev
 
     # Check that annotations were deleted.
-    query = {"_source": {"includes": ["revision"]},
-             "query": {
-                 "bool": {"must": [{"term": {"revision": new_tail}}]}},
-             "size": 1}
-    annotates = len(clogger.tuid_service.annotations.search(query).hits.hits)
+    query = {
+        "_source": {"includes": ["revision"]},
+        "query": {"bool": {"must": [{"term": {"revision": new_tail}}]}},
+        "size": 0,
+    }
+    annotates = clogger.tuid_service.annotations.search(query).hits.total
     assert not annotates
 
 
@@ -536,7 +542,12 @@ def test_deleting_old_annotations(clogger):
         )
 
         for data in inserts_list_annotations:
-            record = {"_id":data[0]+data[1], "file": data[0], "revision": data[1], "annotation": data[2] }
+            record = {
+                "_id": data[0] + data[1],
+                "file": data[0],
+                "revision": data[1],
+                "annotation": data[2],
+            }
             clogger.tuid_service.annotations.add({"value": record})
             clogger.tuid_service.annotations.refresh()
             while not clogger.tuid_service._annotation_record_exists(data[1], data[0]):
@@ -564,11 +575,12 @@ def test_deleting_old_annotations(clogger):
         latest_rev = clogger.conn.get_one(
             "SELECT 1 FROM latestFileMod WHERE revision=?", (tail_cset,)
         )
-        query = {"_source": {"includes": ["revision"]},
-                 "query": {
-                     "bool": {"must": [{"term": {"revision": tail_cset}}]}},
-                 "size": 1}
-        annotates = len(clogger.tuid_service.annotations.search(query).hits.hits)
+        query = {
+            "_source": {"includes": ["revision"]},
+            "query": {"bool": {"must": [{"term": {"revision": tail_cset}}]}},
+            "size": 0,
+        }
+        annotates = clogger.tuid_service.annotations.search(query).hits.total
         if not annotates and not latest_rev:
             break
         tmp_num_trys += 1

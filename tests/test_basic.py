@@ -150,7 +150,7 @@ def test_tryrepo_tuids(service):
 
 def test_multithread_service(service):
     num_tests = 10
-    timeout_seconds = 600
+    timeout_seconds = 60
     revision = "d63ed14ed622"
     test_file = ["devtools/server/tests/browser/browser_markers-docloading-03.js"]
 
@@ -434,9 +434,9 @@ def test_one_addition_many_files(service):
         filter = {"terms": {"file": test_file}}
         service.annotations.delete_record(filter)
         service.annotations.refresh()
-        query = {"query": {"terms": {"file": test_file}}}
+        query = {"size":0, "query": {"terms": {"file": test_file}}}
         result = service.annotations.search(query)
-        while len(result.hits.hits) != 0:
+        while result.hits.total != 0:
             Till(seconds=0.001).wait()
             result = service.annotations.search(query)
 
@@ -633,9 +633,9 @@ def test_one_http_call_required(service):
         filter = {"terms": {"file": proc_files}}
         service.annotations.delete_record(filter)
         service.annotations.refresh()
-        query = {"query": {"terms": {"file": proc_files}}}
+        query = {"size":0, "query": {"terms": {"file": proc_files}}}
         result = service.annotations.search(query)
-        while len(result.hits.hits) != 0:
+        while result.hits.total != 0:
             Till(seconds=0.001).wait()
             result = service.annotations.search(query)
 
@@ -657,8 +657,7 @@ def test_one_http_call_required(service):
     http.DEBUG = False
 
     # assert num_http_calls <= 3  # 2 DIFFS FROM ES, AND ONE CALL TO hg.mo
-    assert timer.duration.seconds < 30
-
+    assert timer.duration.seconds < 35
     assert len(proc_files) == len(f_n_tuids)
 
     # Check removed files
@@ -720,9 +719,9 @@ def test_out_of_order_get_tuids_from_files(service):
         filter = {"term": {"file": test_file[0]}}
         service.annotations.delete_record(filter)
         service.annotations.refresh()
-        query = {"query": {"term": {"file": test_file[0]}}}
+        query = {"size":0, "query": {"term": {"file": test_file[0]}}}
         result = service.annotations.search(query)
-        while len(result.hits.hits) != 0:
+        while result.hits.total != 0:
             Till(seconds=0.001).wait()
             result = service.annotations.search(query)
 
@@ -767,9 +766,9 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
         filter = {"term": {"file": test_file[0]}}
         service.annotations.delete_record(filter)
         service.annotations.refresh()
-        query = {"query": {"term": {"file": test_file[0]}}}
+        query = {"size":0, "query": {"term": {"file": test_file[0]}}}
         result = service.annotations.search(query)
-        while len(result.hits.hits) != 0:
+        while result.hits.total != 0:
             Till(seconds=0.001).wait()
             result = service.annotations.search(query)
 
@@ -879,9 +878,9 @@ def test_merged_changes(service):
         filter = {"term": {"file": test_files[0]}}
         service.annotations.delete_record(filter)
         service.annotations.refresh()
-        query = {"query": {"term": {"file": test_files[0]}}}
+        query = {"size":0, "query": {"term": {"file": test_files[0]}}}
         result = service.annotations.search(query)
-        while len(result.hits.hits) != 0:
+        while result.hits.total != 0:
             Till(seconds=0.001).wait()
             result = service.annotations.search(query)
 
@@ -931,9 +930,9 @@ def test_very_distant_files(service):
         filter = {"term": {"revision": new_rev}}
         service.annotations.delete_record(filter)
         service.annotations.refresh()
-        query = {"query": {"term": {"revision": new_rev}}}
+        query = {"size":0, "query": {"term": {"revision": new_rev}}}
         result = service.annotations.search(query)
-        while len(result.hits.hits) != 0:
+        while result.hits.total != 0:
             Till(seconds=0.001).wait()
             result = service.annotations.search(query)
         for file in test_files:

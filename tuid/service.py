@@ -80,7 +80,9 @@ class TUIDService:
 
             self.esconfig = self.config.esservice
             self.es_temporal = elasticsearch.Cluster(kwargs=self.esconfig.temporal)
-            self.es_annotations = elasticsearch.Cluster(kwargs=self.esconfig.annotations)
+            self.es_annotations = elasticsearch.Cluster(
+                kwargs=self.esconfig.annotations
+            )
 
             if not self.conn.get_one(
                 "SELECT name FROM sqlite_master WHERE type='table';"
@@ -223,9 +225,15 @@ class TUIDService:
     def _dummy_annotate_exists(self, transaction, file_name, rev):
         # True if dummy, false if not.
         # None means there is no entry.
-        query = { "_source": {"includes": ["annotation"]},
-                  "query": {"bool": {"must": [{"term": {"file": file_name}}, {"term": {"revision": rev}}]}},
-                  "size": 1}
+        query = {
+            "_source": {"includes": ["annotation"]},
+            "query": {
+                "bool": {
+                    "must": [{"term": {"file": file_name}}, {"term": {"revision": rev}}]
+                }
+            },
+            "size": 1,
+        }
         temp = self.annotations.search(query).hits.total
         return 0 != temp
 
@@ -241,10 +249,10 @@ class TUIDService:
 
     def _make_record_annotations(self, revision, file, annotation):
         record = {
-            "_id":revision+file,
+            "_id": revision + file,
             "revision": revision,
             "file": file,
-            "annotation": annotation
+            "annotation": annotation,
         }
         return {"value": record}
 
@@ -284,18 +292,28 @@ class TUIDService:
             self.annotations.refresh()
 
     def _annotation_record_exists(self, rev, file):
-        query = {"_source": {"includes": ["revision"]},
-                 "query": {
-                     "bool": {"must": [{"term": {"revision": rev}}, {"term": {"file": file}}]}},
-                 "size": 1}
+        query = {
+            "_source": {"includes": ["revision"]},
+            "query": {
+                "bool": {
+                    "must": [{"term": {"revision": rev}}, {"term": {"file": file}}]
+                }
+            },
+            "size": 1,
+        }
         temp = self.annotations.search(query).hits.hits[0]._source.revision
         return temp
 
     def _get_annotation(self, rev, file, transaction=None):
-        query = {"_source": {"includes": ["annotation"]},
-                 "query": {
-                     "bool": {"must": [{"term": {"revision": rev}}, {"term": {"file": file}}]}},
-                 "size": 1}
+        query = {
+            "_source": {"includes": ["annotation"]},
+            "query": {
+                "bool": {
+                    "must": [{"term": {"revision": rev}}, {"term": {"file": file}}]
+                }
+            },
+            "size": 1,
+        }
         temp = self.annotations.search(query).hits.hits[0]._source.annotation
         return temp
 
@@ -316,7 +334,6 @@ class TUIDService:
         }
         temp = self.temporal.search(query).hits.hits[0]._source.tuid
         return temp
-
 
     def _get_latest_revision(self, file, transaction):
         # Returns the latest revision that we
@@ -1682,102 +1699,105 @@ class TUIDService:
         :param repo: The branch to get tuids from
         :return: List of TuidMap objects
         """
-        results = []
-        for fcount, annotated_object in enumerate(annotated_files):
-            file = files[fcount]
-            # TODO: Replace old empty annotation if a new one is found
-            # TODO: at the same revision and if it is not empty as well.
-            # Make sure we are not adding the same thing another thread
-            # added.
-            tmp_ann = self._get_annotation(revision, file, transaction=transaction)
-            if tmp_ann != None:
-                results.append((file, self.destringify_tuids(tmp_ann)))
-                continue
-
-            # If it's not defined at this revision, we need to add it in
-            errored = False
-            if isinstance(annotated_object, (text_type, str)):
-                errored = True
-                Log.warning(
-                    "{{file}} does not exist in the revision={{cset}} branch={{branch_name}}",
-                    branch_name=repo,
-                    cset=revision,
-                    file=file,
-                )
-            elif annotated_object is None:
-                Log.warning(
-                    "Unexpected error getting annotation for: {{file}} in the revision={{cset}} branch={{branch_name}}",
-                    branch_name=repo,
-                    cset=revision,
-                    file=file,
-                )
-                errored = True
-            elif "annotate" not in annotated_object:
-                Log.warning(
-                    "Missing annotate, type got: {{ann_type}}, expecting:dict returned when getting "
-                    "annotation for: {{file}} in the revision {{cset}}",
-                    cset=revision,
-                    file=file,
-                    ann_type=type(annotated_object),
-                )
-                errored = True
-
-            if errored:
-                Log.note("Inserting dummy entry...")
-                self.insert_tuid_dummy(revision, file)
-                self.insert_annotate_dummy(transaction, revision, file, commit=commit)
-                results.append((file, []))
-                continue
-
-            # Gather all missing csets and the
-            # corresponding lines.
-            line_origins = []
-            for node in annotated_object["annotate"]:
-                cset_len12 = node["node"][:12]
-
-                # If the line added by `cset_len12` is not known
-                # add it. Use the 'abspath' field to determine the
-                # name of the file it was created in (in case it was
-                # changed). Copy to make sure we don't create a reference
-                # here.
-                line_origins.append(
-                    copy.deepcopy(
-                        (node["abspath"], cset_len12, int(node["targetline"]))
-                    )
-                )
-
-            # Update DB with any revisions found in annotated
-            # object that are not in the DB.
-            new_line_origins = {}
-            new_lines, existing_tuids = self.get_new_lines(line_origins)
-            if len(new_lines) > 0:
-                try:
-                    new_line_origins = self.insert_tuids_with_duplicates(
-                        transaction, file, revision, new_lines, line_origins
-                    )
-
-                    # Format so we don't have to use [0] to get at the tuids
-                    for linenum in new_line_origins:
-                        new_line_origins[linenum] = new_line_origins[linenum][0]
-                except Exception as e:
-                    # Something broke for this file, ignore it and go to the
-                    # next one.
-                    Log.note("Failed to insert new tuids {{cause}}", cause=e)
+        with self.temporal_locker:
+            results = []
+            for fcount, annotated_object in enumerate(annotated_files):
+                file = files[fcount]
+                # TODO: Replace old empty annotation if a new one is found
+                # TODO: at the same revision and if it is not empty as well.
+                # Make sure we are not adding the same thing another thread
+                # added.
+                tmp_ann = self._get_annotation(revision, file, transaction=transaction)
+                if tmp_ann != None:
+                    results.append((file, self.destringify_tuids(tmp_ann)))
                     continue
 
-            tuids = []
-            for line_ind, line_origin in enumerate(line_origins):
-                line_num = line_ind + 1
-                if line_num in existing_tuids:
-                    tuids.append(TuidMap(existing_tuids[line_num], line_num))
-                else:
-                    tuids.append(TuidMap(new_line_origins[line_num], line_num))
+                # If it's not defined at this revision, we need to add it in
+                errored = False
+                if isinstance(annotated_object, (text_type, str)):
+                    errored = True
+                    Log.warning(
+                        "{{file}} does not exist in the revision={{cset}} branch={{branch_name}}",
+                        branch_name=repo,
+                        cset=revision,
+                        file=file,
+                    )
+                elif annotated_object is None:
+                    Log.warning(
+                        "Unexpected error getting annotation for: {{file}} in the revision={{cset}} branch={{branch_name}}",
+                        branch_name=repo,
+                        cset=revision,
+                        file=file,
+                    )
+                    errored = True
+                elif "annotate" not in annotated_object:
+                    Log.warning(
+                        "Missing annotate, type got: {{ann_type}}, expecting:dict returned when getting "
+                        "annotation for: {{file}} in the revision {{cset}}",
+                        cset=revision,
+                        file=file,
+                        ann_type=type(annotated_object),
+                    )
+                    errored = True
 
-            str_tuids = self.stringify_tuids(tuids)
-            entry = [(revision, file, str_tuids)]
+                if errored:
+                    Log.note("Inserting dummy entry...")
+                    self.insert_tuid_dummy(revision, file)
+                    self.insert_annotate_dummy(
+                        transaction, revision, file, commit=commit
+                    )
+                    results.append((file, []))
+                    continue
 
-            self.insert_annotations(transaction, entry)
-            results.append((copy.deepcopy(file), copy.deepcopy(tuids)))
+                # Gather all missing csets and the
+                # corresponding lines.
+                line_origins = []
+                for node in annotated_object["annotate"]:
+                    cset_len12 = node["node"][:12]
+
+                    # If the line added by `cset_len12` is not known
+                    # add it. Use the 'abspath' field to determine the
+                    # name of the file it was created in (in case it was
+                    # changed). Copy to make sure we don't create a reference
+                    # here.
+                    line_origins.append(
+                        copy.deepcopy(
+                            (node["abspath"], cset_len12, int(node["targetline"]))
+                        )
+                    )
+
+                # Update DB with any revisions found in annotated
+                # object that are not in the DB.
+                new_line_origins = {}
+                new_lines, existing_tuids = self.get_new_lines(line_origins)
+                if len(new_lines) > 0:
+                    try:
+                        new_line_origins = self.insert_tuids_with_duplicates(
+                            transaction, file, revision, new_lines, line_origins
+                        )
+
+                        # Format so we don't have to use [0] to get at the tuids
+                        for linenum in new_line_origins:
+                            new_line_origins[linenum] = new_line_origins[linenum][0]
+                    except Exception as e:
+                        # Something broke for this file, ignore it and go to the
+                        # next one.
+                        Log.note("Failed to insert new tuids {{cause}}", cause=e)
+                        continue
+
+                tuids = []
+                for line_ind, line_origin in enumerate(line_origins):
+                    line_num = line_ind + 1
+                    if line_num in existing_tuids:
+                        tuids.append(TuidMap(existing_tuids[line_num], line_num))
+                    else:
+                        tuids.append(TuidMap(new_line_origins[line_num], line_num))
+
+                str_tuids = self.stringify_tuids(tuids)
+                entry = [(revision, file, str_tuids)]
+
+                self.insert_annotations(transaction, entry)
+                results.append((copy.deepcopy(file), copy.deepcopy(tuids)))
 
         return results
 
@@ -1940,7 +1960,7 @@ ANNOTATIONS_SCHEMA = {
             "properties": {
                 "revision": {"type": "keyword", "store": True},
                 "file": {"type": "keyword", "store": True},
-                "annotation": {"type": "keyword", "ignore_above": 20, "store": True}
+                "annotation": {"type": "keyword", "ignore_above": 20, "store": True},
             },
         }
     },
