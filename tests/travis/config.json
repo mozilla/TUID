@@ -45,6 +45,32 @@
                 "debug": false,
                 "limit_replicas": false
             }
+        },
+        "esclogger": {
+            "csetLog": {
+                "host": "http://localhost",
+                "port": 9200,
+                "index": "csetlog",
+                "type": "csetlogtype",
+                "typed": false,
+                "timeout": 300,
+                "consistency": "one",
+                "debug": false,
+                "limit_replicas": false
+            }
+        },
+        "esservice": {
+            "temporal": {
+                "host": "http://localhost",
+                "port": 9200,
+                "index": "temporal",
+                "type": "temporaltype",
+                "typed": false,
+                "timeout": 300,
+                "consistency": "one",
+                "debug": false,
+                "limit_replicas": false
+            }
         }
     },
     "flask": {

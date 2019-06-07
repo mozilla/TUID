@@ -28,16 +28,18 @@ _conn = None
 DEBUG = False
 HG_URL = "https://hg.mozilla.org/"
 
+
 @pytest.fixture
 def clogger(config, new_db):
     global _clogger
     global _conn
     _conn = sql.Sql(config.tuid.database.name)
-    if new_db == 'yes':
+    if new_db == "yes":
         return Clogger(conn=_conn, new_table=True, kwargs=config)
-    elif new_db == 'no':
+    elif new_db == "no":
         if _clogger is None:
             _clogger = Clogger(conn=_conn, new_table=True, kwargs=config)
+        _clogger.csetlog.refresh()
         return _clogger
     else:
         Log.error("expecting 'yes' or 'no'")
@@ -58,15 +60,27 @@ def test_tipfilling(clogger):
     num_trys = 50
     wait_time = 2
     current_tip = None
-    with clogger.conn.transaction() as t:
-        current_tip = t.get_one("SELECT max(revnum) AS revnum, revision FROM csetLog")[1]
-        t.execute("DELETE FROM csetLog")
+    query = {
+        "_source": {"includes": ["revision", "revnum"]},
+        "sort": [{"revnum": {"order": "desc"}}],
+        "size": 1,
+    }
+    result = clogger.csetlog.search(query)
+    current_tip = result.hits.hits[0]._source.revision
+
+    filter = {"match_all": {}}
+    clogger.csetlog.delete_record(filter)
+    clogger.csetlog.refresh()
 
     clogger.disable_tipfilling = False
 
     new_tip = None
     while num_trys > 0:
-        new_tip = clogger.conn.get_one("SELECT max(revnum) AS revnum, revision FROM csetLog")
+        result = clogger.csetlog.search(query)
+        new_tip = (
+            result.hits.hits[0]._source.revnum,
+            result.hits.hits[0]._source.revision,
+        )
         if new_tip:
             if current_tip == new_tip[1]:
                 new_tip = new_tip[1]
@@ -88,21 +102,34 @@ def test_backfilling_to_revision(clogger):
     wait_time = 2
     num_to_go_back = 10
 
-    oldest_revnum, oldest_rev = clogger.conn.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")
+    query = {
+        "_source": {"includes": ["revision", "revnum"]},
+        "sort": [{"revnum": {"order": "asc"}}],
+        "size": 1,
+    }
+    result = clogger.csetlog.search(query)
+    oldest_revnum = result.hits.hits[0]._source.revnum
+    oldest_rev = result.hits.hits[0]._source.revision
 
     new_old_rev = None
-    clog_url = HG_URL + clogger.config.hg.branch + '/' + 'json-log/' + oldest_rev
-    clog_obj_list = list(clogger._get_clog(clog_url)['changesets'])
+    clog_url = HG_URL + clogger.config.hg.branch + "/" + "json-log/" + oldest_rev
+    clog_obj_list = list(clogger._get_clog(clog_url)["changesets"])
     for count, clog_obj in enumerate(clog_obj_list[1:]):
         if count + 1 >= num_to_go_back:
-            new_old_rev = clog_obj['node'][:12]
+            new_old_rev = clog_obj["node"][:12]
             break
 
     clogger.csets_todo_backwards.add((new_old_rev, True))
 
     new_ending = None
     while num_trys > 0:
-        new_ending = clogger.conn.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")[1]
+        query = {
+            "_source": {"includes": ["revision", "revnum"]},
+            "sort": [{"revnum": {"order": "asc"}}],
+            "size": 1,
+        }
+        result = clogger.csetlog.search(query)
+        new_ending = result.hits.hits[0]._source.revision
         DEBUG and Log.note("{{data}}", data=(oldest_rev, new_old_rev, new_ending))
         if new_ending == new_old_rev:
             break
@@ -114,14 +141,25 @@ def test_backfilling_to_revision(clogger):
     assert new_old_rev == new_ending
 
     expected_old_revnum = oldest_revnum
-    with clogger.conn.transaction() as t:
-        old_oldest_revnum = t.get_one("SELECT revnum FROM csetLog WHERE revision=?", (oldest_rev,))[0]
+    query = {
+        "_source": {"includes": ["revnum"]},
+        "query": {"bool": {"must": [{"term": {"revision": oldest_rev}}]}},
+        "size": 1,
+    }
+    result = clogger.csetlog.search(query)
+    old_oldest_revnum = result.hits.hits[0]._source.revnum
     assert expected_old_revnum == old_oldest_revnum
 
     # Check that revnum's were properly handled
     expected_new_revnum = oldest_revnum - num_to_go_back
-    with clogger.conn.transaction() as t:
-        new_oldest_revnum = t.get_one("SELECT revnum FROM csetLog WHERE revision=?", (new_ending,))[0]
+    query = {
+        "_source": {"includes": ["revnum"]},
+        "query": {"bool": {"must": [{"term": {"revision": new_ending}}]}},
+        "size": 1,
+    }
+    result = clogger.csetlog.search(query)
+    new_oldest_revnum = result.hits.hits[0]._source.revnum
+
     assert expected_new_revnum == new_oldest_revnum
 
 
@@ -135,14 +173,21 @@ def test_backfilling_by_count(clogger):
     wait_time = 2
     num_to_go_back = 10
 
-    oldest_revnum, oldest_rev = clogger.conn.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")
+    query = {
+        "_source": {"includes": ["revision", "revnum"]},
+        "sort": [{"revnum": {"order": "asc"}}],
+        "size": 1,
+    }
+    result = clogger.csetlog.search(query)
+    oldest_revnum = result.hits.hits[0]._source.revnum
+    oldest_rev = result.hits.hits[0]._source.revision
 
     new_old_rev = None
-    clog_url = HG_URL + clogger.config.hg.branch + '/' + 'json-log/' + oldest_rev
-    clog_obj_list = list(clogger._get_clog(clog_url)['changesets'])
+    clog_url = HG_URL + clogger.config.hg.branch + "/" + "json-log/" + oldest_rev
+    clog_obj_list = list(clogger._get_clog(clog_url)["changesets"])
     for count, clog_obj in enumerate(clog_obj_list[1:]):
         if count >= num_to_go_back - 1:
-            new_old_rev = clog_obj['node'][:12]
+            new_old_rev = clog_obj["node"][:12]
             break
 
     clogger.csets_todo_backwards.add((num_to_go_back, True))
@@ -151,13 +196,32 @@ def test_backfilling_by_count(clogger):
     old_oldest_revnum = None
     new_oldest_revnum = None
     while num_trys > 0:
-        with clogger.conn.transaction() as t:
-            new_ending = t.get_one("SELECT min(revnum) AS revnum, revision FROM csetLog")[1]
-            DEBUG and Log.note("{{data}}", data=(oldest_rev, new_old_rev, new_ending))
-            if new_ending == new_old_rev:
-                old_oldest_revnum = t.get_one("SELECT revnum FROM csetLog WHERE revision=?", (oldest_rev,))[0]
-                new_oldest_revnum = t.get_one("SELECT revnum FROM csetLog WHERE revision=?", (new_ending,))[0]
-                break
+        query = {
+            "_source": {"includes": ["revision", "revnum"]},
+            "sort": [{"revnum": {"order": "asc"}}],
+            "size": 1,
+        }
+        result = clogger.csetlog.search(query)
+        new_ending = result.hits.hits[0]._source.revision
+        DEBUG and Log.note("{{data}}", data=(oldest_rev, new_old_rev, new_ending))
+        if new_ending == new_old_rev:
+            query = {
+                "_source": {"includes": ["revnum"]},
+                "query": {"bool": {"must": [{"term": {"revision": new_ending}}]}},
+                "size": 1,
+            }
+            result = clogger.csetlog.search(query)
+            new_oldest_revnum = result.hits.hits[0]._source.revnum
+
+            query = {
+                "_source": {"includes": ["revnum"]},
+                "query": {"bool": {"must": [{"term": {"revision": oldest_rev}}]}},
+                "size": 1,
+            }
+            result = clogger.csetlog.search(query)
+            old_oldest_revnum = result.hits.hits[0]._source.revnum
+            break
+
         if new_ending != new_old_rev:
             Till(seconds=wait_time).wait()
             num_trys -= 1
@@ -173,170 +237,6 @@ def test_backfilling_by_count(clogger):
     assert expected_new_revnum == new_oldest_revnum
 
 
-def test_maintenance_and_deletion(clogger):
-    # IMPORTANT: Assumes that the max csets is 100
-    clogger.disable_tipfilling = True
-
-    # Temporarily disable these workers
-    clogger.disable_maintenance = True
-    clogger.disable_deletion = True
-
-    max_revs = 100
-    extra_to_add = 50
-    num_trys = 50
-    wait_time = 2
-    with clogger.conn.transaction() as t:
-        revnums_in_db = t.get_one("SELECT count(revnum) as revnum FROM csetLog")[0]
-
-    num_csets_missing = max_revs - revnums_in_db
-    if num_csets_missing > 0:
-        extra_to_add += num_csets_missing
-
-    with clogger.conn.transaction() as t:
-        _, tail_cset = clogger.get_tail(t)
-
-    clogger.csets_todo_backwards.add((extra_to_add, True))
-    clogger.disable_backfilling = False
-    new_tail = None
-    tmp_num_trys = 0
-    while tmp_num_trys < num_trys:
-        Till(seconds=wait_time).wait()
-        with clogger.conn.transaction() as t:
-            _, new_tail = clogger.get_tail(t)
-        if new_tail != tail_cset:
-            break
-        tmp_num_trys += 1
-    assert tmp_num_trys < num_trys
-
-    inserts_list_latestFileMod = [
-        ('file1', new_tail),
-        ('file2', new_tail)
-    ]
-    inserts_list_annotations = [
-        ('file1', new_tail, ''),
-        ('file2', new_tail, '')
-    ]
-    with clogger.conn.transaction() as t:
-        t.execute(
-            "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-            sql_list(
-                sql_iso(sql_list(map(quote_value, i)))
-                for i in inserts_list_latestFileMod
-            )
-        )
-        t.execute(
-            "INSERT OR REPLACE INTO annotations (file, revision, annotation) VALUES " +
-            sql_list(
-                sql_iso(sql_list(map(quote_value, i)))
-                for i in inserts_list_annotations
-            )
-        )
-
-        revnums_in_db = t.get_one("SELECT count(revnum) as revnum FROM csetLog")[0]
-    if revnums_in_db <= max_revs:
-        Log.note("Maintenance worker already ran.")
-        assert True
-        return
-
-    clogger.disable_backfilling = True
-    clogger.disable_deletion = False
-    clogger.disable_maintenance = False
-
-    wait_time = 10
-    tmp_num_trys = 0
-    while tmp_num_trys < num_trys:
-        Till(seconds=wait_time).wait()
-        revnums_in_db = clogger.conn.get_one("SELECT count(revnum) as revnum FROM csetLog")[0]
-        if revnums_in_db <= max_revs:
-            break
-        tmp_num_trys += 1
-
-    assert tmp_num_trys < num_trys
-
-    # Check that latestFileMods entries were deleted.
-    latest_rev = clogger.conn.get_one("SELECT 1 FROM latestFileMod WHERE revision=?", (new_tail,))
-    assert not latest_rev
-
-    # Check that annotations were deleted.
-    annotates = clogger.conn.get_one("SELECT 1 FROM annotations WHERE revision=?", (new_tail,))
-    assert not annotates
-
-
-def test_deleting_old_annotations(clogger):
-    clogger.disable_tipfilling = True
-    clogger.disable_backfilling = True
-    clogger.disable_maintenance = True
-    clogger.disable_deletion = True
-
-    min_permanent = 10
-    num_trys = 50
-    wait_time = 2
-    new_timestamp = 1
-
-    # Add extra non-permanent revisions if needed
-    total_revs = clogger.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
-    if total_revs <= min_permanent:
-        clogger.csets_todo_backwards.add((50, True))
-        clogger.disable_backfilling = False
-
-        tmp_num_trys = 0
-        while tmp_num_trys < num_trys:
-            Till(seconds=wait_time).wait()
-            new_total_revs = clogger.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
-            if new_total_revs > total_revs:
-                break
-            tmp_num_trys += 1
-        assert tmp_num_trys < num_trys
-
-        clogger.disable_backfilling = True
-
-    with clogger.conn.transaction() as t:
-        tail_tipnum, tail_cset = clogger.get_tail(t)
-
-    inserts_list_latestFileMod = [
-        ('file1', tail_cset),
-        ('file2', tail_cset)
-    ]
-    inserts_list_annotations = [
-        ('file1', tail_cset, ''),
-        ('file2', tail_cset, '')
-    ]
-
-    with clogger.conn.transaction() as t:
-        t.execute(
-            "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES " +
-            sql_list(
-                sql_iso(sql_list(map(quote_value, i)))
-                for i in inserts_list_latestFileMod
-            )
-        )
-        t.execute(
-            "INSERT OR REPLACE INTO annotations (file, revision, annotation) VALUES " +
-            sql_list(
-                sql_iso(sql_list(map(quote_value, i)))
-                for i in inserts_list_annotations
-            )
-        )
-        t.execute(
-            "INSERT OR REPLACE INTO csetLog (revnum, revision, timestamp) VALUES " +
-            sql_iso(sql_list(map(quote_value, (tail_tipnum, tail_cset, new_timestamp))))
-        )
-
-    # Start maintenance
-    clogger.disable_maintenance = False
-    clogger.maintenance_signal.go()
-
-    tmp_num_trys = 0
-    while tmp_num_trys < num_trys:
-        Till(seconds=wait_time).wait()
-        latest_rev = clogger.conn.get_one("SELECT 1 FROM latestFileMod WHERE revision=?", (tail_cset,))
-        annotates = clogger.conn.get_one("SELECT 1 FROM annotations WHERE revision=?", (tail_cset,))
-        if not annotates and not latest_rev:
-            break
-        tmp_num_trys += 1
-    assert tmp_num_trys < num_trys
-
-
 def test_partial_tipfilling(clogger):
     clogger.disable_tipfilling = True
     clogger.disable_backfilling = True
@@ -345,18 +245,26 @@ def test_partial_tipfilling(clogger):
 
     num_trys = 50
     wait_time = 2
-    prev_total_revs = clogger.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
-    with clogger.conn.transaction() as t:
-        max_tip_num, _ = clogger.get_tip(t)
-        t.execute(
-            "DELETE FROM csetLog WHERE revnum >= " + str(max_tip_num) + " - 5"
-        )
+    query = {"aggs": {"output": {"value_count": {"field": "revnum"}}}, "size": 0}
+
+    prev_total_revs = int(clogger.csetlog.search(query).aggregations.output.value)
+
+    max_tip_num, _ = clogger.get_tip()
+    filter = {"bool": {"must": [{"range": {"revnum": {"gte": max_tip_num - 5}}}]}}
+    clogger.csetlog.delete_record(filter)
+    clogger.csetlog.refresh()
+    query = {"query": filter}
+    result = clogger.csetlog.search(query)
+    while len(result.hits.hits) != 0:
+        Till(seconds=0.01).wait()
+        result = clogger.csetlog.search(query)
 
     clogger.disable_tipfilling = False
     tmp_num_trys = 0
     while tmp_num_trys < num_trys:
         Till(seconds=wait_time).wait()
-        revnums_in_db = clogger.conn.get_one("SELECT count(revnum) as revnum FROM csetLog")[0]
+        query = {"aggs": {"output": {"value_count": {"field": "revnum"}}}, "size": 0}
+        revnums_in_db = int(clogger.csetlog.search(query).aggregations.output.value)
         if revnums_in_db == prev_total_revs:
             break
         tmp_num_trys += 1
@@ -371,16 +279,15 @@ def test_get_revnum_range_backfill(clogger):
 
     # Get the current tail, go 10 changesets back and request
     # the final one as the second revision.
-    with clogger.conn.transaction() as t:
-        rev1, oldest_rev = clogger.get_tail(t)
+    rev1, oldest_rev = clogger.get_tail()
 
     num_to_go_back = 10
     rev2 = None
-    clog_url = HG_URL + clogger.config.hg.branch + '/' + 'json-log/' + oldest_rev
-    clog_obj_list = list(clogger._get_clog(clog_url)['changesets'])
+    clog_url = HG_URL + clogger.config.hg.branch + "/" + "json-log/" + oldest_rev
+    clog_obj_list = list(clogger._get_clog(clog_url)["changesets"])
     for count, clog_obj in enumerate(clog_obj_list[1:]):
         if count >= num_to_go_back - 1:
-            rev2 = clog_obj['node'][:12]
+            rev2 = clog_obj["node"][:12]
             break
 
     assert oldest_rev and rev2
@@ -405,13 +312,18 @@ def test_get_revnum_range_tipfill(clogger):
 
     # Get the current tip, delete it, then request it's
     # revnum range up to a known revision
-    with clogger.conn.transaction() as t:
-        tip_num, tip_rev = clogger.get_tip(t)
-        tail_num, _ = clogger.get_tail(t)
-        t.execute(
-            "DELETE FROM csetLog WHERE revnum >= " + str(tip_num) + " - 5"
-        )
-        _, new_tip_rev = clogger.get_tip(t)
+    tip_num, tip_rev = clogger.get_tip()
+    tail_num, _ = clogger.get_tail()
+    filter = {"bool": {"must": [{"range": {"revnum": {"gte": tip_num - 5}}}]}}
+    clogger.csetlog.delete_record(filter)
+    clogger.csetlog.refresh()
+    query = {"query": filter}
+    result = clogger.csetlog.search(query)
+    while len(result.hits.hits) != 0:
+        Till(seconds=0.001).wait()
+        result = clogger.csetlog.search(query)
+
+    _, new_tip_rev = clogger.get_tip()
 
     assert tip_rev and new_tip_rev
 
@@ -435,30 +347,35 @@ def test_get_revnum_range_tipnback(clogger):
 
     for ordering in range(2):
         # Used for testing output
-        prev_total_revs = clogger.conn.get_one("SELECT count(revnum) FROM csetLog")[0]
+        query = {"aggs": {"output": {"value_count": {"field": "revnum"}}}, "size": 0}
+        prev_total_revs = int(clogger.csetlog.search(query).aggregations.output.value)
         expected_total_revs = prev_total_revs + 10
 
         # Get the current tail, go 10 changesets back and request
         # the final one as the second revision.
-        with clogger.conn.transaction() as t:
-            rev1, oldest_rev = clogger.get_tail(t)
+        rev1, oldest_rev = clogger.get_tail()
 
         # Get the current tip, delete it, then request it's revnum range
         # to a non-existent (backfill required) revision in the past.
-        with clogger.conn.transaction() as t:
-            tip_num, tip_rev = clogger.get_tip(t)
-            t.execute(
-                "DELETE FROM csetLog WHERE revnum >= " + str(tip_num) + " - 5"
-            )
-            _, new_tip_rev = clogger.get_tip(t)
+        tip_num, tip_rev = clogger.get_tip()
+        filter = {"bool": {"must": [{"range": {"revnum": {"gte": tip_num - 5}}}]}}
+        clogger.csetlog.delete_record(filter)
+        clogger.csetlog.refresh()
+        query = {"query": filter}
+        result = clogger.csetlog.search(query)
+        while len(result.hits.hits) != 0:
+            Till(seconds=0.001).wait()
+            result = clogger.csetlog.search(query)
+
+        _, new_tip_rev = clogger.get_tip()
 
         num_to_go_back = 10
         rev2 = None
-        clog_url = HG_URL + clogger.config.hg.branch + '/' + 'json-log/' + oldest_rev
-        clog_obj_list = list(clogger._get_clog(clog_url)['changesets'])
+        clog_url = HG_URL + clogger.config.hg.branch + "/" + "json-log/" + oldest_rev
+        clog_obj_list = list(clogger._get_clog(clog_url)["changesets"])
         for count, clog_obj in enumerate(clog_obj_list[1:]):
             if count >= num_to_go_back - 1:
-                rev2 = clog_obj['node'][:12]
+                rev2 = clog_obj["node"][:12]
                 break
 
         assert rev2 and new_tip_rev
@@ -477,3 +394,174 @@ def test_get_revnum_range_tipnback(clogger):
             assert revision
             assert revnum > curr_revnum
             curr_revnum = revnum
+
+
+def test_maintenance_and_deletion(clogger):
+    # IMPORTANT: Assumes that the max csets is 100
+    clogger.disable_tipfilling = True
+
+    # Temporarily disable these workers
+    clogger.disable_maintenance = True
+    clogger.disable_deletion = True
+
+    max_revs = 100
+    extra_to_add = 50
+    num_trys = 50
+    wait_time = 2
+
+    query = {"aggs": {"output": {"value_count": {"field": "revnum"}}}, "size": 0}
+    revnums_in_db = int(clogger.csetlog.search(query).aggregations.output.value)
+
+    num_csets_missing = max_revs - revnums_in_db
+    if num_csets_missing > 0:
+        extra_to_add += num_csets_missing
+
+    _, tail_cset = clogger.get_tail()
+
+    clogger.csets_todo_backwards.add((extra_to_add, True))
+    clogger.disable_backfilling = False
+    new_tail = None
+    tmp_num_trys = 0
+    while tmp_num_trys < num_trys:
+        Till(seconds=wait_time).wait()
+        _, new_tail = clogger.get_tail()
+        if new_tail != tail_cset:
+            break
+        tmp_num_trys += 1
+    assert tmp_num_trys < num_trys
+
+    inserts_list_latestFileMod = [("file1", new_tail), ("file2", new_tail)]
+    inserts_list_annotations = [("file1", new_tail, ""), ("file2", new_tail, "")]
+    with clogger.conn.transaction() as t:
+        t.execute(
+            "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES "
+            + sql_list(
+                sql_iso(sql_list(map(quote_value, i)))
+                for i in inserts_list_latestFileMod
+            )
+        )
+        t.execute(
+            "INSERT OR REPLACE INTO annotations (file, revision, annotation) VALUES "
+            + sql_list(
+                sql_iso(sql_list(map(quote_value, i))) for i in inserts_list_annotations
+            )
+        )
+        query = {"aggs": {"output": {"value_count": {"field": "revnum"}}}, "size": 0}
+        revnums_in_db = int(clogger.csetlog.search(query).aggregations.output.value)
+    if revnums_in_db <= max_revs:
+        Log.note("Maintenance worker already ran.")
+        assert True
+        return
+
+    clogger.disable_backfilling = True
+    clogger.disable_deletion = False
+    clogger.disable_maintenance = False
+
+    wait_time = 10
+    tmp_num_trys = 0
+    while tmp_num_trys < num_trys:
+        Till(seconds=wait_time).wait()
+        query = {"aggs": {"output": {"value_count": {"field": "revnum"}}}, "size": 0}
+        revnums_in_db = int(clogger.csetlog.search(query).aggregations.output.value)
+        if revnums_in_db <= max_revs:
+            break
+        tmp_num_trys += 1
+
+    assert tmp_num_trys < num_trys
+
+    # Check that latestFileMods entries were deleted.
+    latest_rev = clogger.conn.get_one(
+        "SELECT 1 FROM latestFileMod WHERE revision=?", (new_tail,)
+    )
+    assert not latest_rev
+
+    # Check that annotations were deleted.
+    annotates = clogger.conn.get_one(
+        "SELECT 1 FROM annotations WHERE revision=?", (new_tail,)
+    )
+    assert not annotates
+
+
+def test_deleting_old_annotations(clogger):
+    clogger.disable_tipfilling = True
+    clogger.disable_backfilling = True
+    clogger.disable_maintenance = True
+    clogger.disable_deletion = True
+
+    min_permanent = 10
+    num_trys = 50
+    wait_time = 2
+    new_timestamp = 1
+
+    # Add extra non-permanent revisions if needed
+    query = {"aggs": {"output": {"value_count": {"field": "revnum"}}}, "size": 0}
+    total_revs = int(clogger.csetlog.search(query).aggregations.output.value)
+    if total_revs <= min_permanent:
+        clogger.csets_todo_backwards.add((50, True))
+        clogger.disable_backfilling = False
+
+        tmp_num_trys = 0
+        while tmp_num_trys < num_trys:
+            Till(seconds=wait_time).wait()
+            query = {
+                "aggs": {"output": {"value_count": {"field": "revnum"}}},
+                "size": 0,
+            }
+            new_total_revs = int(
+                clogger.csetlog.search(query).aggregations.output.value
+            )
+            if new_total_revs > total_revs:
+                break
+            tmp_num_trys += 1
+        assert tmp_num_trys < num_trys
+
+        clogger.disable_backfilling = True
+
+    tail_tipnum, tail_cset = clogger.get_tail()
+
+    inserts_list_latestFileMod = [("file1", tail_cset), ("file2", tail_cset)]
+    inserts_list_annotations = [("file1", tail_cset, ""), ("file2", tail_cset, "")]
+
+    with clogger.conn.transaction() as t:
+        t.execute(
+            "INSERT OR REPLACE INTO latestFileMod (file, revision) VALUES "
+            + sql_list(
+                sql_iso(sql_list(map(quote_value, i)))
+                for i in inserts_list_latestFileMod
+            )
+        )
+        t.execute(
+            "INSERT OR REPLACE INTO annotations (file, revision, annotation) VALUES "
+            + sql_list(
+                sql_iso(sql_list(map(quote_value, i))) for i in inserts_list_annotations
+            )
+        )
+        for revnum, revision, timestamp in [(tail_tipnum, tail_cset, new_timestamp)]:
+            record = {
+                "_id": revnum,
+                "revnum": revnum,
+                "revision": revision,
+                "timestamp": timestamp,
+            }
+            clogger.csetlog.add({"value": record})
+            clogger.csetlog.refresh()
+            while not clogger._get_revnum_exists(revnum):
+                Till(seconds=0.001).wait()
+
+    # Start maintenance
+    clogger.disable_maintenance = False
+    clogger.maintenance_signal.go()
+
+    tmp_num_trys = 0
+    while tmp_num_trys < num_trys:
+        Till(seconds=wait_time).wait()
+        latest_rev = clogger.conn.get_one(
+            "SELECT 1 FROM latestFileMod WHERE revision=?", (tail_cset,)
+        )
+        annotates = clogger.conn.get_one(
+            "SELECT 1 FROM annotations WHERE revision=?", (tail_cset,)
+        )
+        if not annotates and not latest_rev:
+            break
+        tmp_num_trys += 1
+    assert tmp_num_trys < num_trys

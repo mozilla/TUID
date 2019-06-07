@@ -47,6 +47,19 @@
                 "debug": false,
                 "limit_replicas": false
             }
+        },
+        "clogger": {
+            "csetLog": {
+                "host": "http://localhost",
+                "port": 9201,
+                "index": "csetlog",
+                "type": "csetlogtype",
+                "typed": false,
+                "timeout": 300,
+                "consistency": "one",
+                "debug": false,
+                "limit_replicas": false
+            }
         }
     },
     "flask": {
