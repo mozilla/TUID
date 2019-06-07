@@ -150,7 +150,7 @@ def test_tryrepo_tuids(service):
 
 def test_multithread_service(service):
     num_tests = 10
-    timeout_seconds = 600
+    timeout_seconds = 60
     revision = "d63ed14ed622"
     test_file = ["devtools/server/tests/browser/browser_markers-docloading-03.js"]
 
