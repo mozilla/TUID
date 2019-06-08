@@ -148,6 +148,54 @@ def test_tryrepo_tuids(service):
     assert found_file
 
 
+def test_multithread_tuid_uniqueness(service):
+    num_tests = 10
+    timeout_seconds = 60
+    revision = "d63ed14ed622"
+    test_files = [
+        ["/devtools/server/tests/browser/browser_storage_dynamic_windows.js"],
+        ["/devtools/server/tests/browser/browser_storage_updates.js"],
+        ["/toolkit/components/narrate/test/browser_narrate.js"],
+        [ "/toolkit/components/narrate/test/browser_narrate_language.js"],
+        ["/toolkit/components/narrate/test/browser_voiceselect.js"],
+        ["/toolkit/components/narrate/test/browser_word_highlight.js"],
+        ["/toolkit/components/normandy/test/browser/browser_about_preferences.js"],
+        ["/toolkit/components/normandy/test/browser/browser_about_studies.js"],
+        ["/toolkit/components/payments/test/browser/browser_host_name.js"],
+        ["/toolkit/components/payments/test/browser/browser_profile_storage.js"]
+    ]
+
+    # Call service on multiple threads at once
+    tuided_files = [None] * num_tests
+    threads = [
+        Thread.run(
+            str(i),
+            service.mthread_testing_get_tuids_from_files,
+            test_files[i],
+            revision,
+            tuided_files,
+            i,
+        )
+        for i, a in enumerate(tuided_files)
+    ]
+    too_long = Till(seconds=timeout_seconds)
+    for t in threads:
+        t.join(till=too_long)
+    assert not too_long
+
+    #checks for uniqueness of tuids in different file
+    tuidmaplist = [
+        tuidmaps
+        for ft in tuided_files
+        for tuidmaps in ft[0][1]
+    ]
+    tuidlist = [tm.tuid for tm in tuidmaplist]
+
+    #length of both list and set should be same
+    tuid_uniqueness = len(tuidlist) - len(set(tuidlist))
+    assert not tuid_uniqueness
+
+
 def test_multithread_service(service):
     num_tests = 10
     timeout_seconds = 60
