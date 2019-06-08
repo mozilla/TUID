@@ -255,7 +255,7 @@ def test_partial_tipfilling(clogger):
     clogger.csetlog.refresh()
     query = {"query": filter}
     result = clogger.csetlog.search(query)
-    while len(result.hits.hits) != 0:
+    while result.hits.total != 0:
         Till(seconds=0.01).wait()
         result = clogger.csetlog.search(query)
 
@@ -319,7 +319,7 @@ def test_get_revnum_range_tipfill(clogger):
     clogger.csetlog.refresh()
     query = {"query": filter}
     result = clogger.csetlog.search(query)
-    while len(result.hits.hits) != 0:
+    while result.hits.total != 0:
         Till(seconds=0.001).wait()
         result = clogger.csetlog.search(query)
 
@@ -363,7 +363,7 @@ def test_get_revnum_range_tipnback(clogger):
         clogger.csetlog.refresh()
         query = {"query": filter}
         result = clogger.csetlog.search(query)
-        while len(result.hits.hits) != 0:
+        while result.hits.total != 0:
             Till(seconds=0.001).wait()
             result = clogger.csetlog.search(query)
 
