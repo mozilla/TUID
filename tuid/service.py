@@ -1621,10 +1621,10 @@ class TUIDService:
         # annotation.
         existing_tuids = {}
         for line_num, ann_entry in enumerate(line_origins):
-            for file, rev, line in [ann_entry]:
-                id = rev + file + str(line)
-                if id in existing_tuids_tmp:
-                    existing_tuids[line_num + 1] = copy.deepcopy(existing_tuids_tmp[id])
+            file, rev, line = ann_entry
+            id = rev + file + str(line)
+            if id in existing_tuids_tmp:
+                existing_tuids[line_num + 1] = copy.deepcopy(existing_tuids_tmp[id])
 
         new_lines = set(
             [line_num + 1 for line_num, _ in enumerate(line_origins)]
