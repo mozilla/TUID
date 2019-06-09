@@ -317,6 +317,17 @@ class TUIDService:
             "size": 1,
         }
         temp = self.temporal.search(query).hits.hits[0]._source.tuid
+
+        query = {
+            "_source": {"includes": ["annotation"]},
+            "query": {
+                "bool": {
+                    "must": [{"term": {"revision": cset}}, {"term": {"file": path}}]
+                }
+            },
+            "size": 1,
+        }
+        temp = self.annotations.search(query).hits.hits[0]._source.annotation[line-1]
         return temp
 
     def _get_latest_revision(self, file, transaction):
@@ -1632,7 +1643,21 @@ class TUIDService:
                 }
             },
         }
+
         result = self.temporal.search(query)
+
+        query = {
+            "_source": {"includes": ["annotation"]},
+            "query": {
+                "bool": {
+                    "must": [{"terms": {"file": file_names}}, {"terms": {"revision": revs_to_find}}]
+                }
+            },
+            "size": 10000,
+        }
+        temp = self.annotations.search(query).hits.hits
+
+
         existing_tuids_tmp = {r._id: r._source.tuid for r in result.hits.hits}
 
         # Explicitly remove reference cycle
