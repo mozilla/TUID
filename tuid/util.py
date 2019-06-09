@@ -104,14 +104,19 @@ class AnnotateFile(SourceFile, object):
                     (self.tuid_service.tuid(),) + line_origins[linenum - 1]
                     for linenum in insert_lines
                 ]
+
+                records = []
+                ids = []
                 for tuid, file, revision, line in insert_entries:
-                    self.tuid_service.temporal.add(
-                        self.tuid_service._make_record_temporal(tuid, revision, file, line)
-                    )
+                    record = self.tuid_service._make_record_temporal(tuid, revision, file, line)
+                    records.append(record)
+                    ids.append(record["value"]["_id"])
+                self.tuid_service.temporal.extend(records)
+                query = self.tuid_service._query_result_size({"_id": ids})
+                self.tuid_service.temporal.refresh()
+                while self.tuid_service.temporal.search(query).hits.total != len(ids):
+                    Till(seconds=0.001).wait()
                     self.tuid_service.temporal.refresh()
-                    while self.tuid_service._get_one_tuid(file, revision, line) == None:
-                        Till(seconds=0.001).wait()
-                        self.tuid_service.temporal.refresh()
             except Exception as e:
                 Log.note(
                     "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
