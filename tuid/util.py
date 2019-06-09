@@ -109,7 +109,7 @@ class AnnotateFile(SourceFile, object):
                         self.tuid_service._make_record_temporal(tuid, revision, file, line)
                     )
                     self.tuid_service.temporal.refresh()
-                    while self.tuid_service._get_tuid(file, revision, line) == None:
+                    while self.tuid_service._get_one_tuid(file, revision, line) == None:
                         Till(seconds=0.001).wait()
                         self.tuid_service.temporal.refresh()
             except Exception as e:
