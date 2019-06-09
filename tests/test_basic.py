@@ -149,7 +149,6 @@ def test_tryrepo_tuids(service):
 
 
 def test_multithread_tuid_uniqueness(service):
-    num_tests = 10
     timeout_seconds = 60
     revision = "d63ed14ed622"
     test_files = [
@@ -165,6 +164,7 @@ def test_multithread_tuid_uniqueness(service):
         ["/toolkit/components/payments/test/browser/browser_profile_storage.js"]
     ]
 
+    num_tests = len(test_files)
     # Call service on multiple threads at once
     tuided_files = [None] * num_tests
     threads = [
@@ -183,17 +183,15 @@ def test_multithread_tuid_uniqueness(service):
         t.join(till=too_long)
     assert not too_long
 
-    #checks for uniqueness of tuids in different file
-    tuidmaplist = [
-        tuidmaps
+    #checks for uniqueness of tuids in different files
+    tuidlist = [
+        tm.tuid
         for ft in tuided_files
-        for tuidmaps in ft[0][1]
+        for path, tuidmaps in ft
+        for tm in tuidmaps
     ]
-    tuidlist = [tm.tuid for tm in tuidmaplist]
-
-    #length of both list and set should be same
-    tuid_uniqueness = len(tuidlist) - len(set(tuidlist))
-    assert not tuid_uniqueness
+    # ensure no duplicates
+    assert len(tuidlist) == len(set(tuidlist))
 
 
 def test_multithread_service(service):
