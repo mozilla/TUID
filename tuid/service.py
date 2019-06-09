@@ -183,23 +183,6 @@ class TUIDService:
 
         Log.note("Tables created successfully")
 
-    def _get_tuid(self, file, revision, line):
-        query = {
-            "_source": {"includes": ["tuid"]},
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"file": file}},
-                        {"term": {"revision": revision}},
-                        {"term": {"line": line}},
-                    ]
-                }
-            },
-            "size": 1,
-        }
-        temp = self.temporal.search(query).hits.hits[0]._source.tuid
-        return temp
-
     def _query_result_size(self, terms):
         query = {"size": 0, "query": {"terms": terms}}
         return query
