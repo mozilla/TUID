@@ -151,17 +151,33 @@ def test_tryrepo_tuids(service):
 def test_multithread_tuid_uniqueness(service):
     timeout_seconds = 60
     revision = "d63ed14ed622"
+    revision2 = "14dc6342ec50"
+    #https://hg.mozilla.org/mozilla-central/rev/c0200f9fc1abf1e34a0bb1acb5a9f57d38ca677b
+
     test_files = [
-        ["/devtools/server/tests/browser/browser_storage_dynamic_windows.js"],
-        ["/devtools/server/tests/browser/browser_storage_updates.js"],
-        ["/toolkit/components/narrate/test/browser_narrate.js"],
-        [ "/toolkit/components/narrate/test/browser_narrate_language.js"],
-        ["/toolkit/components/narrate/test/browser_voiceselect.js"],
-        ["/toolkit/components/narrate/test/browser_word_highlight.js"],
-        ["/toolkit/components/normandy/test/browser/browser_about_preferences.js"],
-        ["/toolkit/components/normandy/test/browser/browser_about_studies.js"],
-        ["/toolkit/components/payments/test/browser/browser_host_name.js"],
-        ["/toolkit/components/payments/test/browser/browser_profile_storage.js"]
+        ["/gfx/layers/wr/WebRenderUserData.cpp"],
+        ["/gfx/layers/wr/WebRenderUserData.h"],
+        ["/layout/generic/nsFrame.cpp"],
+        ["/layout/generic/nsIFrame.h"],
+        ["/layout/generic/nsImageFrame.cpp"],
+        ["/layout/painting/FrameLayerBuilder.cpp"],
+        ["/layout/painting/nsDisplayList.h"],
+        ["/layout/style/ImageLoader.cpp"],
+        ["/layout/style/ServoStyleSet.cpp"],
+        ["widget/cocoa/nsNativeThemeCocoa.mm"]
+    ]
+
+    test_files = [
+        ["/browser/components/extensions/test/browser/browser_ext_webNavigation_onCreatedNavigationTarget_contextmenu.js"],
+        ["/browser/components/extensions/test/browser/browser_ext_popup_corners.js"],
+        ["/browser/components/extensions/test/browser/browser_ext_webNavigation_onCreatedNavigationTarget.js"],
+        ["/browser/modules/test/browser/formValidation/browser_form_validation.js"],
+        ["/devtools/.eslintrc.js"],
+        ["/browser/base/content/test/general/browser_e10s_about_page_triggeringprincipal.js"],
+        ["/browser/base/content/test/general/browser_keywordSearch_postData.js"],
+        ["/browser/base/content/test/siteIdentity/browser_bug906190.js"],
+        ["/browser/components/preferences/in-content/tests/browser_applications_selection.js"],
+        ["/browser/components/preferences/in-content/tests/browser_basic_rebuild_fonts_test.js"]
     ]
 
     num_tests = len(test_files)
@@ -179,6 +195,112 @@ def test_multithread_tuid_uniqueness(service):
         for i, a in enumerate(tuided_files)
     ]
     too_long = Till(seconds=timeout_seconds)
+    for t in threads:
+        t.join(till=too_long)
+    assert not too_long
+
+    #checks for uniqueness of tuids in different files
+    tuidlist = [
+        tm.tuid
+        for ft in tuided_files
+        for path, tuidmaps in ft
+        for tm in tuidmaps
+    ]
+    # ensure no duplicates
+    assert len(tuidlist) == len(set(tuidlist))
+
+    tuided_files = [None] * num_tests
+    threads2 = [
+        Thread.run(
+            str(i),
+            service.mthread_testing_get_tuids_from_files,
+            test_files[i],
+            revision2,
+            tuided_files,
+            i,
+        )
+        for i, a in enumerate(tuided_files)
+    ]
+    too_long = Till(seconds=timeout_seconds*2)
+    for t2 in threads2:
+        t2.join(till=too_long)
+    assert not too_long
+
+    #checks for uniqueness of tuids in different files
+    tuidlist2 = [
+        tm.tuid
+        for ft in tuided_files
+        for path, tuidmaps in ft
+        for tm in tuidmaps
+    ]
+
+    assert len(tuidlist2) == len(set(tuidlist2))
+
+
+def test_multithread_tuid_uniqueness(service):
+    timeout_seconds = 60
+    old_revision = "d63ed14ed622"
+    new_revision = "c0200f9fc1ab"
+    service.clogger.initialize_to_range(old_revision, new_revision)
+
+    test_files = [
+        ["/dom/html/HTMLCanvasElement.cpp"],
+        ["/gfx/layers/ipc/CompositorBridgeChild.cpp"],
+        ["/gfx/layers/wr/WebRenderCommandBuilder.h"],
+        ["/gfx/layers/wr/WebRenderUserData.cpp"],
+        ["/gfx/layers/wr/WebRenderUserData.h"],
+        ["/layout/generic/nsFrame.cpp"],
+        ["/layout/generic/nsIFrame.h"],
+        ["/layout/generic/nsImageFrame.cpp"],
+        ["/layout/painting/FrameLayerBuilder.cpp"],
+        ["/widget/cocoa/nsNativeThemeCocoa.mm"]
+    ]
+
+    num_tests = len(test_files)
+    # Call service on multiple threads at once
+    tuided_files = [None] * num_tests
+    threads = [
+        Thread.run(
+            str(i),
+            service.mthread_testing_get_tuids_from_files,
+            test_files[i],
+            old_revision,
+            tuided_files,
+            i,
+            going_forward=True
+        )
+        for i, a in enumerate(tuided_files)
+    ]
+    too_long = Till(seconds=timeout_seconds*4)
+    for t in threads:
+        t.join(till=too_long)
+    assert not too_long
+
+    #checks for uniqueness of tuids in different files
+    tuidlist = [
+        tm.tuid
+        for ft in tuided_files
+        for path, tuidmaps in ft
+        for tm in tuidmaps
+    ]
+    # ensure no duplicates
+    assert len(tuidlist) == len(set(tuidlist))
+
+    #Checks for the TUID uniqueness after updating the file frontier
+    tuided_files = [None] * num_tests
+    threads = [
+        Thread.run(
+            str(i),
+            service.mthread_testing_get_tuids_from_files,
+            test_files[i],
+            new_revision,
+            tuided_files,
+            i,
+            going_forward=True
+        )
+        for i, a in enumerate(tuided_files)
+    ]
+    too_long = Till(seconds=timeout_seconds*4)
     for t in threads:
         t.join(till=too_long)
     assert not too_long
