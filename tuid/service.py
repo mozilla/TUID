@@ -187,6 +187,9 @@ class TUIDService:
         query = {"size": 0, "query": {"terms": terms}}
         return query
 
+    def results_exist(self, query, ids):
+
+
     def _dummy_tuid_exists(self, file_name, rev):
         # True if dummy, false if not.
         # None means there is no entry.
@@ -204,6 +207,8 @@ class TUIDService:
             "size": 0,
         }
         temp = self.temporal.search(query).hits.total
+
+        temp2 = self._dummy_annotate_exists(file_name, rev)
         return 0 != temp
 
     def _dummy_annotate_exists(self, file_name, rev):
@@ -303,6 +308,18 @@ class TUIDService:
 
     def _get_one_tuid(self, cset, path, line):
         # Returns a single TUID if it exists else None
+
+        query = {
+            "_source": {"includes": ["annotation"]},
+            "query": {
+                "bool": {
+                    "must": [{"term": {"revision": cset}}, {"term": {"file": path}}]
+                }
+            },
+            "size": 1,
+        }
+        temp1 = self.annotations.search(query).hits.hits[0]._source.annotation[line-1]
+
         query = {
             "_source": {"includes": ["tuid"]},
             "query": {
@@ -318,16 +335,6 @@ class TUIDService:
         }
         temp = self.temporal.search(query).hits.hits[0]._source.tuid
 
-        query = {
-            "_source": {"includes": ["annotation"]},
-            "query": {
-                "bool": {
-                    "must": [{"term": {"revision": cset}}, {"term": {"file": path}}]
-                }
-            },
-            "size": 1,
-        }
-        temp = self.annotations.search(query).hits.hits[0]._source.annotation[line-1]
         return temp
 
     def _get_latest_revision(self, file, transaction):
@@ -1658,6 +1665,14 @@ class TUIDService:
         temp = self.annotations.search(query).hits.hits
 
 
+        # I expect all the revision, file will have complete annotation or None
+        #then the remaining calculations are not needed
+        existing_tuids_tmp2 = {r._id+str(i): r._source.annotation[i-1]
+                               for r in temp
+                               for i in lines_to_find
+                               if r._source.annotation
+                               }
+
         existing_tuids_tmp = {r._id: r._source.tuid for r in result.hits.hits}
 
         # Explicitly remove reference cycle
@@ -1674,13 +1689,26 @@ class TUIDService:
         for line_num, ann_entry in enumerate(line_origins):
             file, rev, line = ann_entry
             id = rev + file + str(line)
+            if id in existing_tuids_tmp2:
+                existing_tuids[line_num + 1] = copy.deepcopy(existing_tuids_tmp2[id])
+
+        new_lines = set(
+            [line_num + 1 for line_num, _ in enumerate(line_origins)]
+        ) - set(existing_tuids.keys())
+        ret2 =  new_lines, existing_tuids
+
+        for line_num, ann_entry in enumerate(line_origins):
+            file, rev, line = ann_entry
+            id = rev + file + str(line)
             if id in existing_tuids_tmp:
                 existing_tuids[line_num + 1] = copy.deepcopy(existing_tuids_tmp[id])
 
         new_lines = set(
             [line_num + 1 for line_num, _ in enumerate(line_origins)]
         ) - set(existing_tuids.keys())
-        return new_lines, existing_tuids
+        ret =  new_lines, existing_tuids
+
+        return ret
 
     def _get_tuids(
         self, files, revision, annotated_files, repo=None
@@ -1743,6 +1771,7 @@ class TUIDService:
 
                 if errored:
                     Log.note("Inserting dummy entry...")
+                    #remove
                     self.insert_tuid_dummy(revision, file)
                     self.insert_annotate_dummy(revision, file)
                     results.append((file, []))
@@ -1769,6 +1798,7 @@ class TUIDService:
                 # object that are not in the DB.
                 new_line_origins = {}
                 new_lines, existing_tuids = self.get_new_lines(line_origins)
+
                 if len(new_lines) > 0:
                     try:
                         new_line_origins = self.insert_tuids_with_duplicates(
