@@ -442,15 +442,16 @@ def test_maintenance_and_deletion(clogger):
         )
 
         for data in inserts_list_annotations:
+            file, revision, annotation = data
             record = {
-                "_id": data[1] + data[0],
-                "revision": data[1],
-                "file": data[0],
-                "annotation": data[2],
+                "_id": revision + file,
+                "revision": revision,
+                "file": file,
+                "annotation": annotation,
             }
             clogger.tuid_service.annotations.add({"value": record})
             clogger.tuid_service.annotations.refresh()
-            while not clogger.tuid_service._annotation_record_exists(data[1], data[0]):
+            while not clogger.tuid_service._annotation_record_exists(revision, file):
                 Till(seconds=0.001).wait()
 
         query = {"aggs": {"output": {"value_count": {"field": "revnum"}}}, "size": 0}
@@ -542,15 +543,16 @@ def test_deleting_old_annotations(clogger):
         )
 
         for data in inserts_list_annotations:
+            file, revision, annotation = data
             record = {
-                "_id": data[0] + data[1],
-                "file": data[0],
-                "revision": data[1],
-                "annotation": data[2],
+                "_id": file + revision,
+                "file": file,
+                "revision": revision,
+                "annotation": annotation,
             }
             clogger.tuid_service.annotations.add({"value": record})
             clogger.tuid_service.annotations.refresh()
-            while not clogger.tuid_service._annotation_record_exists(data[1], data[0]):
+            while not clogger.tuid_service._annotation_record_exists(revision, file):
                 Till(seconds=0.001).wait()
 
         for revnum, revision, timestamp in [(tail_tipnum, tail_cset, new_timestamp)]:
