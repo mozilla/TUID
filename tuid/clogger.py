@@ -777,9 +777,6 @@ class Clogger:
                         self.tuid_service.annotations.refresh()
                         query = {"size":0, "query": {"terms": {"revision": annrevs_to_del}}}
                         result = self.tuid_service.annotations.search(query)
-                        while result.hits.total != 0:
-                            Till(seconds=0.001).wait()
-                            result = self.tuid_service.annotations.search(query)
 
                     # Delete any overflowing entries
                     new_data2 = new_data1
