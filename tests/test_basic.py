@@ -187,17 +187,17 @@ def test_multithread_tuid_uniqueness(service):
         t.join(till=too_long)
     assert not too_long
 
-    #checks for uniqueness of tuids in different files
+    # Checks for uniqueness of tuids in different files
     tuidlist = [
         tm.tuid
         for ft in tuided_files
         for path, tuidmaps in ft
         for tm in tuidmaps
     ]
-    # ensure no duplicates
+    # Ensures no duplicates
     assert len(tuidlist) == len(set(tuidlist))
 
-    #Checks for the TUID uniqueness after updating the file frontier
+    # Checks for the TUID uniqueness after updating the file frontier
     tuided_files = [None] * num_tests
     threads = [
         Thread.run(
@@ -216,14 +216,14 @@ def test_multithread_tuid_uniqueness(service):
         t.join(till=too_long)
     assert not too_long
 
-    #checks for uniqueness of tuids in different files
+    # Makes one list with all the TUIDs from all the files
     tuidlist = [
         tm.tuid
         for ft in tuided_files
         for path, tuidmaps in ft
         for tm in tuidmaps
     ]
-    # ensure no duplicates
+    # Ensures no duplicates
     assert len(tuidlist) == len(set(tuidlist))
 
 
