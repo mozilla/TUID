@@ -149,6 +149,85 @@ def test_tryrepo_tuids(service):
     assert found_file
 
 
+def test_multithread_tuid_uniqueness(service):
+    timeout_seconds = 60
+    old_revision = "d63ed14ed622"
+    new_revision = "c0200f9fc1ab"
+    service.clogger.initialize_to_range(old_revision, new_revision)
+
+    test_files = [
+        ["/dom/html/HTMLCanvasElement.cpp"],
+        ["/gfx/layers/ipc/CompositorBridgeChild.cpp"],
+        ["/gfx/layers/wr/WebRenderCommandBuilder.h"],
+        ["/gfx/layers/wr/WebRenderUserData.cpp"],
+        ["/gfx/layers/wr/WebRenderUserData.h"],
+        ["/layout/generic/nsFrame.cpp"],
+        ["/layout/generic/nsIFrame.h"],
+        ["/layout/generic/nsImageFrame.cpp"],
+        ["/layout/painting/FrameLayerBuilder.cpp"],
+        ["/widget/cocoa/nsNativeThemeCocoa.mm"]
+    ]
+
+    num_tests = len(test_files)
+    # Call service on multiple threads at once
+    tuided_files = [None] * num_tests
+    threads = [
+        Thread.run(
+            str(i),
+            service.mthread_testing_get_tuids_from_files,
+            test_files[i],
+            old_revision,
+            tuided_files,
+            i,
+            going_forward=True
+        )
+        for i, a in enumerate(tuided_files)
+    ]
+    too_long = Till(seconds=timeout_seconds*4)
+    for t in threads:
+        t.join(till=too_long)
+    assert not too_long
+
+    # Checks for uniqueness of tuids in different files
+    tuidlist = [
+        tm.tuid
+        for ft in tuided_files
+        for path, tuidmaps in ft
+        for tm in tuidmaps
+    ]
+    # Ensures no duplicates
+    assert len(tuidlist) == len(set(tuidlist))
+
+    # Checks for the TUID uniqueness after updating the file frontier
+    tuided_files = [None] * num_tests
+    threads = [
+        Thread.run(
+            str(i),
+            service.mthread_testing_get_tuids_from_files,
+            test_files[i],
+            new_revision,
+            tuided_files,
+            i,
+            going_forward=True
+        )
+        for i, a in enumerate(tuided_files)
+    ]
+    too_long = Till(seconds=timeout_seconds*4)
+    for t in threads:
+        t.join(till=too_long)
+    assert not too_long
+
+    # Makes one list with all the TUIDs from all the files
+    tuidlist = [
+        tm.tuid
+        for ft in tuided_files
+        for path, tuidmaps in ft
+        for tm in tuidmaps
+    ]
+    # Ensures no duplicates
+    assert len(tuidlist) == len(set(tuidlist))
+
+
 def test_multithread_service(service):
     num_tests = 10
     timeout_seconds = 60
