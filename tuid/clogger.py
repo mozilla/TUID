@@ -27,6 +27,7 @@ from pyLibrary.env import http, elasticsearch
 from pyLibrary.sql import sql_list, quote_set
 from tuid import sql
 from tuid.util import HG_URL
+from tuid import insert, delete
 
 RETRY = {"times": 3, "sleep": 5}
 SQL_CSET_BATCH_SIZE = 500
@@ -394,12 +395,9 @@ class Clogger:
         for revnum, revision, timestamp in fmt_insert_list:
             records.append(self._make_record_csetlog(revnum, revision, timestamp))
             revnums.append(revnum)
-        self.csetlog.extend(records)
-        query = self._query_result_size({"revnum": revnums})
-        self.csetlog.refresh()
-        while self.csetlog.search(query).hits.total != len(revnums):
-            Till(seconds=0.001).wait()
-            self.csetlog.refresh()
+
+        filter = {"terms": {"_id": revnums}}
+        insert(self.csetlog, records, filter)
 
         # Start a maintenance run if needed
         if self.check_for_maintenance():
@@ -519,13 +517,7 @@ class Clogger:
         with self.working_locker:
             if delete_old:
                 filter = {"match_all": {}}
-                self.csetlog.delete_record(filter)
-                self.csetlog.refresh()
-                query = {"size": 0}
-                result = self.csetlog.search(query)
-                while result.hits.total != 0:
-                    Till(seconds=0.001).wait()
-                    result = self.csetlog.search(query)
+                delete(self.csetlog, filter)
 
             # since no auto addition possible
             query = self.min_max_dsl("max")
@@ -775,8 +767,6 @@ class Clogger:
                         filter = {"terms": {"revision": annrevs_to_del}}
                         self.tuid_service.annotations.delete_record(filter)
                         self.tuid_service.annotations.refresh()
-                        query = {"size":0, "query": {"terms": {"revision": annrevs_to_del}}}
-                        result = self.tuid_service.annotations.search(query)
 
                     # Delete any overflowing entries
                     new_data2 = new_data1
@@ -827,20 +817,10 @@ class Clogger:
                             revnums.append(revnum)
                             if not self._get_revnum_exists(revnum):
                                 filter = {"term": {"revnum": revnum}}
-                                self.csetlog.delete_record(filter)
-                                self.csetlog.refresh()
-                                query = {"query": {"term": {"revnum": revnum}}}
-                                result = self.csetlog.search(query)
-                                while result.hits.total != 0:
-                                    Till(seconds=0.001).wait()
-                                    result = self.csetlog.search(query)
+                                delete(self.csetlog, filter)
 
-                        self.csetlog.extend(records)
-                        query = self._query_result_size({"revnum": revnums})
-                        self.csetlog.refresh()
-                        while self.csetlog.search(query).hits.total != len(revnums):
-                            Till(seconds=0.001).wait()
-                            self.csetlog.refresh()
+                        filter = {"terms": {"_id": revnums}}
+                        insert(self.csetlog, records, filter)
 
                     if not deleted_data:
                         continue
@@ -930,13 +910,7 @@ class Clogger:
 
                         Log.note("Deleting annotations...")
                         filter = {"terms": {"revision": csets_to_del}}
-                        self.tuid_service.annotations.delete_record(filter)
-                        self.tuid_service.annotations.refresh()
-                        query = {"query": {"terms": {"revision": csets_to_del}}}
-                        result = self.tuid_service.annotations.search(query)
-                        while result.hits.total != 0:
-                            Till(seconds=0.001).wait()
-                            result = self.tuid_service.annotations.search(query)
+                        delete(self.tuid_service.annotations, filter)
 
                         Log.note(
                             "Deleting {{num_entries}} csetLog entries...",
@@ -944,13 +918,7 @@ class Clogger:
                         )
 
                         filter = {"terms": {"revision": csets_to_del}}
-                        self.csetlog.delete_record(filter)
-                        self.csetlog.refresh()
-                        query = {"query": {"terms": {"revision": csets_to_del}}}
-                        result = self.csetlog.search(query)
-                        while result.hits.total != 0:
-                            Till(seconds=0.001).wait()
-                            result = self.csetlog.search(query)
+                        delete(self.csetlog, filter)
 
             except Exception as e:
                 Log.warning(

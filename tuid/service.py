@@ -32,6 +32,7 @@ from tuid.statslogger import StatsLogger
 from tuid.counter import Counter
 from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL
 from mo_json import json2value, value2json
+from tuid import insert
 
 import tuid.clogger
 
@@ -268,12 +269,8 @@ class TUIDService:
             records.append(record)
             ids.append(record["value"]["_id"])
 
-        self.annotations.extend(records)
-        query = self._query_result_size({"_id": ids})
-        self.annotations.refresh()
-        while self.annotations.search(query).hits.total != len(ids):
-            Till(seconds=0.001).wait()
-            self.annotations.refresh()
+        filter = {"terms": {"_id": ids}}
+        insert(self.annotations, records, filter)
 
     def _annotation_record_exists(self, rev, file):
         query = {
@@ -904,12 +901,9 @@ class TUIDService:
                 record = self._make_record_temporal(tuid, revision, file, line)
                 records.append(record)
                 ids.append(record["value"]["_id"])
-            self.temporal.extend(records)
-            query = self._query_result_size({"_id": ids})
-            self.temporal.refresh()
-            while self.temporal.search(query).hits.total != len(ids):
-                Till(seconds=0.001).wait()
-                self.temporal.refresh()
+
+            filter = {"terms": {"_id": ids}}
+            insert(self.temporal, records, filter)
 
         return new_ann, file
 
@@ -1601,12 +1595,9 @@ class TUIDService:
                 records.append(record)
                 ids.append(record["value"]["_id"])
 
-        self.temporal.extend(records)
-        query = self._query_result_size({"_id": ids})
-        self.temporal.refresh()
-        while self.temporal.search(query).hits.total != len(ids):
-            Till(seconds=0.001).wait()
-            self.temporal.refresh()
+        filter = {"terms": {"_id": ids}}
+        insert(self.temporal, records, filter)
+
         return new_line_origins
 
     def get_new_lines(self, line_origins):

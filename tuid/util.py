@@ -16,6 +16,7 @@ from mo_hg.apply import Line, SourceFile
 from mo_logs import Log
 from pyLibrary.sql import quote_set, sql_list
 from mo_threads import Till
+from tuid import insert
 
 HG_URL = URL("https://hg.mozilla.org/")
 
@@ -111,12 +112,8 @@ class AnnotateFile(SourceFile, object):
                     record = self.tuid_service._make_record_temporal(tuid, revision, file, line)
                     records.append(record)
                     ids.append(record["value"]["_id"])
-                self.tuid_service.temporal.extend(records)
-                query = self.tuid_service._query_result_size({"_id": ids})
-                self.tuid_service.temporal.refresh()
-                while self.tuid_service.temporal.search(query).hits.total != len(ids):
-                    Till(seconds=0.001).wait()
-                    self.tuid_service.temporal.refresh()
+                filter = {"terms": {"_id": ids}}
+                insert(self.tuid_service.temporal, records, filter)
             except Exception as e:
                 Log.note(
                     "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
