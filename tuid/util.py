@@ -16,6 +16,7 @@ from mo_hg.apply import Line, SourceFile
 from mo_logs import Log
 from pyLibrary.sql import quote_set, sql_list
 from mo_threads import Till
+from mo_dots import wrap
 from tuid import insert
 
 HG_URL = URL("https://hg.mozilla.org/")
@@ -106,12 +107,12 @@ class AnnotateFile(SourceFile, object):
                     for linenum in insert_lines
                 ]
 
-                records = []
-                ids = []
-                for tuid, file, revision, line in insert_entries:
-                    record = self.tuid_service._make_record_temporal(tuid, revision, file, line)
-                    records.append(record)
-                    ids.append(record["value"]["_id"])
+                records = wrap([
+                    self.tuid_service._make_record_temporal(tuid, revision, file, line)
+                    for tuid, file, revision, line in insert_entries
+                ])
+                ids = records.value._id
+
                 filter = {"terms": {"_id": ids}}
                 insert(self.tuid_service.temporal, records, filter)
             except Exception as e:

@@ -10,7 +10,7 @@ from __future__ import unicode_literals
 
 import pytest
 
-from mo_dots import Null
+from mo_dots import Null, wrap
 from mo_logs import Log, Except
 from mo_threads import Thread, Till
 from mo_times import Timer
@@ -420,13 +420,11 @@ def test_maintenance_and_deletion(clogger):
             )
         )
 
-        records = []
-        ids = []
-        for data in inserts_list_annotations:
-            file, revision, annotation = data
-            record = clogger.tuid_service._make_record_annotations(revision, file, annotation)
-            records.append(record)
-            ids.append(record["value"]["_id"])
+        records = wrap([
+            clogger.tuid_service._make_record_annotations(revision, file, annotation)
+            for file, revision, annotation in inserts_list_annotations
+        ])
+        ids = records.value._id
 
         filter = {"terms": {"_id": ids}}
         insert(clogger.tuid_service.annotations, records, filter)
@@ -519,23 +517,20 @@ def test_deleting_old_annotations(clogger):
             )
         )
 
-        records = []
-        ids =[]
-        for data in inserts_list_annotations:
-            file, revision, annotation = data
-            record = clogger.tuid_service._make_record_annotations(revision, file, annotation)
-            records.append(record)
-            ids.append(record["value"]["_id"])
+        records = wrap([
+            clogger.tuid_service._make_record_annotations(revision, file, annotation)
+            for file, revision, annotation in inserts_list_annotations
+        ])
+        ids = records.value._id
 
         filter = {"terms": {"_id": ids}}
         insert(clogger.tuid_service.annotations, records, filter)
 
-        records = []
-        ids = []
-        for revnum, revision, timestamp in [(tail_tipnum, tail_cset, new_timestamp)]:
-            record = clogger._make_record_csetlog(revnum, revision, timestamp)
-            records.append(record)
-            ids.append(revnum)
+        records = wrap([
+            clogger._make_record_csetlog(revnum, revision, timestamp)
+            for revnum, revision, timestamp in [(tail_tipnum, tail_cset, new_timestamp)]
+        ])
+        ids = records.value._id
 
         filter = {"terms": {"_id": ids}}
         insert(clogger.csetlog, records, filter)

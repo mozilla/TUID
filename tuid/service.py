@@ -261,13 +261,11 @@ class TUIDService:
             for _, _, tuids_string in data:
                 self.destringify_tuids(tuids_string)
 
-        records = []
-        ids = []
-        for row in data:
-            revision, file, annotation = row
-            record = self._make_record_annotations(revision, file, annotation)
-            records.append(record)
-            ids.append(record["value"]["_id"])
+        records = wrap([
+            self._make_record_annotations(revision, file, annotation)
+            for file, revision, annotation in data
+        ])
+        ids = records.value._id
 
         filter = {"terms": {"_id": ids}}
         insert(self.annotations, records, filter)
@@ -894,13 +892,11 @@ class TUIDService:
             break  # Found the file, exit searching
 
         if len(list_to_insert) > 0:
-            ids = []
-            records = []
-            for inserts_list in list_to_insert:
-                tuid, file, revision, line = inserts_list
-                record = self._make_record_temporal(tuid, revision, file, line)
-                records.append(record)
-                ids.append(record["value"]["_id"])
+            records = wrap([
+                self._make_record_temporal(tuid, revision, file, line)
+                for tuid, file, revision, line in list_to_insert
+            ])
+            ids = records.value._id
 
             filter = {"terms": {"_id": ids}}
             insert(self.temporal, records, filter)
@@ -1587,13 +1583,11 @@ class TUIDService:
         else:
             lines_to_insert = new_line_origins.values()
 
-        records = []
-        ids = []
-        for part_of_insert in lines_to_insert:
-            for tuid, f, rev, line_num in [part_of_insert]:
-                record = self._make_record_temporal(tuid, rev, f, line_num)
-                records.append(record)
-                ids.append(record["value"]["_id"])
+        records = wrap([
+            self._make_record_temporal(tuid, revision, file, line)
+            for tuid, file, revision, line in lines_to_insert
+        ])
+        ids = records.value._id
 
         filter = {"terms": {"_id": ids}}
         insert(self.temporal, records, filter)

@@ -16,7 +16,7 @@ import time
 # Clogger
 import tuid.service
 from jx_python import jx
-from mo_dots import Null, coalesce, set_default
+from mo_dots import Null, coalesce, set_default, wrap
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_logs import Log
 from mo_logs.exceptions import suppress_exception
@@ -390,13 +390,13 @@ class Clogger:
                 fmt_insert_list.append(cset_entry)
 
         # for _, tmp_insert_list in jx.groupby(fmt_insert_list, size=SQL_CSET_BATCH_SIZE):
-        records = []
-        revnums = []
-        for revnum, revision, timestamp in fmt_insert_list:
-            records.append(self._make_record_csetlog(revnum, revision, timestamp))
-            revnums.append(revnum)
+        records = wrap([
+            self._make_record_csetlog(revnum, revision, timestamp)
+            for revnum, revision, timestamp in fmt_insert_list
+        ])
+        ids = records.value._id
 
-        filter = {"terms": {"_id": revnums}}
+        filter = {"terms": {"_id": ids}}
         insert(self.csetlog, records, filter)
 
         # Start a maintenance run if needed
@@ -808,18 +808,13 @@ class Clogger:
 
                     # Update table and schedule a deletion
                     if modified:
-                        records = []
-                        revnums = []
-                        for revnum, revision, timestamp in new_data2:
-                            records.append(
-                                self._make_record_csetlog(revnum, revision, timestamp)
-                            )
-                            revnums.append(revnum)
-                            if not self._get_revnum_exists(revnum):
-                                filter = {"term": {"revnum": revnum}}
-                                delete(self.csetlog, filter)
+                        records = wrap([
+                            self._make_record_csetlog(revnum, revision, timestamp)
+                            for revnum, revision, timestamp in new_data2
+                        ])
+                        ids = records.value._id
 
-                        filter = {"terms": {"_id": revnums}}
+                        filter = {"terms": {"_id": ids}}
                         insert(self.csetlog, records, filter)
 
                     if not deleted_data:
