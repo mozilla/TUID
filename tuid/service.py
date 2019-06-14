@@ -187,8 +187,6 @@ class TUIDService:
         query = {"size": 0, "query": {"terms": terms}}
         return query
 
-    def results_exist(self, query, ids):
-
 
     def _dummy_tuid_exists(self, file_name, rev):
         # True if dummy, false if not.
@@ -236,12 +234,13 @@ class TUIDService:
         }
         return {"value": record}
 
-    def _make_record_annotations(self, revision, file, annotation):
+    def _make_record_annotations(self, revision, file, annotation, partial):
         record = {
             "_id": revision + file,
             "revision": revision,
             "file": file,
             "annotation": annotation,
+            "partial": partial
         }
         return {"value": record}
 
@@ -260,7 +259,7 @@ class TUIDService:
         if not self._dummy_annotate_exists(file_name, rev):
             self.insert_annotations([(rev[:12], file_name, "")])
 
-    def insert_annotations(self, data):
+    def insert_annotations(self, data, partial = False):
         if VERIFY_TUIDS:
             for _, _, tuids_string in data:
                 self.destringify_tuids(tuids_string)
@@ -269,7 +268,7 @@ class TUIDService:
         ids = []
         for row in data:
             revision, file, annotation = row
-            record = self._make_record_annotations(revision, file, annotation)
+            record = self._make_record_annotations(revision, file, annotation, partial)
             records.append(record)
             ids.append(record["value"]["_id"])
 
@@ -295,7 +294,7 @@ class TUIDService:
 
     def _get_annotation(self, rev, file):
         query = {
-            "_source": {"includes": ["annotation"]},
+            "_source": {"includes": ["annotation", "partial"]},
             "query": {
                 "bool": {
                     "must": [{"term": {"revision": rev}}, {"term": {"file": file}}]
@@ -303,7 +302,10 @@ class TUIDService:
             },
             "size": 1,
         }
-        temp = self.annotations.search(query).hits.hits[0]._source.annotation
+        data = self.annotations.search(query).hits.hits[0]._source
+        temp = None
+        if data.partial == False:
+            temp = data.annotation
         return temp
 
     def _get_one_tuid(self, cset, path, line):
@@ -928,6 +930,10 @@ class TUIDService:
             while self.temporal.search(query).hits.total != len(ids):
                 Till(seconds=0.001).wait()
                 self.temporal.refresh()
+
+            # Insert in annotations table also
+            annotations_insert_list = self.temporal_annotations_record_maker(list_to_insert)
+            self.insert_annotations(annotations_insert_list, partial=True)
 
         return new_ann, file
 
@@ -1567,6 +1573,34 @@ class TUIDService:
         gc.collect()
         return results
 
+
+    # Temporal_Annotations converter functions
+    def insert_at_index(self, list, index, value):
+        length = len(list)
+        if len(list)<=index:
+            for i in range(length, index+1):
+                list.append(None)
+        list[index] = value
+        return list
+
+    def temporal_annotations_record_maker(self, lines_to_insert):
+        annotations_dict = {}
+        for part_of_insert in lines_to_insert:
+            tuid, f, rev, line_num = part_of_insert
+            # Makes a list with None inserted except at he required places
+            if rev+" "+f in annotations_dict:
+                annotations_dict.update({rev+" "+f: self.insert_at_index(annotations_dict[rev+" "+f], line_num-1, tuid)})
+            else:
+                annotations_dict.update({rev+" "+f: self.insert_at_index([], line_num-1, tuid)})
+
+        annotations_insert_list = []
+        for i in annotations_dict:
+            rev, file = i.split(" ")
+            annotations_insert_list.append((rev, file, annotations_dict[i]))
+
+        return annotations_insert_list
+
+
     def insert_tuids_with_duplicates(
         self, file, revision, new_lines, line_origins
     ):
@@ -1613,6 +1647,7 @@ class TUIDService:
 
         records = []
         ids = []
+        annotations_dict = {}
         for part_of_insert in lines_to_insert:
             for tuid, f, rev, line_num in [part_of_insert]:
                 record = self._make_record_temporal(tuid, rev, f, line_num)
@@ -1625,6 +1660,11 @@ class TUIDService:
         while self.temporal.search(query).hits.total != len(ids):
             Till(seconds=0.001).wait()
             self.temporal.refresh()
+
+        # Insert in annotations table also
+        annotations_insert_list = self.temporal_annotations_record_maker(lines_to_insert)
+        self.insert_annotations(annotations_insert_list, partial= True)
+
         return new_line_origins
 
     def get_new_lines(self, line_origins):
@@ -1657,20 +1697,21 @@ class TUIDService:
             "_source": {"includes": ["annotation"]},
             "query": {
                 "bool": {
-                    "must": [{"terms": {"file": file_names}}, {"terms": {"revision": revs_to_find}}]
+                    "filter": [
+                        {"terms": {"file": file_names}},
+                        {"terms": {"revision": revs_to_find}}
+                    ]
                 }
             },
             "size": 10000,
         }
         temp = self.annotations.search(query).hits.hits
 
-
-        # I expect all the revision, file will have complete annotation or None
-        #then the remaining calculations are not needed
         existing_tuids_tmp2 = {r._id+str(i): r._source.annotation[i-1]
                                for r in temp
                                for i in lines_to_find
                                if r._source.annotation
+                               if r._source.annotation[i-1]
                                }
 
         existing_tuids_tmp = {r._id: r._source.tuid for r in result.hits.hits}
@@ -1708,7 +1749,7 @@ class TUIDService:
         ) - set(existing_tuids.keys())
         ret =  new_lines, existing_tuids
 
-        return ret
+        return ret2
 
     def _get_tuids(
         self, files, revision, annotated_files, repo=None
