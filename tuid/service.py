@@ -187,28 +187,6 @@ class TUIDService:
         query = {"size": 0, "query": {"terms": terms}}
         return query
 
-
-    def _dummy_tuid_exists(self, file_name, rev):
-        # True if dummy, false if not.
-        # None means there is no entry.
-        query = {
-            "_source": {"includes": ["tuid"]},
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"file": file_name}},
-                        {"term": {"revision": rev}},
-                        {"term": {"line": 0}},
-                    ]
-                }
-            },
-            "size": 0,
-        }
-        temp = self.temporal.search(query).hits.total
-
-        temp2 = self._dummy_annotate_exists(file_name, rev)
-        return 0 != temp
-
     def _dummy_annotate_exists(self, file_name, rev):
         # True if dummy, false if not.
         # None means there is no entry.
@@ -227,10 +205,7 @@ class TUIDService:
     def _make_record_temporal(self, tuid, revision, file, line):
         record = {
             "_id": revision + file + str(line),
-            "tuid": tuid,
-            "revision": revision,
-            "file": file,
-            "line": line,
+            "tuid": tuid
         }
         return {"value": record}
 
@@ -243,16 +218,6 @@ class TUIDService:
             "partial": partial
         }
         return {"value": record}
-
-    def insert_tuid_dummy(self, rev, file_name):
-        # Inserts a dummy tuid: (-1,rev,file_name,0)
-        if not self._dummy_tuid_exists(file_name, rev):
-            self.temporal.add(self._make_record_temporal(-1, rev[:12], file_name, 0))
-            self.temporal.refresh()
-            while not self._dummy_tuid_exists(file_name, rev[:12]):
-                Till(seconds=0.001).wait()
-                self.temporal.refresh()
-        return MISSING
 
     def insert_annotate_dummy(self, rev, file_name):
         # Inserts annotation dummy: (rev, file, '')
@@ -322,22 +287,7 @@ class TUIDService:
         }
         temp1 = self.annotations.search(query).hits.hits[0]._source.annotation[line-1]
 
-        query = {
-            "_source": {"includes": ["tuid"]},
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"file": path}},
-                        {"term": {"revision": cset}},
-                        {"term": {"line": line}},
-                    ]
-                }
-            },
-            "size": 1,
-        }
-        temp = self.temporal.search(query).hits.hits[0]._source.tuid
-
-        return temp
+        return temp1
 
     def _get_latest_revision(self, file, transaction):
         # Returns the latest revision that we
@@ -1600,6 +1550,29 @@ class TUIDService:
 
         return annotations_insert_list
 
+    def annotations_search_line_tuid(self, file_names, revs_to_find, lines_to_find):
+        query = {
+            "_source": {"includes": ["annotation"]},
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"terms": {"file": file_names}},
+                        {"terms": {"revision": revs_to_find}}
+                    ]
+                }
+            },
+            "size": 10000,
+        }
+        hits = self.annotations.search(query).hits.hits
+
+        existing_tuids = {r._id + str(i): r._source.annotation[i - 1]
+                               for r in hits
+                               for i in lines_to_find
+                               if r._source.annotation
+                               if r._source.annotation[i - 1]
+                               }
+        return existing_tuids
+
 
     def insert_tuids_with_duplicates(
         self, file, revision, new_lines, line_origins
@@ -1677,44 +1650,9 @@ class TUIDService:
         revs_to_find = list(set([rev for _, rev, _ in line_origins]))
         lines_to_find = list(set([line for _, _, line in line_origins]))
 
-        query = {
-            "size": 10000,
-            "_source": {"includes": ["tuid", "file", "revision", "line"]},
-            "query": {
-                "bool": {
-                    "filter": [
-                        {"terms": {"file": file_names}},
-                        {"terms": {"revision": revs_to_find}},
-                        {"terms": {"line": lines_to_find}},
-                    ]
-                }
-            },
-        }
 
-        result = self.temporal.search(query)
 
-        query = {
-            "_source": {"includes": ["annotation"]},
-            "query": {
-                "bool": {
-                    "filter": [
-                        {"terms": {"file": file_names}},
-                        {"terms": {"revision": revs_to_find}}
-                    ]
-                }
-            },
-            "size": 10000,
-        }
-        temp = self.annotations.search(query).hits.hits
-
-        existing_tuids_tmp2 = {r._id+str(i): r._source.annotation[i-1]
-                               for r in temp
-                               for i in lines_to_find
-                               if r._source.annotation
-                               if r._source.annotation[i-1]
-                               }
-
-        existing_tuids_tmp = {r._id: r._source.tuid for r in result.hits.hits}
+        existing_tuids_tmp = self.annotations_search_line_tuid(file_names, revs_to_find, lines_to_find)
 
         # Explicitly remove reference cycle
         del file_names
@@ -1730,24 +1668,13 @@ class TUIDService:
         for line_num, ann_entry in enumerate(line_origins):
             file, rev, line = ann_entry
             id = rev + file + str(line)
-            if id in existing_tuids_tmp2:
-                existing_tuids[line_num + 1] = copy.deepcopy(existing_tuids_tmp2[id])
-
-        new_lines = set(
-            [line_num + 1 for line_num, _ in enumerate(line_origins)]
-        ) - set(existing_tuids.keys())
-        ret2 =  new_lines, existing_tuids
-
-        for line_num, ann_entry in enumerate(line_origins):
-            file, rev, line = ann_entry
-            id = rev + file + str(line)
             if id in existing_tuids_tmp:
                 existing_tuids[line_num + 1] = copy.deepcopy(existing_tuids_tmp[id])
 
         new_lines = set(
             [line_num + 1 for line_num, _ in enumerate(line_origins)]
         ) - set(existing_tuids.keys())
-        ret =  new_lines, existing_tuids
+        ret2 =  new_lines, existing_tuids
 
         return ret2
 
@@ -1812,8 +1739,6 @@ class TUIDService:
 
                 if errored:
                     Log.note("Inserting dummy entry...")
-                    #remove
-                    self.insert_tuid_dummy(revision, file)
                     self.insert_annotate_dummy(revision, file)
                     results.append((file, []))
                     continue

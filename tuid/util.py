@@ -72,24 +72,26 @@ class AnnotateFile(SourceFile, object):
         if len(all_new_lines) > 0:
             try:
                 query = {
-                    "size": 10000,
-                    "_source": {"includes": ["tuid", "file", "revision", "line"]},
+                    "_source": {"includes": ["annotation"]},
                     "query": {
                         "bool": {
                             "filter": [
                                 {"term": {"file": self.filename}},
-                                {"term": {"revision": revision}},
-                                {"terms": {"line": all_new_lines}},
+                                {"term": {"revision": revision}}
                             ]
                         }
                     },
+                    "size": 10000,
                 }
-                result = self.tuid_service.temporal.search(query)
-                existing_tuids = {}
+                hits = self.tuid_service.annotations.search(query).hits.hits
 
-                for r in result.hits.hits:
-                    s = r._source
-                    existing_tuids.update({s.line: s.tuid})
+                existing_tuids = {i: r._source.annotation[i - 1]
+                                  for r in hits
+                                  for i in all_new_lines
+                                  if r._source.annotation
+                                  if r._source.annotation[i - 1]
+                                  }
+
             except Exception as e:
                 # Log takes out important output, use print instead
                 self.failed_file = True
@@ -117,6 +119,24 @@ class AnnotateFile(SourceFile, object):
                 while self.tuid_service.temporal.search(query).hits.total != len(ids):
                     Till(seconds=0.001).wait()
                     self.tuid_service.temporal.refresh()
+
+                # Insert in annotations table also
+                annotations_insert_list = self.tuid_service.temporal_annotations_record_maker(insert_entries)
+                records = []
+                ids = []
+                for row in annotations_insert_list:
+                    revision, file, annotation = row
+                    record = self.tuid_service._make_record_annotations(revision, file, annotation, partial=True)
+                    records.append(record)
+                    ids.append(record["value"]["_id"])
+
+                self.tuid_service.annotations.extend(records)
+                query = self.tuid_service._query_result_size({"_id": ids})
+                self.tuid_service.annotations.refresh()
+                while self.tuid_service.annotations.search(query).hits.total != len(ids):
+                    Till(seconds=0.001).wait()
+                    self.tuid_service.annotations.refresh()
+
             except Exception as e:
                 Log.note(
                     "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
