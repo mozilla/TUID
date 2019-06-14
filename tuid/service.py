@@ -145,7 +145,6 @@ class TUIDService:
 
         temporal = self.esconfig.temporal
         set_default(temporal, {"schema": TEMPORAL_SCHEMA})
-        # what would be the _id here
         self.temporal = self.es_temporal.get_or_create_index(kwargs=temporal)
         self.temporal.refresh()
 
@@ -157,7 +156,6 @@ class TUIDService:
 
         annotations = self.esconfig.annotations
         set_default(annotations, {"schema": ANNOTATIONS_SCHEMA})
-        # what would be the _id here
         self.annotations = self.es_annotations.get_or_create_index(kwargs=annotations)
         self.annotations.refresh()
 
@@ -285,9 +283,9 @@ class TUIDService:
             },
             "size": 1,
         }
-        temp1 = self.annotations.search(query).hits.hits[0]._source.annotation[line-1]
+        temp = self.annotations.search(query).hits.hits[0]._source.annotation[line-1]
 
-        return temp1
+        return temp
 
     def _get_latest_revision(self, file, transaction):
         # Returns the latest revision that we
@@ -300,7 +298,7 @@ class TUIDService:
         # Turns the TuidMap list to a sorted list
         tuid_list.sort(key=lambda x: x.line)
         ordered_tuid = [-1] * len(tuid_list)
-        #checks any line number is missing
+        # Checks any line number is missing
         for tuid, line in tuid_list:
             ordered_tuid[line - 1] = tuid
 
