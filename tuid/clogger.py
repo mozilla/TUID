@@ -396,6 +396,8 @@ class Clogger:
         ])
         ids = records.value._id
 
+
+
         filter = {"terms": {"_id": ids}}
         insert(self.csetlog, records, filter)
 

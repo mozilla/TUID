@@ -263,7 +263,7 @@ class TUIDService:
 
         records = wrap([
             self._make_record_annotations(revision, file, annotation)
-            for file, revision, annotation in data
+            for revision, file, annotation in data
         ])
         ids = records.value._id
 
