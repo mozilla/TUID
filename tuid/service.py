@@ -265,10 +265,7 @@ class TUIDService:
             self._make_record_annotations(revision, file, annotation)
             for revision, file, annotation in data
         ])
-        ids = records.value._id
-
-        filter = {"terms": {"_id": ids}}
-        insert(self.annotations, records, filter)
+        insert(self.annotations, records)
 
     def _annotation_record_exists(self, rev, file):
         query = {
@@ -896,10 +893,7 @@ class TUIDService:
                 self._make_record_temporal(tuid, revision, file, line)
                 for tuid, file, revision, line in list_to_insert
             ])
-            ids = records.value._id
-
-            filter = {"terms": {"_id": ids}}
-            insert(self.temporal, records, filter)
+            insert(self.temporal, records)
 
         return new_ann, file
 
@@ -1587,10 +1581,7 @@ class TUIDService:
             self._make_record_temporal(tuid, revision, file, line)
             for tuid, file, revision, line in lines_to_insert
         ])
-        ids = records.value._id
-
-        filter = {"terms": {"_id": ids}}
-        insert(self.temporal, records, filter)
+        insert(self.temporal, records)
 
         return new_line_origins
 

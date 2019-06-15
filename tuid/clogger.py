@@ -394,12 +394,7 @@ class Clogger:
             self._make_record_csetlog(revnum, revision, timestamp)
             for revnum, revision, timestamp in fmt_insert_list
         ])
-        ids = records.value._id
-
-
-
-        filter = {"terms": {"_id": ids}}
-        insert(self.csetlog, records, filter)
+        insert(self.csetlog, records)
 
         # Start a maintenance run if needed
         if self.check_for_maintenance():
@@ -814,10 +809,7 @@ class Clogger:
                             self._make_record_csetlog(revnum, revision, timestamp)
                             for revnum, revision, timestamp in new_data2
                         ])
-                        ids = records.value._id
-
-                        filter = {"terms": {"_id": ids}}
-                        insert(self.csetlog, records, filter)
+                        insert(self.csetlog, records)
 
                     if not deleted_data:
                         continue

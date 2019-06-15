@@ -111,10 +111,7 @@ class AnnotateFile(SourceFile, object):
                     self.tuid_service._make_record_temporal(tuid, revision, file, line)
                     for tuid, file, revision, line in insert_entries
                 ])
-                ids = records.value._id
-
-                filter = {"terms": {"_id": ids}}
-                insert(self.tuid_service.temporal, records, filter)
+                insert(self.tuid_service.temporal, records)
             except Exception as e:
                 Log.note(
                     "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",

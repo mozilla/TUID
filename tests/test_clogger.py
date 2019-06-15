@@ -424,10 +424,7 @@ def test_maintenance_and_deletion(clogger):
             clogger.tuid_service._make_record_annotations(revision, file, annotation)
             for file, revision, annotation in inserts_list_annotations
         ])
-        ids = records.value._id
-
-        filter = {"terms": {"_id": ids}}
-        insert(clogger.tuid_service.annotations, records, filter)
+        insert(clogger.tuid_service.annotations, records)
 
         query = {"aggs": {"output": {"value_count": {"field": "revnum"}}}, "size": 0}
         revnums_in_db = int(clogger.csetlog.search(query).aggregations.output.value)
@@ -521,19 +518,13 @@ def test_deleting_old_annotations(clogger):
             clogger.tuid_service._make_record_annotations(revision, file, annotation)
             for file, revision, annotation in inserts_list_annotations
         ])
-        ids = records.value._id
-
-        filter = {"terms": {"_id": ids}}
-        insert(clogger.tuid_service.annotations, records, filter)
+        insert(clogger.tuid_service.annotations, records)
 
         records = wrap([
             clogger._make_record_csetlog(revnum, revision, timestamp)
             for revnum, revision, timestamp in [(tail_tipnum, tail_cset, new_timestamp)]
         ])
-        ids = records.value._id
-
-        filter = {"terms": {"_id": ids}}
-        insert(clogger.csetlog, records, filter)
+        insert(clogger.csetlog, records)
 
     # Start maintenance
     clogger.disable_maintenance = False
