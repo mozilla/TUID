@@ -7,6 +7,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
+from tests import delete
 
 import json
 
@@ -149,22 +150,25 @@ def test_tryrepo_tuids(service):
 
 
 def test_multithread_tuid_uniqueness(service):
-    num_tests = 10
     timeout_seconds = 60
-    revision = "d63ed14ed622"
+    old_revision = "d63ed14ed622"
+    new_revision = "c0200f9fc1ab"
+    service.clogger.initialize_to_range(old_revision, new_revision)
+
     test_files = [
-        ["/devtools/server/tests/browser/browser_storage_dynamic_windows.js"],
-        ["/devtools/server/tests/browser/browser_storage_updates.js"],
-        ["/toolkit/components/narrate/test/browser_narrate.js"],
-        [ "/toolkit/components/narrate/test/browser_narrate_language.js"],
-        ["/toolkit/components/narrate/test/browser_voiceselect.js"],
-        ["/toolkit/components/narrate/test/browser_word_highlight.js"],
-        ["/toolkit/components/normandy/test/browser/browser_about_preferences.js"],
-        ["/toolkit/components/normandy/test/browser/browser_about_studies.js"],
-        ["/toolkit/components/payments/test/browser/browser_host_name.js"],
-        ["/toolkit/components/payments/test/browser/browser_profile_storage.js"]
+        ["/dom/html/HTMLCanvasElement.cpp"],
+        ["/gfx/layers/ipc/CompositorBridgeChild.cpp"],
+        ["/gfx/layers/wr/WebRenderCommandBuilder.h"],
+        ["/gfx/layers/wr/WebRenderUserData.cpp"],
+        ["/gfx/layers/wr/WebRenderUserData.h"],
+        ["/layout/generic/nsFrame.cpp"],
+        ["/layout/generic/nsIFrame.h"],
+        ["/layout/generic/nsImageFrame.cpp"],
+        ["/layout/painting/FrameLayerBuilder.cpp"],
+        ["/widget/cocoa/nsNativeThemeCocoa.mm"]
     ]
 
+    num_tests = len(test_files)
     # Call service on multiple threads at once
     tuided_files = [None] * num_tests
     threads = [
@@ -172,28 +176,56 @@ def test_multithread_tuid_uniqueness(service):
             str(i),
             service.mthread_testing_get_tuids_from_files,
             test_files[i],
-            revision,
+            old_revision,
             tuided_files,
             i,
+            going_forward=True
         )
         for i, a in enumerate(tuided_files)
     ]
-    too_long = Till(seconds=timeout_seconds)
+    too_long = Till(seconds=timeout_seconds*4)
     for t in threads:
         t.join(till=too_long)
     assert not too_long
 
-    #checks for uniqueness of tuids in different file
-    tuidmaplist = [
-        tuidmaps
+    # Checks for uniqueness of tuids in different files
+    tuidlist = [
+        tm.tuid
         for ft in tuided_files
-        for tuidmaps in ft[0][1]
+        for path, tuidmaps in ft
+        for tm in tuidmaps
     ]
-    tuidlist = [tm.tuid for tm in tuidmaplist]
+    # Ensures no duplicates
+    assert len(tuidlist) == len(set(tuidlist))
 
-    #length of both list and set should be same
-    tuid_uniqueness = len(tuidlist) - len(set(tuidlist))
-    assert not tuid_uniqueness
+    # Checks for the TUID uniqueness after updating the file frontier
+    tuided_files = [None] * num_tests
+    threads = [
+        Thread.run(
+            str(i),
+            service.mthread_testing_get_tuids_from_files,
+            test_files[i],
+            new_revision,
+            tuided_files,
+            i,
+            going_forward=True
+        )
+        for i, a in enumerate(tuided_files)
+    ]
+    too_long = Till(seconds=timeout_seconds*4)
+    for t in threads:
+        t.join(till=too_long)
+    assert not too_long
+
+    # Makes one list with all the TUIDs from all the files
+    tuidlist = [
+        tm.tuid
+        for ft in tuided_files
+        for path, tuidmaps in ft
+        for tm in tuidmaps
+    ]
+    # Ensures no duplicates
+    assert len(tuidlist) == len(set(tuidlist))
 
 
 def test_multithread_service(service):
@@ -435,13 +467,7 @@ def test_many_files_one_revision(service):
             quote_set(test_file)
         )
         filter = {"terms": {"file": test_file}}
-        service.annotations.delete_record(filter)
-        service.annotations.refresh()
-        query = {"query": {"terms": {"file": test_file}}}
-        result = service.annotations.search(query)
-        while result.hits.total != 0:
-            Till(seconds=0.001).wait()
-            result = service.annotations.search(query)
+        delete(service.annotations, filter)
 
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
@@ -480,13 +506,7 @@ def test_one_addition_many_files(service):
             quote_set(test_file)
         )
         filter = {"terms": {"file": test_file}}
-        service.annotations.delete_record(filter)
-        service.annotations.refresh()
-        query = {"size":0, "query": {"terms": {"file": test_file}}}
-        result = service.annotations.search(query)
-        while result.hits.total != 0:
-            Till(seconds=0.001).wait()
-            result = service.annotations.search(query)
+        delete(service.annotations, filter)
 
     # Get current annotation
     result, _ = service.get_tuids_from_files(test_file_change, old_rev)
@@ -679,13 +699,7 @@ def test_one_http_call_required(service):
             quote_set(proc_files)
         )
         filter = {"terms": {"file": proc_files}}
-        service.annotations.delete_record(filter)
-        service.annotations.refresh()
-        query = {"size":0, "query": {"terms": {"file": proc_files}}}
-        result = service.annotations.search(query)
-        while result.hits.total != 0:
-            Till(seconds=0.001).wait()
-            result = service.annotations.search(query)
+        delete(service.annotations, filter)
 
     Log.note("Number of files to process: {{flen}}", flen=len(files))
     first_f_n_tuids, _ = service.get_tuids_from_files(
@@ -765,13 +779,7 @@ def test_out_of_order_get_tuids_from_files(service):
     with service.conn.transaction() as t:
         t.execute("DELETE FROM latestFileMod WHERE file=" + quote_value(test_file[0]))
         filter = {"term": {"file": test_file[0]}}
-        service.annotations.delete_record(filter)
-        service.annotations.refresh()
-        query = {"size":0, "query": {"term": {"file": test_file[0]}}}
-        result = service.annotations.search(query)
-        while result.hits.total != 0:
-            Till(seconds=0.001).wait()
-            result = service.annotations.search(query)
+        delete(service.annotations, filter)
 
     check_lines = [41]
 
@@ -812,13 +820,7 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
     with service.conn.transaction() as t:
         t.execute("DELETE FROM latestFileMod WHERE file=" + quote_value(test_file[0]))
         filter = {"term": {"file": test_file[0]}}
-        service.annotations.delete_record(filter)
-        service.annotations.refresh()
-        query = {"size":0, "query": {"term": {"file": test_file[0]}}}
-        result = service.annotations.search(query)
-        while result.hits.total != 0:
-            Till(seconds=0.001).wait()
-            result = service.annotations.search(query)
+        delete(service.annotations, filter)
 
     check_lines = [41]
 
@@ -924,13 +926,7 @@ def test_merged_changes(service):
     with service.conn.transaction() as t:
         t.execute("DELETE FROM latestFileMod WHERE file=" + quote_value(test_files[0]))
         filter = {"term": {"file": test_files[0]}}
-        service.annotations.delete_record(filter)
-        service.annotations.refresh()
-        query = {"size":0, "query": {"term": {"file": test_files[0]}}}
-        result = service.annotations.search(query)
-        while result.hits.total != 0:
-            Till(seconds=0.001).wait()
-            result = service.annotations.search(query)
+        delete(service.annotations, filter)
 
     old_tuids, _ = service.get_tuids_from_files(test_files, old_rev, use_thread=False)
     new_tuids, _ = service.get_tuids_from_files(test_files, new_rev, use_thread=False)
@@ -976,13 +972,7 @@ def test_very_distant_files(service):
 
     with service.conn.transaction() as t:
         filter = {"term": {"revision": new_rev}}
-        service.annotations.delete_record(filter)
-        service.annotations.refresh()
-        query = {"size":0, "query": {"term": {"revision": new_rev}}}
-        result = service.annotations.search(query)
-        while result.hits.total != 0:
-            Till(seconds=0.001).wait()
-            result = service.annotations.search(query)
+        delete(service.annotations, filter)
         for file in test_files:
             t.execute(
                 "UPDATE latestFileMod SET revision = "

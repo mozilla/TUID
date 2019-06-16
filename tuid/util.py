@@ -16,6 +16,8 @@ from mo_hg.apply import Line, SourceFile
 from mo_logs import Log
 from pyLibrary.sql import quote_set, sql_list
 from mo_threads import Till
+from mo_dots import wrap
+from tuid import insert
 
 HG_URL = URL("https://hg.mozilla.org/")
 
@@ -107,35 +109,19 @@ class AnnotateFile(SourceFile, object):
                     for linenum in insert_lines
                 ]
 
-                records = []
-                ids = []
-                for tuid, file, revision, line in insert_entries:
-                    record = self.tuid_service._make_record_temporal(tuid, revision, file, line)
-                    records.append(record)
-                    ids.append(record["value"]["_id"])
-                self.tuid_service.temporal.extend(records)
-                query = self.tuid_service._query_result_size({"_id": ids})
-                self.tuid_service.temporal.refresh()
-                while self.tuid_service.temporal.search(query).hits.total != len(ids):
-                    Till(seconds=0.001).wait()
-                    self.tuid_service.temporal.refresh()
+                records = wrap([
+                    self.tuid_service._make_record_temporal(tuid, revision, file, line)
+                    for tuid, file, revision, line in insert_entries
+                ])
+                insert(self.tuid_service.temporal, records)
 
                 # Insert in annotations table also
                 annotations_insert_list = self.tuid_service.temporal_annotations_record_maker(insert_entries)
-                records = []
-                ids = []
-                for row in annotations_insert_list:
-                    revision, file, annotation = row
-                    record = self.tuid_service._make_record_annotations(revision, file, annotation, partial=True)
-                    records.append(record)
-                    ids.append(record["value"]["_id"])
-
-                self.tuid_service.annotations.extend(records)
-                query = self.tuid_service._query_result_size({"_id": ids})
-                self.tuid_service.annotations.refresh()
-                while self.tuid_service.annotations.search(query).hits.total != len(ids):
-                    Till(seconds=0.001).wait()
-                    self.tuid_service.annotations.refresh()
+                records = wrap([
+                    self.tuid_service._make_record_annotations(revision, file, annotation, True)
+                    for revision, file, annotation in annotations_insert_list
+                ])
+                insert(self.tuid_service.annotations, records)
 
             except Exception as e:
                 Log.note(

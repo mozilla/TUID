@@ -32,6 +32,7 @@ from tuid.statslogger import StatsLogger
 from tuid.counter import Counter
 from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL
 from mo_json import json2value, value2json
+from tuid import insert
 
 import tuid.clogger
 
@@ -207,7 +208,7 @@ class TUIDService:
         }
         return {"value": record}
 
-    def _make_record_annotations(self, revision, file, annotation, partial):
+    def _make_record_annotations(self, revision, file, annotation, partial=False):
         record = {
             "_id": revision + file,
             "revision": revision,
@@ -227,20 +228,11 @@ class TUIDService:
             for _, _, tuids_string in data:
                 self.destringify_tuids(tuids_string)
 
-        records = []
-        ids = []
-        for row in data:
-            revision, file, annotation = row
-            record = self._make_record_annotations(revision, file, annotation, partial)
-            records.append(record)
-            ids.append(record["value"]["_id"])
-
-        self.annotations.extend(records)
-        query = self._query_result_size({"_id": ids})
-        self.annotations.refresh()
-        while self.annotations.search(query).hits.total != len(ids):
-            Till(seconds=0.001).wait()
-            self.annotations.refresh()
+        records = wrap([
+            self._make_record_annotations(revision, file, annotation, partial)
+            for revision, file, annotation in data
+        ])
+        insert(self.annotations, records)
 
     def _annotation_record_exists(self, rev, file):
         query = {
@@ -865,19 +857,11 @@ class TUIDService:
             break  # Found the file, exit searching
 
         if len(list_to_insert) > 0:
-            ids = []
-            records = []
-            for inserts_list in list_to_insert:
-                tuid, file, revision, line = inserts_list
-                record = self._make_record_temporal(tuid, revision, file, line)
-                records.append(record)
-                ids.append(record["value"]["_id"])
-            self.temporal.extend(records)
-            query = self._query_result_size({"_id": ids})
-            self.temporal.refresh()
-            while self.temporal.search(query).hits.total != len(ids):
-                Till(seconds=0.001).wait()
-                self.temporal.refresh()
+            records = wrap([
+                self._make_record_temporal(tuid, revision, file, line)
+                for tuid, file, revision, line in list_to_insert
+            ])
+            insert(self.temporal, records)
 
             # Insert in annotations table also
             annotations_insert_list = self.temporal_annotations_record_maker(list_to_insert)
@@ -1616,21 +1600,11 @@ class TUIDService:
         else:
             lines_to_insert = new_line_origins.values()
 
-        records = []
-        ids = []
-        annotations_dict = {}
-        for part_of_insert in lines_to_insert:
-            for tuid, f, rev, line_num in [part_of_insert]:
-                record = self._make_record_temporal(tuid, rev, f, line_num)
-                records.append(record)
-                ids.append(record["value"]["_id"])
-
-        self.temporal.extend(records)
-        query = self._query_result_size({"_id": ids})
-        self.temporal.refresh()
-        while self.temporal.search(query).hits.total != len(ids):
-            Till(seconds=0.001).wait()
-            self.temporal.refresh()
+        records = wrap([
+            self._make_record_temporal(tuid, revision, file, line)
+            for tuid, file, revision, line in lines_to_insert
+        ])
+        insert(self.temporal, records)
 
         # Insert in annotations table also
         annotations_insert_list = self.temporal_annotations_record_maker(lines_to_insert)
