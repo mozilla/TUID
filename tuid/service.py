@@ -101,16 +101,12 @@ class TUIDService:
             self.num_requests = 0
             self.ann_threads_running = 0
             self.service_threads_running = 0
-            # query = {"size": 0, "aggs": {"value": {"max": {"field": "tuid"}}}}
-            # self.next_tuid = int(
-            #     coalesce(
-            #         eval(str(self.temporal.search(query).aggregations.value.value)), 0
-            #     )
-            #     + 1
-            # )
-
-            with self.conn.transaction() as t:
-                self.next_tuid = coalesce(t.get_one("SELECT tuid FROM temporal")[0], 1)
+            query = {"size": 0, "aggs": {"value": {"max": {"field": "tuid"}}}}
+            self.next_tuid = int(
+                coalesce(
+                    eval(str(self.temporal.search(query).aggregations.value.value)), 1
+                )
+            )
             self.total_locker = Lock()
             self.temporal_locker = Lock()
             self.total_files_requested = 0
@@ -135,12 +131,10 @@ class TUIDService:
         :return: next tuid
         """
         with self.locker:
-            with self.conn.transaction() as t:
-                try:
-                    return self.next_tuid
-                finally:
-                    t.execute("INSERT OR REPLACE INTO temporal (id, tuid) VALUES (?, ?)", (0, self.next_tuid + 1))
-                    self.next_tuid = coalesce(t.get_one("SELECT tuid FROM temporal")[0], 1)
+            try:
+                return self.next_tuid
+            finally:
+                self.next_tuid += 1
 
     def init_db(self, temporal_only=False):
         """
@@ -184,16 +178,6 @@ class TUIDService:
             );"""
             )
 
-            # Used for storing maximum TUID
-            t.execute(
-                """
-            CREATE TABLE temporal (
-                id       INTEGER,
-                tuid     INTEGER,
-                PRIMARY KEY(id)
-            );"""
-            )
-
         Log.note("Tables created successfully")
 
     def _query_result_size(self, terms):
@@ -215,10 +199,10 @@ class TUIDService:
         temp = self.annotations.search(query).hits.total
         return 0 != temp
 
-    def _make_record_temporal(self, tuid, revision, file, line):
+    def _make_record_temporal(self):
         record = {
-            "_id": revision + file + str(line),
-            "tuid": tuid
+            "_id": 0,
+            "tuid": self.next_tuid
         }
         return {"value": record}
 
@@ -871,11 +855,8 @@ class TUIDService:
             break  # Found the file, exit searching
 
         if len(list_to_insert) > 0:
-            records = wrap([
-                self._make_record_temporal(tuid, revision, file, line)
-                for tuid, file, revision, line in list_to_insert
-            ])
-            insert(self.temporal, records)
+            # Insert max tuid to temporal
+            self.temporal.add(self._make_record_temporal())
 
             # Insert in annotations table also
             annotations_insert_list = self.temporal_annotations_record_maker(list_to_insert)
@@ -1613,12 +1594,8 @@ class TUIDService:
             ]
         else:
             lines_to_insert = new_line_origins.values()
-
-        records = wrap([
-            self._make_record_temporal(tuid, revision, file, line)
-            for tuid, file, revision, line in lines_to_insert
-        ])
-        insert(self.temporal, records)
+        # Insert max tuid to temporal
+        self.temporal.add(self._make_record_temporal())
 
         # Insert in annotations table also
         annotations_insert_list = self.temporal_annotations_record_maker(lines_to_insert)
@@ -1924,9 +1901,6 @@ TEMPORAL_SCHEMA = {
             "_all": {"enabled": False},
             "properties": {
                 "tuid": {"type": "integer", "store": True},
-                "revision": {"type": "keyword", "store": True},
-                "file": {"type": "keyword", "store": True},
-                "line": {"type": "integer", "store": True},
             },
         }
     },

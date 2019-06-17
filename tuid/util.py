@@ -109,11 +109,7 @@ class AnnotateFile(SourceFile, object):
                     for linenum in insert_lines
                 ]
 
-                records = wrap([
-                    self.tuid_service._make_record_temporal(tuid, revision, file, line)
-                    for tuid, file, revision, line in insert_entries
-                ])
-                insert(self.tuid_service.temporal, records)
+                self.tuid_service.temporal.add(self.tuid_service._make_record_temporal())
 
                 # Insert in annotations table also
                 annotations_insert_list = self.tuid_service.temporal_annotations_record_maker(insert_entries)
