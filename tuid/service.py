@@ -101,13 +101,16 @@ class TUIDService:
             self.num_requests = 0
             self.ann_threads_running = 0
             self.service_threads_running = 0
-            query = {"size": 0, "aggs": {"value": {"max": {"field": "tuid"}}}}
-            self.next_tuid = int(
-                coalesce(
-                    eval(str(self.temporal.search(query).aggregations.value.value)), 0
-                )
-                + 1
-            )
+            # query = {"size": 0, "aggs": {"value": {"max": {"field": "tuid"}}}}
+            # self.next_tuid = int(
+            #     coalesce(
+            #         eval(str(self.temporal.search(query).aggregations.value.value)), 0
+            #     )
+            #     + 1
+            # )
+
+            with self.conn.transaction() as t:
+                self.next_tuid = coalesce(t.get_one("SELECT tuid FROM temporal")[0], 1)
             self.total_locker = Lock()
             self.temporal_locker = Lock()
             self.total_files_requested = 0
@@ -132,10 +135,12 @@ class TUIDService:
         :return: next tuid
         """
         with self.locker:
-            try:
-                return self.next_tuid
-            finally:
-                self.next_tuid += 1
+            with self.conn.transaction() as t:
+                try:
+                    return self.next_tuid
+                finally:
+                    t.execute("INSERT OR REPLACE INTO temporal (id, tuid) VALUES (?, ?)", (0, self.next_tuid + 1))
+                    self.next_tuid = coalesce(t.get_one("SELECT tuid FROM temporal")[0], 1)
 
     def init_db(self, temporal_only=False):
         """
@@ -143,7 +148,6 @@ class TUIDService:
 
         :return: None
         """
-
         temporal = self.esconfig.temporal
         set_default(temporal, {"schema": TEMPORAL_SCHEMA})
         self.temporal = self.es_temporal.get_or_create_index(kwargs=temporal)
@@ -177,6 +181,16 @@ class TUIDService:
                 file           TEXT,
                 revision       CHAR(12) NOT NULL,
                 PRIMARY KEY(file)
+            );"""
+            )
+
+            # Used for storing maximum TUID
+            t.execute(
+                """
+            CREATE TABLE temporal (
+                id       INTEGER,
+                tuid     INTEGER,
+                PRIMARY KEY(id)
             );"""
             )
 
