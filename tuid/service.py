@@ -277,6 +277,22 @@ class TUIDService:
 
         return temp
 
+    def _get_partial_tuids(self, cset, path):
+        # Returns a single TUID if it exists else None
+
+        query = {
+            "_source": {"includes": ["annotation"]},
+            "query": {
+                "bool": {
+                    "must": [{"term": {"revision": cset}}, {"term": {"file": path}}]
+                }
+            },
+            "size": 1,
+        }
+        temp = self.annotations.search(query).hits.hits[0]._source.annotation
+
+        return temp
+
     def _get_latest_revision(self, file, transaction):
         # Returns the latest revision that we
         # have information on the requested file.
@@ -826,6 +842,8 @@ class TUIDService:
                 TuidMap(tmap.tuid, int(tmap.line) - 1) for tmap in lines[start:]
             ]
 
+        # TUID list for a particular file which contains None
+        partial_tuids = self._get_partial_tuids(cset, file)
         for f_proc in diff["diffs"]:
             new_fname = f_proc["new"].name.lstrip("/")
             old_fname = f_proc["old"].name.lstrip("/")
@@ -841,9 +859,7 @@ class TUIDService:
             f_diff = f_proc["changes"]
             for change in f_diff:
                 if change.action == "+":
-                    tuid_tmp = self._get_one_tuid(
-                        cset, file, change.line + 1
-                    )
+                    tuid_tmp = partial_tuids[change.line]
                     if tuid_tmp == None:
                         new_tuid = self.tuid()
                         list_to_insert.append((new_tuid, cset, file, change.line + 1))
@@ -1511,6 +1527,7 @@ class TUIDService:
         return list
 
     def temporal_annotations_record_maker(self, lines_to_insert):
+        # TODO: What else can be done here to optimize this
         annotations_dict = {}
         for part_of_insert in lines_to_insert:
             tuid, f, rev, line_num = part_of_insert
@@ -1915,7 +1932,7 @@ ANNOTATIONS_SCHEMA = {
             "properties": {
                 "revision": {"type": "keyword", "store": True},
                 "file": {"type": "keyword", "store": True},
-                "annotation": {"type": "keyword", "ignore_above": 20, "store": True},
+                "annotation": {"type": "keyword", "ignore_above": 0},
             },
         }
     },
