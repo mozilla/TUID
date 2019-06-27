@@ -389,7 +389,6 @@ class Clogger:
             if not tmp:
                 fmt_insert_list.append(cset_entry)
 
-        # for _, tmp_insert_list in jx.groupby(fmt_insert_list, size=SQL_CSET_BATCH_SIZE):
         records = wrap([
             self._make_record_csetlog(revnum, revision, timestamp)
             for revnum, revision, timestamp in fmt_insert_list

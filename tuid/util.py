@@ -111,7 +111,7 @@ class AnnotateFile(SourceFile, object):
 
                 self.tuid_service.temporal.add(self.tuid_service._make_record_temporal())
 
-                # Insert in annotations table also
+                # Insert in annotations table
                 annotations_insert_list = self.tuid_service.temporal_annotations_record_maker(insert_entries)
                 records = wrap([
                     self.tuid_service._make_record_annotations(revision, file, annotation, True)

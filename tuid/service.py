@@ -995,7 +995,7 @@ class TUIDService:
             for f_added in parsed_diff:
                 # Get new entries for removed files.
                 new_name = f_added["new"].name.lstrip("/")
-                old_name = f_added["old"].name.lstrip("/")
+                old_name = f_added["old"].name.lstrip( "/")
 
                 # If we don't need this file, skip it
                 if new_name not in files_to_update:
@@ -1280,6 +1280,7 @@ class TUIDService:
 
                             try:
                                 with self.temporal_locker:
+                                    # Gives TUIDs to the new lines in this revision and insert into ES
                                     file_to_modify.create_and_insert_tuids(rev_to_proc)
                             except Exception as e:
                                 file_to_modify.failed_file = True
