@@ -1207,10 +1207,13 @@ class TUIDService:
         parsed_diffs = {
             diff_entry["cset"]: diff_entry["diff"] for diff_entry in all_diffs
         }
+        # Takes each diff and checks whether this rivision has
+        # changed any of the files we need
         for csets_diff in all_diffs:
             cset_len12 = csets_diff["cset"]
             parsed_diff = csets_diff["diff"]["diffs"]
 
+            # parsed_diff has files which are changed in this particular revision
             for f_added in parsed_diff:
                 new_name = f_added["new"].name.lstrip("/")
                 old_name = f_added["old"].name.lstrip("/")

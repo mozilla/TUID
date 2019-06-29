@@ -91,7 +91,6 @@ def apply_diff(file, diff):
 
     :param file: A SourceFile object
     :param diff: unified diff from get_diff
-    :param filename: name of file that the diff is applied to
     :return: file, lines_inserted
     '''
     # Ignore merges, they have duplicate entries.
