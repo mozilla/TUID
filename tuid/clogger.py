@@ -26,8 +26,7 @@ from mo_times.durations import DAY
 from pyLibrary.env import http, elasticsearch
 from pyLibrary.sql import sql_list, quote_set
 from tuid import sql
-from tuid.util import HG_URL
-from tuid import insert, delete
+from tuid.util import HG_URL, insert, delete
 
 RETRY = {"times": 3, "sleep": 5}
 SQL_CSET_BATCH_SIZE = 500

@@ -19,7 +19,7 @@ from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR
 from tuid.clogger import Clogger
 from tuid import sql
-from tests import delete, insert
+from tuid.util import delete, insert
 
 _clogger = None
 _conn = None
