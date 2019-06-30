@@ -7,7 +7,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
-from tests import delete
 
 import json
 
@@ -21,7 +20,7 @@ from pyLibrary.env import http
 from pyLibrary.sql import sql_list, quote_set
 from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR, quote_list
 from tuid.service import TUIDService
-from tuid.util import map_to_array
+from tuid.util import map_to_array, delete
 
 _service = None
 

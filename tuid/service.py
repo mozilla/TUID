@@ -30,9 +30,8 @@ from pyLibrary.sql.sqlite import quote_value, quote_list
 from tuid import sql
 from tuid.statslogger import StatsLogger
 from tuid.counter import Counter
-from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL
+from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL, insert
 from mo_json import json2value, value2json
-from tuid import insert
 
 import tuid.clogger
 
