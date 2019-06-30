@@ -16,7 +16,9 @@ from mo_hg.apply import Line, SourceFile
 from mo_logs import Log
 from pyLibrary.sql import quote_set, sql_list
 from mo_threads import Till
+from mo_dots import wrap
 
+TIMEOUT = 10
 HG_URL = URL("https://hg.mozilla.org/")
 
 
@@ -104,13 +106,12 @@ class AnnotateFile(SourceFile, object):
                     (self.tuid_service.tuid(),) + line_origins[linenum - 1]
                     for linenum in insert_lines
                 ]
-                for tuid, file, revision, line in insert_entries:
-                    self.tuid_service.temporal.add(
-                        self.tuid_service.make_record(tuid, revision, file, line)
-                    )
-                    self.tuid_service.temporal.refresh()
-                    while self.tuid_service._get_tuid(file, revision, line) == None:
-                        Till(seconds=0.001).wait()
+
+                records = wrap([
+                    self.tuid_service._make_record_temporal(tuid, revision, file, line)
+                    for tuid, file, revision, line in insert_entries
+                ])
+                insert(self.tuid_service.temporal, records)
             except Exception as e:
                 Log.note(
                     "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
@@ -165,6 +166,35 @@ def map_to_array(pairs):
         return tuids
     else:
         return None
+
+
+def wait_until(index, condition):
+    timeout = Till(seconds=TIMEOUT)
+    while not timeout:
+        if condition():
+            break
+        index.refresh()
+
+
+def delete(index, filter):
+    index.delete_record(filter)
+    index.refresh()
+    wait_until(
+        index, lambda: index.search({"size": 0, "query": filter}).hits.total == 0
+    )
+
+
+def insert(index, records):
+    ids = records.value._id
+    index.extend(records)
+    index.refresh()
+    wait_until(
+        index,
+        lambda: index.search(
+            {"size": 0, "query": {"terms": {"_id": ids}}}
+        ).hits.total
+        == len(records),
+    )
 
 
 # Used for increasing readability

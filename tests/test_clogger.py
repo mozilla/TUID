@@ -8,11 +8,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
-import json
-
 import pytest
 
-from mo_dots import Null
+from mo_dots import Null, wrap
 from mo_logs import Log, Except
 from mo_threads import Thread, Till
 from mo_times import Timer
@@ -21,6 +19,7 @@ from pyLibrary.sql import sql_list, sql_iso
 from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR
 from tuid.clogger import Clogger
 from tuid import sql
+from tuid.util import delete, insert
 
 _clogger = None
 _conn = None
@@ -69,8 +68,7 @@ def test_tipfilling(clogger):
     current_tip = result.hits.hits[0]._source.revision
 
     filter = {"match_all": {}}
-    clogger.csetlog.delete_record(filter)
-    clogger.csetlog.refresh()
+    delete(clogger.csetlog, filter)
 
     clogger.disable_tipfilling = False
 
@@ -246,18 +244,11 @@ def test_partial_tipfilling(clogger):
     num_trys = 50
     wait_time = 2
     query = {"aggs": {"output": {"value_count": {"field": "revnum"}}}, "size": 0}
-
     prev_total_revs = int(clogger.csetlog.search(query).aggregations.output.value)
 
     max_tip_num, _ = clogger.get_tip()
     filter = {"bool": {"must": [{"range": {"revnum": {"gte": max_tip_num - 5}}}]}}
-    clogger.csetlog.delete_record(filter)
-    clogger.csetlog.refresh()
-    query = {"query": filter}
-    result = clogger.csetlog.search(query)
-    while result.hits.total != 0:
-        Till(seconds=0.01).wait()
-        result = clogger.csetlog.search(query)
+    delete(clogger.csetlog, filter)
 
     clogger.disable_tipfilling = False
     tmp_num_trys = 0
@@ -315,13 +306,7 @@ def test_get_revnum_range_tipfill(clogger):
     tip_num, tip_rev = clogger.get_tip()
     tail_num, _ = clogger.get_tail()
     filter = {"bool": {"must": [{"range": {"revnum": {"gte": tip_num - 5}}}]}}
-    clogger.csetlog.delete_record(filter)
-    clogger.csetlog.refresh()
-    query = {"query": filter}
-    result = clogger.csetlog.search(query)
-    while result.hits.total != 0:
-        Till(seconds=0.001).wait()
-        result = clogger.csetlog.search(query)
+    delete(clogger.csetlog, filter)
 
     _, new_tip_rev = clogger.get_tip()
 
@@ -359,13 +344,7 @@ def test_get_revnum_range_tipnback(clogger):
         # to a non-existent (backfill required) revision in the past.
         tip_num, tip_rev = clogger.get_tip()
         filter = {"bool": {"must": [{"range": {"revnum": {"gte": tip_num - 5}}}]}}
-        clogger.csetlog.delete_record(filter)
-        clogger.csetlog.refresh()
-        query = {"query": filter}
-        result = clogger.csetlog.search(query)
-        while result.hits.total != 0:
-            Till(seconds=0.001).wait()
-            result = clogger.csetlog.search(query)
+        delete(clogger.csetlog, filter)
 
         _, new_tip_rev = clogger.get_tip()
 
@@ -440,12 +419,13 @@ def test_maintenance_and_deletion(clogger):
                 for i in inserts_list_latestFileMod
             )
         )
-        t.execute(
-            "INSERT OR REPLACE INTO annotations (file, revision, annotation) VALUES "
-            + sql_list(
-                sql_iso(sql_list(map(quote_value, i))) for i in inserts_list_annotations
-            )
-        )
+
+        records = wrap([
+            clogger.tuid_service._make_record_annotations(revision, file, annotation)
+            for file, revision, annotation in inserts_list_annotations
+        ])
+        insert(clogger.tuid_service.annotations, records)
+
         query = {"aggs": {"output": {"value_count": {"field": "revnum"}}}, "size": 0}
         revnums_in_db = int(clogger.csetlog.search(query).aggregations.output.value)
     if revnums_in_db <= max_revs:
@@ -476,9 +456,12 @@ def test_maintenance_and_deletion(clogger):
     assert not latest_rev
 
     # Check that annotations were deleted.
-    annotates = clogger.conn.get_one(
-        "SELECT 1 FROM annotations WHERE revision=?", (new_tail,)
-    )
+    query = {
+        "_source": {"includes": ["revision"]},
+        "query": {"bool": {"must": [{"term": {"revision": new_tail}}]}},
+        "size": 0,
+    }
+    annotates = clogger.tuid_service.annotations.search(query).hits.total
     assert not annotates
 
 
@@ -530,23 +513,18 @@ def test_deleting_old_annotations(clogger):
                 for i in inserts_list_latestFileMod
             )
         )
-        t.execute(
-            "INSERT OR REPLACE INTO annotations (file, revision, annotation) VALUES "
-            + sql_list(
-                sql_iso(sql_list(map(quote_value, i))) for i in inserts_list_annotations
-            )
-        )
-        for revnum, revision, timestamp in [(tail_tipnum, tail_cset, new_timestamp)]:
-            record = {
-                "_id": revnum,
-                "revnum": revnum,
-                "revision": revision,
-                "timestamp": timestamp,
-            }
-            clogger.csetlog.add({"value": record})
-            clogger.csetlog.refresh()
-            while not clogger._get_revnum_exists(revnum):
-                Till(seconds=0.001).wait()
+
+        records = wrap([
+            clogger.tuid_service._make_record_annotations(revision, file, annotation)
+            for file, revision, annotation in inserts_list_annotations
+        ])
+        insert(clogger.tuid_service.annotations, records)
+
+        records = wrap([
+            clogger._make_record_csetlog(revnum, revision, timestamp)
+            for revnum, revision, timestamp in [(tail_tipnum, tail_cset, new_timestamp)]
+        ])
+        insert(clogger.csetlog, records)
 
     # Start maintenance
     clogger.disable_maintenance = False
@@ -558,9 +536,12 @@ def test_deleting_old_annotations(clogger):
         latest_rev = clogger.conn.get_one(
             "SELECT 1 FROM latestFileMod WHERE revision=?", (tail_cset,)
         )
-        annotates = clogger.conn.get_one(
-            "SELECT 1 FROM annotations WHERE revision=?", (tail_cset,)
-        )
+        query = {
+            "_source": {"includes": ["revision"]},
+            "query": {"bool": {"must": [{"term": {"revision": tail_cset}}]}},
+            "size": 0,
+        }
+        annotates = clogger.tuid_service.annotations.search(query).hits.total
         if not annotates and not latest_rev:
             break
         tmp_num_trys += 1

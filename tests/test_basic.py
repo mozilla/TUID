@@ -20,7 +20,7 @@ from pyLibrary.env import http
 from pyLibrary.sql import sql_list, quote_set
 from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR, quote_list
 from tuid.service import TUIDService
-from tuid.util import map_to_array
+from tuid.util import map_to_array, delete
 
 _service = None
 
@@ -41,10 +41,10 @@ def service(config, new_db):
 def test_transactions(service):
     # This should pass
     old = service.get_tuids(
-        "/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838", commit=False
+        "/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838"
     )
     new = service.get_tuids(
-        "/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62", commit=False
+        "/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62"
     )
 
     assert len(old) == len(new)
@@ -461,8 +461,12 @@ def test_many_files_one_revision(service):
     service.clogger.start_backfilling()
 
     with service.conn.transaction() as t:
-        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(test_file))
-        t.execute("DELETE FROM annotations WHERE file IN " + quote_set(test_file))
+        t.execute(
+            "DELETE FROM latestFileMod WHERE file IN " +
+            quote_set(test_file)
+        )
+        filter = {"terms": {"file": test_file}}
+        delete(service.annotations, filter)
 
     Log.note("Total files: {{total}}", total=str(len(test_file)))
 
@@ -496,8 +500,12 @@ def test_one_addition_many_files(service):
     service.clogger.start_backfilling()
 
     with service.conn.transaction() as t:
-        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(test_file))
-        t.execute("DELETE FROM annotations WHERE file IN " + quote_set(test_file))
+        t.execute(
+            "DELETE FROM latestFileMod WHERE file IN " +
+            quote_set(test_file)
+        )
+        filter = {"terms": {"file": test_file}}
+        delete(service.annotations, filter)
 
     # Get current annotation
     result, _ = service.get_tuids_from_files(test_file_change, old_rev)
@@ -685,8 +693,12 @@ def test_one_http_call_required(service):
     )  # Useful in testing
 
     with service.conn.transaction() as t:
-        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(proc_files))
-        t.execute("DELETE FROM annotations WHERE file IN " + quote_set(proc_files))
+        t.execute(
+            "DELETE FROM latestFileMod WHERE file IN " +
+            quote_set(proc_files)
+        )
+        filter = {"terms": {"file": proc_files}}
+        delete(service.annotations, filter)
 
     Log.note("Number of files to process: {{flen}}", flen=len(files))
     first_f_n_tuids, _ = service.get_tuids_from_files(
@@ -707,7 +719,6 @@ def test_one_http_call_required(service):
 
     # assert num_http_calls <= 3  # 2 DIFFS FROM ES, AND ONE CALL TO hg.mo
     assert timer.duration.seconds < 30
-
     assert len(proc_files) == len(f_n_tuids)
 
     # Check removed files
@@ -766,7 +777,8 @@ def test_out_of_order_get_tuids_from_files(service):
     test_file = ["dom/base/nsWrapperCache.cpp"]
     with service.conn.transaction() as t:
         t.execute("DELETE FROM latestFileMod WHERE file=" + quote_value(test_file[0]))
-        t.execute("DELETE FROM annotations WHERE file=" + quote_value(test_file[0]))
+        filter = {"term": {"file": test_file[0]}}
+        delete(service.annotations, filter)
 
     check_lines = [41]
 
@@ -806,7 +818,8 @@ def test_out_of_order_going_forward_get_tuids_from_files(service):
     test_file = ["dom/base/nsWrapperCache.cpp"]
     with service.conn.transaction() as t:
         t.execute("DELETE FROM latestFileMod WHERE file=" + quote_value(test_file[0]))
-        t.execute("DELETE FROM annotations WHERE file=" + quote_value(test_file[0]))
+        filter = {"term": {"file": test_file[0]}}
+        delete(service.annotations, filter)
 
     check_lines = [41]
 
@@ -911,7 +924,8 @@ def test_merged_changes(service):
     service.clogger.initialize_to_range(old_rev, new_rev)
     with service.conn.transaction() as t:
         t.execute("DELETE FROM latestFileMod WHERE file=" + quote_value(test_files[0]))
-        t.execute("DELETE FROM annotations WHERE file=" + quote_value(test_files[0]))
+        filter = {"term": {"file": test_files[0]}}
+        delete(service.annotations, filter)
 
     old_tuids, _ = service.get_tuids_from_files(test_files, old_rev, use_thread=False)
     new_tuids, _ = service.get_tuids_from_files(test_files, new_rev, use_thread=False)
@@ -956,7 +970,8 @@ def test_very_distant_files(service):
     service.clogger.initialize_to_range(old_rev, new_rev)
 
     with service.conn.transaction() as t:
-        t.execute("DELETE FROM annotations WHERE revision = " + quote_value(new_rev))
+        filter = {"term": {"revision": new_rev}}
+        delete(service.annotations, filter)
         for file in test_files:
             t.execute(
                 "UPDATE latestFileMod SET revision = "

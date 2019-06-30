@@ -30,7 +30,7 @@ from pyLibrary.sql.sqlite import quote_value, quote_list
 from tuid import sql
 from tuid.statslogger import StatsLogger
 from tuid.counter import Counter
-from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL
+from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL, insert
 from mo_json import json2value, value2json
 
 import tuid.clogger
@@ -53,7 +53,6 @@ DAEMON_WAIT_AT_NEWEST = (
     30 * SECOND
 )  # Time to wait at the newest revision before polling again.
 
-GET_ANNOTATION_QUERY = "SELECT annotation FROM annotations WHERE revision=? and file=?"
 GET_LATEST_MODIFICATION = "SELECT revision FROM latestFileMod WHERE file=?"
 
 
@@ -80,8 +79,11 @@ class TUIDService:
             )
             self.hg_url = URL(hg.url)
 
-            self.esconfig = self.config.esservice.temporal
-            self.es = elasticsearch.Cluster(kwargs=self.esconfig)
+            self.esconfig = self.config.esservice
+            self.es_temporal = elasticsearch.Cluster(kwargs=self.esconfig.temporal)
+            self.es_annotations = elasticsearch.Cluster(
+                kwargs=self.esconfig.annotations
+            )
 
             if not self.conn.get_one(
                 "SELECT name FROM sqlite_master WHERE type='table';"
@@ -141,10 +143,10 @@ class TUIDService:
         :return: None
         """
 
-        temporal = self.esconfig
+        temporal = self.esconfig.temporal
         set_default(temporal, {"schema": TEMPORAL_SCHEMA})
         # what would be the _id here
-        self.temporal = self.es.get_or_create_index(kwargs=temporal)
+        self.temporal = self.es_temporal.get_or_create_index(kwargs=temporal)
         self.temporal.refresh()
 
         total = self.temporal.search({"size": 0})
@@ -152,19 +154,22 @@ class TUIDService:
             total = self.temporal.search({"size": 0})
         with suppress_exception:
             self.temporal.add_alias()
+
+        annotations = self.esconfig.annotations
+        set_default(annotations, {"schema": ANNOTATIONS_SCHEMA})
+        # what would be the _id here
+        self.annotations = self.es_annotations.get_or_create_index(kwargs=annotations)
+        self.annotations.refresh()
+
+        total = self.annotations.search({"size": 0})
+        while not total.hits:
+            total = self.annotations.search({"size": 0})
+        with suppress_exception:
+            self.annotations.add_alias()
         if temporal_only:
             return
 
         with self.conn.transaction() as t:
-            t.execute(
-                """
-            CREATE TABLE annotations (
-                revision       CHAR(12) NOT NULL,
-                file           TEXT,
-                annotation     TEXT,
-                PRIMARY KEY(revision, file)
-            );"""
-            )
 
             # Used in frontier updating
             t.execute(
@@ -177,23 +182,6 @@ class TUIDService:
             )
 
         Log.note("Tables created successfully")
-
-    def _get_tuid(self, file, revision, line):
-        query = {
-            "_source": {"includes": ["tuid"]},
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"file": file}},
-                        {"term": {"revision": revision}},
-                        {"term": {"line": line}},
-                    ]
-                }
-            },
-            "size": 1,
-        }
-        temp = self.temporal.search(query).hits.hits[0]._source.tuid
-        return temp
 
     def _query_result_size(self, terms):
         query = {"size": 0, "query": {"terms": terms}}
@@ -218,15 +206,22 @@ class TUIDService:
         temp = self.temporal.search(query).hits.total
         return 0 != temp
 
-    def _dummy_annotate_exists(self, transaction, file_name, rev):
+    def _dummy_annotate_exists(self, file_name, rev):
         # True if dummy, false if not.
         # None means there is no entry.
-        return None != transaction.get_one(
-            "select annotation from annotations where file=? and revision=?",
-            (file_name, rev),
-        )
+        query = {
+            "_source": {"includes": ["annotation"]},
+            "query": {
+                "bool": {
+                    "must": [{"term": {"file": file_name}}, {"term": {"revision": rev}}]
+                }
+            },
+            "size": 1,
+        }
+        temp = self.annotations.search(query).hits.total
+        return 0 != temp
 
-    def make_record(self, tuid, revision, file, line):
+    def _make_record_temporal(self, tuid, revision, file, line):
         record = {
             "_id": revision + file + str(line),
             "tuid": tuid,
@@ -236,37 +231,68 @@ class TUIDService:
         }
         return {"value": record}
 
+    def _make_record_annotations(self, revision, file, annotation):
+        record = {
+            "_id": revision + file,
+            "revision": revision,
+            "file": file,
+            "annotation": annotation,
+        }
+        return {"value": record}
+
     def insert_tuid_dummy(self, rev, file_name):
         # Inserts a dummy tuid: (-1,rev,file_name,0)
         if not self._dummy_tuid_exists(file_name, rev):
-            self.temporal.add(self.make_record(-1, rev[:12], file_name, 0))
+            self.temporal.add(self._make_record_temporal(-1, rev[:12], file_name, 0))
             self.temporal.refresh()
             while not self._dummy_tuid_exists(file_name, rev[:12]):
                 Till(seconds=0.001).wait()
                 self.temporal.refresh()
         return MISSING
 
-    def insert_annotate_dummy(self, transaction, rev, file_name, commit=True):
+    def insert_annotate_dummy(self, rev, file_name):
         # Inserts annotation dummy: (rev, file, '')
-        if not self._dummy_annotate_exists(transaction, file_name, rev):
-            self.insert_annotations(transaction, [(rev[:12], file_name, "")])
+        if not self._dummy_annotate_exists(file_name, rev):
+            self.insert_annotations([(rev[:12], file_name, "")])
 
-    def insert_annotations(self, transaction, data):
+    def insert_annotations(self, data):
         if VERIFY_TUIDS:
             for _, _, tuids_string in data:
                 self.destringify_tuids(tuids_string)
 
-        transaction.execute(
-            "INSERT INTO annotations (revision, file, annotation) VALUES "
-            + sql_list(quote_list(row) for row in data)
-        )
+        records = wrap([
+            self._make_record_annotations(revision, file, annotation)
+            for revision, file, annotation in data
+        ])
+        insert(self.annotations, records)
 
-    def _get_annotation(self, rev, file, transaction=None):
-        return coalesce(transaction, self.conn).get_one(
-            GET_ANNOTATION_QUERY, (rev, file)
-        )[0]
+    def _annotation_record_exists(self, rev, file):
+        query = {
+            "_source": {"includes": ["revision"]},
+            "query": {
+                "bool": {
+                    "must": [{"term": {"revision": rev}}, {"term": {"file": file}}]
+                }
+            },
+            "size": 1,
+        }
+        temp = self.annotations.search(query).hits.hits[0]._source.revision
+        return temp
 
-    def _get_one_tuid(self, transaction, cset, path, line):
+    def _get_annotation(self, rev, file):
+        query = {
+            "_source": {"includes": ["annotation"]},
+            "query": {
+                "bool": {
+                    "must": [{"term": {"revision": rev}}, {"term": {"file": file}}]
+                }
+            },
+            "size": 1,
+        }
+        temp = self.annotations.search(query).hits.hits[0]._source.annotation
+        return temp
+
+    def _get_one_tuid(self, cset, path, line):
         # Returns a single TUID if it exists else None
         query = {
             "_source": {"includes": ["tuid"]},
@@ -292,27 +318,29 @@ class TUIDService:
         )
 
     def stringify_tuids(self, tuid_list):
-        # Turns the TuidMap list to a string for storage in
-        # the annotations table.
+        # Turns the TuidMap list to a sorted list
         tuid_list.sort(key=lambda x: x.line)
         ordered_tuid = [-1] * len(tuid_list)
+        #checks any line number is missing
         for tuid, line in tuid_list:
-            ordered_tuid[line-1] = tuid
+            ordered_tuid[line - 1] = tuid
 
-        return value2json(ordered_tuid)
+        return ordered_tuid
 
-    def destringify_tuids(self, tuids_string):
+    def destringify_tuids(self, tuids_list):
         # Builds up TuidMap list from annotation cache entry.
         try:
             line_origins = [
-                TuidMap(tuid, line+1)
-                for line, tuid in enumerate(json2value(tuids_string if tuids_string else '[]'))
+                TuidMap(tuid, line + 1)
+                for line, tuid in enumerate(
+                    tuids_list
+                )
             ]
 
             return line_origins
         except Exception as e:
             Log.error(
-                "Invalid entry in tuids list:\n{{list}}", list=tuids_string, cause=e
+                "Invalid entry in tuids list:\n{{list}}", list=tuids_list, cause=e
             )
 
     # Gets a diff from a particular revision from https://hg.mozilla.org/
@@ -610,7 +638,7 @@ class TUIDService:
 
             with self.conn.transaction() as t:
                 latest_rev = self._get_latest_revision(file, t)
-                already_ann = self._get_annotation(revision, file, t)
+                already_ann = self._get_annotation(revision, file)
 
             # Check if the file has already been collected at
             # this revision and get the result if so
@@ -688,7 +716,7 @@ class TUIDService:
                 if len(new_files) > 0:
                     # File has never been seen before, get it's initial
                     # annotation to work from in the future.
-                    tmp_res = self.get_tuids(new_files, revision, commit=False)
+                    tmp_res = self.get_tuids(new_files, revision)
                     if tmp_res:
                         result.extend(tmp_res)
                     else:
@@ -791,7 +819,7 @@ class TUIDService:
 
         return result, completed
 
-    def _apply_diff(self, transaction, annotation, diff, cset, file):
+    def _apply_diff(self, annotation, diff, cset, file):
         """
         Using an annotation ([(tuid,line)] - array
         of TuidMap objects), we change the line numbers to
@@ -847,7 +875,7 @@ class TUIDService:
             for change in f_diff:
                 if change.action == "+":
                     tuid_tmp = self._get_one_tuid(
-                        transaction, cset, file, change.line + 1
+                        cset, file, change.line + 1
                     )
                     if tuid_tmp == None:
                         new_tuid = self.tuid()
@@ -860,19 +888,11 @@ class TUIDService:
             break  # Found the file, exit searching
 
         if len(list_to_insert) > 0:
-            ids = []
-            records = []
-            for inserts_list in list_to_insert:
-                tuid, file, revision, line = inserts_list
-                record = self.make_record(tuid, file, revision, line)
-                records.append(record)
-                ids.append(record.value._id)
-            self.temporal.extend(records)
-            query = self._query_result_size({"_id": ids})
-            self.temporal.refresh()
-            while self.temporal.search(query).hits.total != len(ids):
-                Till(seconds=0.001).wait()
-                self.temporal.refresh()
+            records = wrap([
+                self._make_record_temporal(tuid, revision, file, line)
+                for tuid, file, revision, line in list_to_insert
+            ])
+            insert(self.temporal, records)
 
         return new_ann, file
 
@@ -896,8 +916,7 @@ class TUIDService:
 
         # Check if the files were already annotated.
         for file in files:
-            with self.conn.transaction() as t:
-                already_ann = self._get_annotation(revision, file, transaction=t)
+            already_ann = self._get_annotation(revision, file)
             if already_ann and already_ann[0] == "":
                 result.append((file, []))
                 log_existing_files.append("removed|" + file)
@@ -1013,14 +1032,14 @@ class TUIDService:
 
         # We've found a good patch (a public one), get it
         # for all files and apply the patch's onto it.
-        curr_annotations = self.get_tuids(files, mc_revision, commit=False)
+        curr_annotations = self.get_tuids(files, mc_revision)
         curr_annots_dict = {file: mc_annot for file, mc_annot in curr_annotations}
 
         anns_to_get = []
         ann_inserts = []
         tmp_results = {}
 
-        with self.conn.transaction() as transaction:
+        with self.temporal_locker:
             for file in files_to_update:
                 if file not in curr_annots_dict:
                     Log.note(
@@ -1050,7 +1069,7 @@ class TUIDService:
                     new_fname = file
                     for i in csets_to_proc:
                         tmp_res, new_fname = self._apply_diff(
-                            transaction, tmp_res, parsed_diffs[i], i, new_fname
+                            tmp_res, parsed_diffs[i], i, new_fname
                         )
 
                     ann_inserts.append((revision, file, self.stringify_tuids(tmp_res)))
@@ -1067,13 +1086,12 @@ class TUIDService:
             # added by another thread.
             anns_added_by_other_thread = {}
             if len(ann_inserts) > 0:
-                ann_inserts = list(set(ann_inserts))
                 for _, tmp_inserts in jx.groupby(ann_inserts, size=SQL_ANN_BATCH_SIZE):
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
                     for rev, filename, tuids in tmp_inserts:
                         tmp_ann = self._get_annotation(
-                            rev, filename, transaction=transaction
+                            rev, filename
                         )
                         if not tmp_ann and tmp_ann != "":
                             recomputed_inserts.append((rev, filename, tuids))
@@ -1083,7 +1101,7 @@ class TUIDService:
                             ] = self.destringify_tuids(tmp_ann)
 
                     try:
-                        self.insert_annotations(transaction, recomputed_inserts)
+                        self.insert_annotations(recomputed_inserts)
                     except Exception as e:
                         Log.error("Error inserting into annotations table.", cause=e)
 
@@ -1217,7 +1235,7 @@ class TUIDService:
                 tmp_res = None
                 if file in files_to_process:
                     # Process this file using the diffs found
-                    tmp_ann = self._get_annotation(old_frontier, file, transaction)
+                    tmp_ann = self._get_annotation(old_frontier, file)
                     if (
                         tmp_ann is None
                         or tmp_ann == ""
@@ -1277,7 +1295,8 @@ class TUIDService:
                                 rev_to_proc = rev
 
                             try:
-                                file_to_modify.create_and_insert_tuids(rev_to_proc)
+                                with self.temporal_locker:
+                                    file_to_modify.create_and_insert_tuids(rev_to_proc)
                             except Exception as e:
                                 file_to_modify.failed_file = True
                                 Log.warning(
@@ -1303,7 +1322,7 @@ class TUIDService:
                             percent=count / total,
                         )
                 else:
-                    old_ann = self._get_annotation(old_frontier, file, transaction)
+                    old_ann = self._get_annotation(old_frontier, file)
                     if old_ann is None or (old_ann == "" and file in added_files):
                         # File is new (likely from an error), or re-added - we need to create
                         # a new initial entry for this file.
@@ -1366,12 +1385,11 @@ class TUIDService:
 
             anns_added_by_other_thread = {}
             if len(ann_inserts) > 0:
-                ann_inserts = list(set(ann_inserts))
                 for _, tmp_inserts in jx.groupby(ann_inserts, size=SQL_ANN_BATCH_SIZE):
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
                     for rev, filename, string_tuids in tmp_inserts:
-                        tmp_ann = self._get_annotation(rev, filename, transaction)
+                        tmp_ann = self._get_annotation(rev, filename)
                         if not tmp_ann and tmp_ann != "":
                             recomputed_inserts.append((rev, filename, string_tuids))
                         else:
@@ -1383,7 +1401,7 @@ class TUIDService:
                         continue
 
                     try:
-                        self.insert_annotations(transaction, recomputed_inserts)
+                        self.insert_annotations(recomputed_inserts)
                     except Exception as e:
                         Log.error(
                             "Error inserting into annotations table: {{inserting}}",
@@ -1392,7 +1410,7 @@ class TUIDService:
                         )
 
         if len(anns_to_get) > 0:
-            result.extend(self.get_tuids(anns_to_get, revision, commit=False))
+            result.extend(self.get_tuids(anns_to_get, revision))
 
         for f in tmp_results:
             tuids = tmp_results[f]
@@ -1401,14 +1419,13 @@ class TUIDService:
             result.append((copy.deepcopy(f), copy.deepcopy(tuids)))
         return result
 
-    def get_tuids(self, files, revision, commit=True, chunk=50, repo=None):
+    def get_tuids(self, files, revision, chunk=50, repo=None):
         """
         Wrapper for `_get_tuids` to limit the number of annotation calls to hg
         and separate the calls from DB transactions. Also used to simplify `_get_tuids`.
 
         :param files:
         :param revision:
-        :param commit:
         :param chunk:
         :param repo:
         :return:
@@ -1429,8 +1446,7 @@ class TUIDService:
 
             annotations_to_get = []
             for file in new_files:
-                with self.conn.transaction() as t:
-                    already_ann = self._get_annotation(revision, file, transaction=t)
+                already_ann = self._get_annotation(revision, file)
                 if already_ann:
                     results.append((file, self.destringify_tuids(already_ann)))
                 elif already_ann == "":
@@ -1468,10 +1484,7 @@ class TUIDService:
                 old_annotations_len = len(annotations_to_get)
                 new_annotations_to_get = []
                 for file in annotations_to_get:
-                    with self.conn.transaction() as t:
-                        already_ann = self._get_annotation(
-                            revision, file, transaction=t
-                        )
+                    already_ann = self._get_annotation(revision, file)
                     if already_ann:
                         results.append((file, self.destringify_tuids(already_ann)))
                     elif already_ann == "":
@@ -1503,17 +1516,14 @@ class TUIDService:
                 # threads are started at once.
                 del threads
 
-            with self.conn.transaction() as transaction:
-                results.extend(
-                    self._get_tuids(
-                        transaction,
-                        annotations_to_get,
-                        revision,
-                        annotated_files,
-                        commit=commit,
-                        repo=repo,
-                    )
+            results.extend(
+                self._get_tuids(
+                    annotations_to_get,
+                    revision,
+                    annotated_files,
+                    repo=repo,
                 )
+            )
 
             del annotations_to_get[:]
             del annotated_files[:]
@@ -1523,7 +1533,7 @@ class TUIDService:
         return results
 
     def insert_tuids_with_duplicates(
-        self, transaction, file, revision, new_lines, line_origins
+        self, file, revision, new_lines, line_origins
     ):
         """
         Inserts new lines while creating tuids and handles duplicate entries.
@@ -1566,26 +1576,17 @@ class TUIDService:
         else:
             lines_to_insert = new_line_origins.values()
 
-        records = []
-        ids = []
-        for part_of_insert in lines_to_insert:
-            for tuid, f, rev, line_num in [part_of_insert]:
-                record = self.make_record(tuid, rev, f, line_num)
-                records.append(record)
-                ids.append(record["value"]["_id"])
+        records = wrap([
+            self._make_record_temporal(tuid, revision, file, line)
+            for tuid, file, revision, line in lines_to_insert
+        ])
+        insert(self.temporal, records)
 
-        self.temporal.extend(records)
-        query = self._query_result_size({"_id": ids})
-        self.temporal.refresh()
-        while self.temporal.search(query).hits.total != len(ids):
-            Till(seconds=0.001).wait()
-            self.temporal.refresh()
         return new_line_origins
 
     def get_new_lines(self, line_origins):
         """
         Checks if any lines were already added.
-        :param transaction:
         :param line_origins:
         :return:
         """
@@ -1632,7 +1633,7 @@ class TUIDService:
         return new_lines, existing_tuids
 
     def _get_tuids(
-        self, transaction, files, revision, annotated_files, commit=True, repo=None
+        self, files, revision, annotated_files, repo=None
     ):
         """
         Returns (TUID, line) tuples for a given file at a given revision.
@@ -1646,106 +1647,106 @@ class TUIDService:
         :param files: list of files to process
         :param revision: revision at which to get the file
         :param annotated_files: annotations for each file
-        :param commit: True to commit new TUIDs else False
         :param repo: The branch to get tuids from
         :return: List of TuidMap objects
         """
-        results = []
-        for fcount, annotated_object in enumerate(annotated_files):
-            file = files[fcount]
-            # TODO: Replace old empty annotation if a new one is found
-            # TODO: at the same revision and if it is not empty as well.
-            # Make sure we are not adding the same thing another thread
-            # added.
-            tmp_ann = self._get_annotation(revision, file, transaction=transaction)
-            if tmp_ann != None:
-                results.append((file, self.destringify_tuids(tmp_ann)))
-                continue
-
-            # If it's not defined at this revision, we need to add it in
-            errored = False
-            if isinstance(annotated_object, (text_type, str)):
-                errored = True
-                Log.warning(
-                    "{{file}} does not exist in the revision={{cset}} branch={{branch_name}}",
-                    branch_name=repo,
-                    cset=revision,
-                    file=file,
-                )
-            elif annotated_object is None:
-                Log.warning(
-                    "Unexpected error getting annotation for: {{file}} in the revision={{cset}} branch={{branch_name}}",
-                    branch_name=repo,
-                    cset=revision,
-                    file=file,
-                )
-                errored = True
-            elif "annotate" not in annotated_object:
-                Log.warning(
-                    "Missing annotate, type got: {{ann_type}}, expecting:dict returned when getting "
-                    "annotation for: {{file}} in the revision {{cset}}",
-                    cset=revision,
-                    file=file,
-                    ann_type=type(annotated_object),
-                )
-                errored = True
-
-            if errored:
-                Log.note("Inserting dummy entry...")
-                self.insert_tuid_dummy(revision, file)
-                self.insert_annotate_dummy(transaction, revision, file, commit=commit)
-                results.append((file, []))
-                continue
-
-            # Gather all missing csets and the
-            # corresponding lines.
-            line_origins = []
-            for node in annotated_object["annotate"]:
-                cset_len12 = node["node"][:12]
-
-                # If the line added by `cset_len12` is not known
-                # add it. Use the 'abspath' field to determine the
-                # name of the file it was created in (in case it was
-                # changed). Copy to make sure we don't create a reference
-                # here.
-                line_origins.append(
-                    copy.deepcopy(
-                        (node["abspath"], cset_len12, int(node["targetline"]))
-                    )
-                )
-
-            # Update DB with any revisions found in annotated
-            # object that are not in the DB.
-            new_line_origins = {}
-            new_lines, existing_tuids = self.get_new_lines(line_origins)
-            if len(new_lines) > 0:
-                try:
-                    new_line_origins = self.insert_tuids_with_duplicates(
-                        transaction, file, revision, new_lines, line_origins
-                    )
-
-                    # Format so we don't have to use [0] to get at the tuids
-                    for linenum in new_line_origins:
-                        new_line_origins[linenum] = new_line_origins[linenum][0]
-                except Exception as e:
-                    # Something broke for this file, ignore it and go to the
-                    # next one.
-                    Log.note("Failed to insert new tuids {{cause}}", cause=e)
+        with self.temporal_locker:
+            results = []
+            for fcount, annotated_object in enumerate(annotated_files):
+                file = files[fcount]
+                # TODO: Replace old empty annotation if a new one is found
+                # TODO: at the same revision and if it is not empty as well.
+                # Make sure we are not adding the same thing another thread
+                # added.
+                tmp_ann = self._get_annotation(revision, file)
+                if tmp_ann != None:
+                    results.append((file, self.destringify_tuids(tmp_ann)))
                     continue
 
-            tuids = []
-            for line_ind, line_origin in enumerate(line_origins):
-                line_num = line_ind + 1
-                if line_num in existing_tuids:
-                    tuids.append(TuidMap(existing_tuids[line_num], line_num))
-                else:
-                    tuids.append(TuidMap(new_line_origins[line_num], line_num))
+                # If it's not defined at this revision, we need to add it in
+                errored = False
+                if isinstance(annotated_object, (text_type, str)):
+                    errored = True
+                    Log.warning(
+                        "{{file}} does not exist in the revision={{cset}} branch={{branch_name}}",
+                        branch_name=repo,
+                        cset=revision,
+                        file=file,
+                    )
+                elif annotated_object is None:
+                    Log.warning(
+                        "Unexpected error getting annotation for: {{file}} in the revision={{cset}} branch={{branch_name}}",
+                        branch_name=repo,
+                        cset=revision,
+                        file=file,
+                    )
+                    errored = True
+                elif "annotate" not in annotated_object:
+                    Log.warning(
+                        "Missing annotate, type got: {{ann_type}}, expecting:dict returned when getting "
+                        "annotation for: {{file}} in the revision {{cset}}",
+                        cset=revision,
+                        file=file,
+                        ann_type=type(annotated_object),
+                    )
+                    errored = True
 
-            str_tuids = self.stringify_tuids(tuids)
-            entry = [(revision, file, str_tuids)]
+                if errored:
+                    Log.note("Inserting dummy entry...")
+                    self.insert_tuid_dummy(revision, file)
+                    self.insert_annotate_dummy(revision, file)
+                    results.append((file, []))
+                    continue
 
-            self.insert_annotations(transaction, entry)
-            results.append((copy.deepcopy(file), copy.deepcopy(tuids)))
+                # Gather all missing csets and the
+                # corresponding lines.
+                line_origins = []
+                for node in annotated_object["annotate"]:
+                    cset_len12 = node["node"][:12]
+
+                    # If the line added by `cset_len12` is not known
+                    # add it. Use the 'abspath' field to determine the
+                    # name of the file it was created in (in case it was
+                    # changed). Copy to make sure we don't create a reference
+                    # here.
+                    line_origins.append(
+                        copy.deepcopy(
+                            (node["abspath"], cset_len12, int(node["targetline"]))
+                        )
+                    )
+
+                # Update DB with any revisions found in annotated
+                # object that are not in the DB.
+                new_line_origins = {}
+                new_lines, existing_tuids = self.get_new_lines(line_origins)
+                if len(new_lines) > 0:
+                    try:
+                        new_line_origins = self.insert_tuids_with_duplicates(
+                            file, revision, new_lines, line_origins
+                        )
+
+                        # Format so we don't have to use [0] to get at the tuids
+                        for linenum in new_line_origins:
+                            new_line_origins[linenum] = new_line_origins[linenum][0]
+                    except Exception as e:
+                        # Something broke for this file, ignore it and go to the
+                        # next one.
+                        Log.note("Failed to insert new tuids {{cause}}", cause=e)
+                        continue
+
+                tuids = []
+                for line_ind, line_origin in enumerate(line_origins):
+                    line_num = line_ind + 1
+                    if line_num in existing_tuids:
+                        tuids.append(TuidMap(existing_tuids[line_num], line_num))
+                    else:
+                        tuids.append(TuidMap(new_line_origins[line_num], line_num))
+
+                str_tuids = self.stringify_tuids(tuids)
+                entry = [(revision, file, str_tuids)]
+
+                self.insert_annotations(entry)
+                results.append((copy.deepcopy(file), copy.deepcopy(tuids)))
 
         return results
 
@@ -1894,6 +1895,21 @@ TEMPORAL_SCHEMA = {
                 "revision": {"type": "keyword", "store": True},
                 "file": {"type": "keyword", "store": True},
                 "line": {"type": "integer", "store": True},
+            },
+        }
+    },
+}
+
+
+ANNOTATIONS_SCHEMA = {
+    "settings": {"index.number_of_replicas": 1, "index.number_of_shards": 1},
+    "mappings": {
+        "annotationstype": {
+            "_all": {"enabled": False},
+            "properties": {
+                "revision": {"type": "keyword", "store": True},
+                "file": {"type": "keyword", "store": True},
+                "annotation": {"type": "keyword", "ignore_above": 20, "store": True},
             },
         }
     },
