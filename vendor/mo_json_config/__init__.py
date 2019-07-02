@@ -29,7 +29,7 @@ DEBUG = False
 
 def get_file(file):
     file = File(file)
-    if os.sep=="\\":
+    if os.sep == "\\":
         return get("file:///" + file.abspath)
     else:
         return get("file://" + file.abspath)
@@ -45,14 +45,16 @@ def get(url):
 
     base = URL("")
     if url.startswith("file://") and url[7] != "/":
-        if os.sep=="\\":
+        if os.sep == "\\":
             base = URL("file:///" + os.getcwd().replace(os.sep, "/").rstrip("/") + "/.")
         else:
             base = URL("file://" + os.getcwd().rstrip("/") + "/.")
     elif url[url.find("://") + 3] != "/":
         Log.error("{{url}} must be absolute", url=url)
 
-    phase1 = _replace_ref(wrap({"$ref": url}), base)  # BLANK URL ONLY WORKS IF url IS ABSOLUTE
+    phase1 = _replace_ref(
+        wrap({"$ref": url}), base
+    )  # BLANK URL ONLY WORKS IF url IS ABSOLUTE
     try:
         phase2 = _replace_locals(phase1, [phase1])
         return wrap(phase2)
@@ -119,12 +121,18 @@ def _replace_ref(node, url):
         if ref.fragment:
             new_value = mo_dots.get_attr(new_value, ref.fragment)
 
-        DEBUG and Log.note("Replace {{ref}} with {{new_value}}", ref=ref, new_value=new_value)
+        DEBUG and Log.note(
+            "Replace {{ref}} with {{new_value}}", ref=ref, new_value=new_value
+        )
 
         if not output:
             output = new_value
         elif isinstance(output, text_type):
-            Log.error("Can not handle set_default({{output}},{{new_value}})", output=output, new_value=new_value)
+            Log.error(
+                "Can not handle set_default({{output}},{{new_value}})",
+                output=output,
+                new_value=new_value,
+            )
         else:
             output = unwrap(set_default(output, new_value))
 
@@ -162,9 +170,12 @@ def _replace_locals(node, doc_path):
             # RELATIVE
             for i, p in enumerate(frag):
                 if p != ".":
-                    if i>len(doc_path):
-                        Log.error("{{frag|quote}} reaches up past the root document",  frag=frag)
-                    new_value = mo_dots.get_attr(doc_path[i-1], frag[i::])
+                    if i > len(doc_path):
+                        Log.error(
+                            "{{frag|quote}} reaches up past the root document",
+                            frag=frag,
+                        )
+                    new_value = mo_dots.get_attr(doc_path[i - 1], frag[i::])
                     break
             else:
                 new_value = doc_path[len(frag) - 1]
@@ -191,6 +202,7 @@ def _replace_locals(node, doc_path):
 ###############################################################################
 ## SCHEME LOADERS ARE BELOW THIS LINE
 ###############################################################################
+
 
 def _get_file(ref, url):
 
@@ -265,6 +277,5 @@ scheme_loaders = {
     "http": get_http,
     "file": _get_file,
     "env": _get_env,
-    "param": _get_param
+    "param": _get_param,
 }
-

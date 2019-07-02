@@ -1,4 +1,3 @@
-
 # encoding: utf-8
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
@@ -26,7 +25,6 @@ SLEEP_ON_ERROR = 30
 
 
 class TuidClient(object):
-
     @override
     def __init__(self, endpoint, push_queue=None, timeout=30, db=None, kwargs=None):
         self.enabled = True
@@ -35,21 +33,25 @@ class TuidClient(object):
         self.timeout = timeout
         self.push_queue = aws.Queue(push_queue) if push_queue else None
         self.config = kwargs
-        self.db = Sqlite(filename=coalesce(db.filename, "tuid_client.sqlite"), kwargs=db)
+        self.db = Sqlite(
+            filename=coalesce(db.filename, "tuid_client.sqlite"), kwargs=db
+        )
 
         if not self.db.query("SELECT name FROM sqlite_master WHERE type='table';").data:
             with self.db.transaction() as transaction:
                 self._setup(transaction)
 
     def _setup(self, transaction):
-        transaction.execute("""
+        transaction.execute(
+            """
         CREATE TABLE tuid (
             revision CHAR(12),
             file TEXT,
             tuids TEXT,
             PRIMARY KEY(revision, file)
         )
-        """)
+        """
+        )
 
     def get_tuid(self, branch, revision, file):
         """
@@ -73,16 +75,18 @@ class TuidClient(object):
 
         # SCRUB INPUTS
         revision = revision[:12]
-        files = [file.lstrip('/') for file in files]
+        files = [file.lstrip("/") for file in files]
 
         with Timer(
             "ask tuid service for {{num}} files at {{revision|left(12)}}",
             {"num": len(files), "revision": revision},
-            silent=not self.enabled
+            silent=not self.enabled,
         ):
             response = self.db.query(
-                "SELECT file, tuids FROM tuid WHERE revision=" + quote_value(revision) +
-                " AND file IN " + quote_list(files)
+                "SELECT file, tuids FROM tuid WHERE revision="
+                + quote_value(revision)
+                + " AND file IN "
+                + quote_list(files)
             )
             found = {file: json2value(tuids) for file, tuids in response.data}
 
@@ -90,22 +94,26 @@ class TuidClient(object):
                 remaining = set(files) - set(found.keys())
                 new_response = None
                 if remaining:
-                    request = wrap({
-                        "from": "files",
-                        "where": {"and": [
-                            {"eq": {"revision": revision}},
-                            {"in": {"path": remaining}},
-                            {"eq": {"branch": branch}}
-                        ]},
-                        "branch": branch,
-                        "meta": {
-                            "format": "list",
-                            "request_time": Date.now()
+                    request = wrap(
+                        {
+                            "from": "files",
+                            "where": {
+                                "and": [
+                                    {"eq": {"revision": revision}},
+                                    {"in": {"path": remaining}},
+                                    {"eq": {"branch": branch}},
+                                ]
+                            },
+                            "branch": branch,
+                            "meta": {"format": "list", "request_time": Date.now()},
                         }
-                    })
+                    )
                     if self.push_queue is not None:
                         if DEBUG:
-                            Log.note("record tuid request to SQS: {{timestamp}}", timestamp=request.meta.request_time)
+                            Log.note(
+                                "record tuid request to SQS: {{timestamp}}",
+                                timestamp=request.meta.request_time,
+                            )
                         self.push_queue.add(request)
                     else:
                         if DEBUG:
@@ -115,22 +123,25 @@ class TuidClient(object):
                         return found
 
                     new_response = http.post_json(
-                        self.endpoint,
-                        json=request,
-                        timeout=self.timeout
+                        self.endpoint, json=request, timeout=self.timeout
                     )
 
                     with self.db.transaction() as transaction:
-                        command = "INSERT INTO tuid (revision, file, tuids) VALUES " + sql_list(
-                            quote_list((revision, r.path, value2json(r.tuids)))
-                            for r in new_response.data
-                            if r.tuids != None
+                        command = (
+                            "INSERT INTO tuid (revision, file, tuids) VALUES "
+                            + sql_list(
+                                quote_list((revision, r.path, value2json(r.tuids)))
+                                for r in new_response.data
+                                if r.tuids != None
+                            )
                         )
                         if not command.endswith(" VALUES "):
                             transaction.execute(command)
                     self.num_bad_requests = 0
 
-                found.update({r.path: r.tuids for r in new_response.data} if new_response else {})
+                found.update(
+                    {r.path: r.tuids for r in new_response.data} if new_response else {}
+                )
                 return found
 
             except Exception as e:

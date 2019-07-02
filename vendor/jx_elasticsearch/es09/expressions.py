@@ -34,7 +34,6 @@ class _MVEL(object):
         self.prefixMap = []
         self.functions = {}
 
-
     def code(self, query):
         """
         RETURN THE MVEL THAT WILL FILTER USING query.where AND TERM-PACK THE query.select CLAUSE
@@ -48,29 +47,42 @@ class _MVEL(object):
         code = self.frum(fromPath, sourceVar, "__loop")
         select = self.select(selectList, fromPath, "output", sourceVar)
 
-        body = "var output = \"\";\n" + \
-               code.replace(
-                   "<CODE>",
-                   "if (" + _where(whereClause, lambda v: self._translate(v)) + "){\n" +
-                   select.body +
-                   "}\n"
-               ) + \
-               "output\n"
+        body = (
+            'var output = "";\n'
+            + code.replace(
+                "<CODE>",
+                "if ("
+                + _where(whereClause, lambda v: self._translate(v))
+                + "){\n"
+                + select.body
+                + "}\n",
+            )
+            + "output\n"
+        )
 
         # ADD REFERENCED CONTEXT VARIABLES
         context = self.getFrameVariables(body)
 
         func = UID()
-        predef = addFunctions(select.head+context+body).head
+        predef = addFunctions(select.head + context + body).head
         param = "_source" if body.find(sourceVar) else ""
 
-        output = predef + \
-            select.head + \
-            context + \
-            'var ' + func + ' = function('+sourceVar+'){\n' + \
-            body + \
-            '};\n' + \
-            func + '('+param+')\n'
+        output = (
+            predef
+            + select.head
+            + context
+            + "var "
+            + func
+            + " = function("
+            + sourceVar
+            + "){\n"
+            + body
+            + "};\n"
+            + func
+            + "("
+            + param
+            + ")\n"
+        )
 
         return Compiled(output)
 
@@ -88,15 +100,21 @@ class _MVEL(object):
         columns = INDEX_CACHE[path[0]].columns
         for i, c in enumerate(columns):
             if c.name.find("\\.") >= 0:
-                self.prefixMap.insert(0, {
-                    "path": c.name,
-                    "variable": "get(" + sourceVar + ", \"" + c.name.replace("\\.", ".") + "\")"
-                })
+                self.prefixMap.insert(
+                    0,
+                    {
+                        "path": c.name,
+                        "variable": "get("
+                        + sourceVar
+                        + ', "'
+                        + c.name.replace("\\.", ".")
+                        + '")',
+                    },
+                )
             else:
-                self.prefixMap.insert(0, {
-                    "path": c.name,
-                    "variable": sourceVar + ".?" + c.name
-                })
+                self.prefixMap.insert(
+                    0, {"path": c.name, "variable": sourceVar + ".?" + c.name}
+                )
 
         # ADD LOOP VARIABLES
         currPath = []
@@ -119,7 +137,9 @@ class _MVEL(object):
             if shortForm == prefix:
                 shortForm = p["variable"]
             else:
-                shortForm = replacePrefix(shortForm, prefix + ".", p["variable"] + ".?")  # ADD NULL CHECK
+                shortForm = replacePrefix(
+                    shortForm, prefix + ".", p["variable"] + ".?"
+                )  # ADD NULL CHECK
                 shortForm = replacePrefix(shortForm, prefix + "[", p["variable"] + "[")
         return shortForm
 
@@ -138,7 +158,9 @@ class _MVEL(object):
                     Log.error("do not know how to handle yet")
             else:
                 if s.value and is_variable_name(s.value):
-                    list.append("Value2Pipe(getDocValue(" + value2MVEL(s.value) + "))\n")
+                    list.append(
+                        "Value2Pipe(getDocValue(" + value2MVEL(s.value) + "))\n"
+                    )
                 elif s.value:
                     shortForm = self._translate(s.value)
                     list.append("Value2Pipe(" + shortForm + ")\n")
@@ -147,16 +169,28 @@ class _MVEL(object):
                     heads.append(code.head)
                     list.append("Value2Pipe(" + code.body + ")\n")
 
-
         if len(split_field(fromPath)) > 1:
-            output = 'if (' + varName + ' != "") ' + varName + '+="|";\n' + varName + '+=' + '+"|"+'.join(["Value2Pipe("+v+")\n" for v in list]) + ';\n'
+            output = (
+                "if ("
+                + varName
+                + ' != "") '
+                + varName
+                + '+="|";\n'
+                + varName
+                + "+="
+                + '+"|"+'.join(["Value2Pipe(" + v + ")\n" for v in list])
+                + ";\n"
+            )
         else:
-            output = varName + ' = ' + '+"|"+'.join(["Value2Pipe("+v+")\n" for v in list]) + ';\n'
+            output = (
+                varName
+                + " = "
+                + '+"|"+'.join(["Value2Pipe(" + v + ")\n" for v in list])
+                + ";\n"
+            )
 
-        return Data(
-            head="".join(heads),
-            body=output
-        )
+        return Data(head="".join(heads), body=output)
+
     def Parts2Term(self, domain):
         """
         TERMS ARE ALWAYS ESCAPED SO THEY CAN BE COMPOUNDED WITH PIPE (|)
@@ -172,23 +206,35 @@ class _MVEL(object):
         if len(split_field(self.fromData.name)) == 1 and fields:
             if isinstance(fields, Mapping):
                 # CONVERT UNORDERED FIELD DEFS
-                jx_fields, es_fields = transpose(*[(k, fields[k]) for k in sorted(fields.keys())])
+                jx_fields, es_fields = transpose(
+                    *[(k, fields[k]) for k in sorted(fields.keys())]
+                )
             else:
-                jx_fields, es_fields = transpose(*[(i, e) for i, e in enumerate(fields)])
+                jx_fields, es_fields = transpose(
+                    *[(i, e) for i, e in enumerate(fields)]
+                )
 
             # NO LOOPS BECAUSE QUERY IS SHALLOW
             # DOMAIN IS FROM A DIMENSION, USE IT'S FIELD DEFS TO PULL
             if len(es_fields) == 1:
+
                 def fromTerm(term):
                     return domain.getPartByKey(term)
 
-                return Data(
-                    head="",
-                    body='getDocValue('+quote(domain.dimension.fields[0])+')'
-                ), fromTerm
+                return (
+                    Data(
+                        head="",
+                        body="getDocValue(" + quote(domain.dimension.fields[0]) + ")",
+                    ),
+                    fromTerm,
+                )
             else:
+
                 def fromTerm(term):
-                    terms = [convert.pipe2value(t) for t in convert.pipe2value(term).split("|")]
+                    terms = [
+                        convert.pipe2value(t)
+                        for t in convert.pipe2value(term).split("|")
+                    ]
 
                     candidate = dict(zip(jx_fields, terms))
                     for p in domain.partitions:
@@ -205,19 +251,25 @@ class _MVEL(object):
                         return Null
 
                 for f in es_fields:
-                    term.append('Value2Pipe(getDocValue('+quote(f)+'))')
+                    term.append("Value2Pipe(getDocValue(" + quote(f) + "))")
 
-                return Data(
-                    head="",
-                    body='Value2Pipe('+('+"|"+'.join(term))+')'
-                ), fromTerm
+                return (
+                    Data(head="", body="Value2Pipe(" + ('+"|"+'.join(term)) + ")"),
+                    fromTerm,
+                )
         else:
             for v in domain.partitions:
-                term.append("if (" + _where(v.esfilter, lambda x: self._translate(x)) + ") " + value2MVEL(domain.getKey(v)) + "; else ")
+                term.append(
+                    "if ("
+                    + _where(v.esfilter, lambda x: self._translate(x))
+                    + ") "
+                    + value2MVEL(domain.getKey(v))
+                    + "; else "
+                )
             term.append(value2MVEL(domain.getKey(domain.NULL)))
 
-            func_name = "_temp"+UID()
-            return self.register_function("+\"|\"+".join(term))
+            func_name = "_temp" + UID()
+            return self.register_function('+"|"+'.join(term))
 
     def Parts2TermScript(self, domain):
         code, decode = self.Parts2Term(domain)
@@ -228,7 +280,7 @@ class _MVEL(object):
         contextVariables = []
         columns = self.fromData.columns
 
-        parentVarNames = set()    # ALL PARENTS OF VARIABLES WITH "." IN NAME
+        parentVarNames = set()  # ALL PARENTS OF VARIABLES WITH "." IN NAME
         body = body.replace(".?", ".")
 
         for i, c in enumerate(columns):
@@ -237,10 +289,10 @@ class _MVEL(object):
                 s = j
                 j = body.find(c.name, s + 1)
 
-                test0 = body[s - 1: s + len(c.name) + 1:]
-                test3 = body[s - 8: s + len(c.name):]
+                test0 = body[s - 1 : s + len(c.name) + 1 :]
+                test3 = body[s - 8 : s + len(c.name) :]
 
-                if test0[:-1] == "\"" + c.name:
+                if test0[:-1] == '"' + c.name:
                     continue
                 if test3 == "_source." + c.name:
                     continue
@@ -257,20 +309,28 @@ class _MVEL(object):
                         defParent(join_field(split_field(name)[0:-1]))
                         contextVariables.append(name + " = new HashMap();\n")
 
-                body = body.replace(c.name, "-"*len(c.name))
+                body = body.replace(c.name, "-" * len(c.name))
 
                 if self.isLean or c.useSource:
                     if len(split_field(c.name)) > 1:
                         defParent(join_field(split_field(c.name)[0:-1]))
-                        contextVariables.append(c.name + " = getSourceValue(\"" + c.name + "\");\n")
+                        contextVariables.append(
+                            c.name + ' = getSourceValue("' + c.name + '");\n'
+                        )
                     else:
-                        contextVariables.append(c.name + " = _source[\"" + c.name + "\"];\n")
+                        contextVariables.append(
+                            c.name + ' = _source["' + c.name + '"];\n'
+                        )
                 else:
                     if len(split_field(c.name)) > 1:
                         defParent(join_field(split_field(c.name)[0:-1]))
-                        contextVariables.append(c.name + " = getDocValue(\"" + c.name + "\");\n")
+                        contextVariables.append(
+                            c.name + ' = getDocValue("' + c.name + '");\n'
+                        )
                     else:
-                        contextVariables.append(c.name + " = getDocValue(\"" + c.name + "\");\n")
+                        contextVariables.append(
+                            c.name + ' = getDocValue("' + c.name + '");\n'
+                        )
                 break
 
         return "".join(contextVariables)
@@ -279,21 +339,29 @@ class _MVEL(object):
         # EXPAND EXPRESSION WITH ANY CONSTANTS
         expression = setValues(expression, constants)
 
-        fromPath = self.fromData.name           # FIRST NAME IS THE INDEX
+        fromPath = self.fromData.name  # FIRST NAME IS THE INDEX
         indexName = join_field(split_field(fromPath)[:1:])
 
         context = self.getFrameVariables(expression)
         if context == "":
-            return addFunctions(expression).head+expression
+            return addFunctions(expression).head + expression
 
         func = UID()
-        code = addFunctions(context+expression)
-        output = code.head + \
-            'var ' + func + ' = function(' + indexName + '){\n' + \
-            context + \
-            expression + ";\n" + \
-            '};\n' + \
-            func + '(_source)\n'
+        code = addFunctions(context + expression)
+        output = (
+            code.head
+            + "var "
+            + func
+            + " = function("
+            + indexName
+            + "){\n"
+            + context
+            + expression
+            + ";\n"
+            + "};\n"
+            + func
+            + "(_source)\n"
+        )
 
         return Compiled(output)
 
@@ -306,22 +374,19 @@ class _MVEL(object):
             self.functions[n] = code
 
         return Data(
-            head='var ' + n + ' = function(){\n' + code + '\n};\n',
-            body=n + '()\n'
+            head="var " + n + " = function(){\n" + code + "\n};\n", body=n + "()\n"
         )
 
 
 class Compiled(object):
     def __init__(self, code):
-        self.code=code
+        self.code = code
 
     def __str__(self):
         return self.code
 
     def __data__(self):
         return self.code
-
-
 
 
 __UID__ = 1000
@@ -344,7 +409,7 @@ def setValues(expression, constants):
         value = c.value
         n = c.name
         if len(split_field(n)) >= 3:
-            continue    # DO NOT GO TOO DEEP
+            continue  # DO NOT GO TOO DEEP
         if isinstance(value, list):
             continue  # DO NOT MESS WITH ARRAYS
 
@@ -352,7 +417,7 @@ def setValues(expression, constants):
             for k, v in value.items():
                 constants.append({"name": n + "." + k, "value": v})
 
-    for c in reverse(constants):# REVERSE ORDER, SO LONGER NAMES ARE TESTED FIRST
+    for c in reverse(constants):  # REVERSE ORDER, SO LONGER NAMES ARE TESTED FIRST
         s = 0
         while True:
             s = expression.find(c.name, s)
@@ -364,7 +429,7 @@ def setValues(expression, constants):
                 break
 
             v = value2MVEL(c.value)
-            expression = expression[:s:] + "" + v + expression[:s + len(c.name):]
+            expression = expression[:s:] + "" + v + expression[: s + len(c.name) :]
 
     return expression
 
@@ -376,7 +441,7 @@ def unpack_terms(facet, selects):
     output = []
     for t in facet.terms:
         if t.term == "":
-            continue        # NO DATA
+            continue  # NO DATA
         value = []
         for i, v in enumerate(t.term.split("|")):
             value.append(convert.pipe2value(v))
@@ -422,16 +487,31 @@ def _where(esFilter, _translate):
         if len(pair.keys()) == 1:
             return [_translate(k) + "==" + value2MVEL(v) for k, v in pair.items()][0]
         else:
-            return "(" + " && ".join(_translate(k) + "==" + value2MVEL(v) for k, v in pair.items()) + ")"
+            return (
+                "("
+                + " && ".join(
+                    _translate(k) + "==" + value2MVEL(v) for k, v in pair.items()
+                )
+                + ")"
+            )
     elif op == "terms":
         output = []
         for variableName, valueList in esFilter[op].items():
             if not valueList:
                 Log.error("Expecting something in 'terms' array")
             if len(valueList) == 1:
-                output.append(_translate(variableName) + "==" + value2MVEL(valueList[0]))
+                output.append(
+                    _translate(variableName) + "==" + value2MVEL(valueList[0])
+                )
             else:
-                output.append("(" + " || ".join(_translate(variableName) + "==" + value2MVEL(v) for v in valueList) + ")")
+                output.append(
+                    "("
+                    + " || ".join(
+                        _translate(variableName) + "==" + value2MVEL(v)
+                        for v in valueList
+                    )
+                    + ")"
+                )
         return " && ".join(output)
     elif op == "exists":
         # "exists":{"field":"myField"}
@@ -445,7 +525,9 @@ def _where(esFilter, _translate):
 
         output = []
         if testExistence and not testNull:
-            output.append("(" + fieldName.replace(".?", ".") + " == empty)")        # REMOVE THE .? SO WE REFER TO THE FIELD, NOT GET THE VALUE
+            output.append(
+                "(" + fieldName.replace(".?", ".") + " == empty)"
+            )  # REMOVE THE .? SO WE REFER TO THE FIELD, NOT GET THE VALUE
         if testNull:
             output.append("(" + fieldName + "==null)")
         return " || ".join(output)
@@ -460,9 +542,13 @@ def _where(esFilter, _translate):
                 ranges.append(value2MVEL(r.gt) + "<" + _translate(variableName))
             elif r["from"]:
                 if r.include_lower == None or r.include_lower:
-                    ranges.append(value2MVEL(r["from"]) + "<=" + _translate(variableName))
+                    ranges.append(
+                        value2MVEL(r["from"]) + "<=" + _translate(variableName)
+                    )
                 else:
-                    ranges.append(value2MVEL(r["from"]) + "<" + _translate(variableName))
+                    ranges.append(
+                        value2MVEL(r["from"]) + "<" + _translate(variableName)
+                    )
 
             if r.lte:
                 ranges.append(value2MVEL(r.lte) + ">=" + _translate(variableName))
@@ -470,11 +556,15 @@ def _where(esFilter, _translate):
                 ranges.append(value2MVEL(r.lt) + ">" + _translate(variableName))
             elif r["from"]:
                 if r.include_lower == None or r.include_lower:
-                    ranges.append(value2MVEL(r["from"]) + ">=" + _translate(variableName))
+                    ranges.append(
+                        value2MVEL(r["from"]) + ">=" + _translate(variableName)
+                    )
                 else:
-                    ranges.append(value2MVEL(r["from"]) + ">" + _translate(variableName))
+                    ranges.append(
+                        value2MVEL(r["from"]) + ">" + _translate(variableName)
+                    )
 
-        return "("+" && ".join(ranges)+")"
+        return "(" + " && ".join(ranges) + ")"
 
     elif op == "script":
         script = esFilter[op].script
@@ -491,9 +581,7 @@ def _where(esFilter, _translate):
     return ""
 
 
-VAR_CHAR = "abcdefghijklmnopqurstvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_.\""
-
-
+VAR_CHAR = 'abcdefghijklmnopqurstvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_."'
 
 
 def value2MVEL(value):
@@ -501,13 +589,21 @@ def value2MVEL(value):
     FROM PYTHON VALUE TO MVEL EQUIVALENT
     """
     if isinstance(value, datetime):
-        return str(convert.datetime2milli(value)) + " /*" + value.format("yyNNNdd HHmmss") + "*/"        # TIME
+        return (
+            str(convert.datetime2milli(value))
+            + " /*"
+            + value.format("yyNNNdd HHmmss")
+            + "*/"
+        )  # TIME
     if isinstance(value, Duration):
-        return str(convert.timedelta2milli(value)) + " /*" + str(value) + "*/"    # DURATION
+        return (
+            str(convert.timedelta2milli(value)) + " /*" + str(value) + "*/"
+        )  # DURATION
 
     if Math.is_number(value):
         return str(value)
     return quote(value)
+
 
 # FROM PYTHON VALUE TO ES QUERY EQUIVALENT
 def value2query(value):
@@ -528,23 +624,18 @@ def value2value(value):
     if isinstance(value, datetime):
         return convert.datetime2milli(value)
     if isinstance(value, Duration):
-        return value.milli    # DURATION
+        return value.milli  # DURATION
     return value
-
-
-
-
-
 
 
 def addFunctions(mvel):
     """
     PREPEND THE REQUIRED MVEL FUNCTIONS TO THE CODE
     """
-    isAdded = Data()            # SOME FUNCTIONS DEPEND ON OTHERS
+    isAdded = Data()  # SOME FUNCTIONS DEPEND ON OTHERS
 
-    head=[]
-    body=mvel
+    head = []
+    body = mvel
 
     keepAdding = True
     while keepAdding:
@@ -558,36 +649,42 @@ def addFunctions(mvel):
             isAdded[func_name] = func_code
             head.append(func_code)
             mvel = func_code + mvel
-    return Data(
-        head="".join(head),
-        body=body
-    )
+    return Data(head="".join(head), body=body)
 
 
 FUNCTIONS = {
-    "String2Quote":
-        "var String2Quote = function(str){\n" +
-        "if (!(str is String)){ str; }else{\n" + # LAST VALUE IS RETURNED.  "return" STOPS EXECUTION COMPLETELY!
-        "" + value2MVEL("\"") + "+" +
-        "str.replace(" + value2MVEL("\\") + "," + value2MVEL("\\\\") +
-        ").replace(" + value2MVEL("\"") + "," + value2MVEL("\\\"") +
-        ").replace(" + value2MVEL("\'") + "," + value2MVEL("\\\'") + ")+" +
-        value2MVEL("\"") + ";\n" +
-        "}};\n",
-
-    "Value2Pipe":
-        'var Value2Pipe = function(value){\n' +  # SPACES ARE IMPORTANT BETWEEN "=".
-        "if (value==null){ \"0\" }else " +
-        "if (value is ArrayList || value is org.elasticsearch.common.mvel2.util.FastList){" +
-        "var out = \"\";\n" +
-        "foreach (v : value) out = (out==\"\") ? v : out + \"|\" + Value2Pipe(v);\n" +
-        "'a'+Value2Pipe(out);\n" +
-        "}else \n" +
-        "if (value is Long || value is Integer || value is Double){ 'n'+value; }else \n" +
-        "if (!(value is String)){ 's'+value.getClass().getName(); }else \n" +
-        '"s"+value.replace("\\\\", "\\\\\\\\").replace("|", "\\\\p");' + # CAN NOT value TO MAKE NUMBER A STRING (OR EVEN TO PREPEND A STRING!)
-        "};\n",
-
+    "String2Quote": "var String2Quote = function(str){\n"
+    + "if (!(str is String)){ str; }else{\n"
+    + ""  # LAST VALUE IS RETURNED.  "return" STOPS EXECUTION COMPLETELY!
+    + value2MVEL('"')
+    + "+"
+    + "str.replace("
+    + value2MVEL("\\")
+    + ","
+    + value2MVEL("\\\\")
+    + ").replace("
+    + value2MVEL('"')
+    + ","
+    + value2MVEL('\\"')
+    + ").replace("
+    + value2MVEL("'")
+    + ","
+    + value2MVEL("\\'")
+    + ")+"
+    + value2MVEL('"')
+    + ";\n"
+    + "}};\n",
+    "Value2Pipe": "var Value2Pipe = function(value){\n"
+    + 'if (value==null){ "0" }else '  # SPACES ARE IMPORTANT BETWEEN "=".
+    + "if (value is ArrayList || value is org.elasticsearch.common.mvel2.util.FastList){"
+    + 'var out = "";\n'
+    + 'foreach (v : value) out = (out=="") ? v : out + "|" + Value2Pipe(v);\n'
+    + "'a'+Value2Pipe(out);\n"
+    + "}else \n"
+    + "if (value is Long || value is Integer || value is Double){ 'n'+value; }else \n"
+    + "if (!(value is String)){ 's'+value.getClass().getName(); }else \n"
+    + '"s"+value.replace("\\\\", "\\\\\\\\").replace("|", "\\\\p");'
+    + "};\n",  # CAN NOT value TO MAKE NUMBER A STRING (OR EVEN TO PREPEND A STRING!)
     # 	"replaceAll":
     # 		"var replaceAll = function(output, find, replace){\n" +
     # 			"if (output.length()==0) return output;\n"+
@@ -599,60 +696,36 @@ FUNCTIONS = {
     # 			"}\n"+
     # 			"output;\n"+
     # 		'};\n',
-
-    "floorDay":
-        "var floorDay = function(value){ Math.floor(value/86400000))*86400000;};\n",
-
-    "floorInterval":
-        "var floorInterval = function(value, interval){ Math.floor((double)value/(double)interval)*interval;};\n",
-
-    "maximum": # JUST BECAUSE MVEL'S MAX ONLY USES MAX(int, int).  G*DDA*NIT!
-        "var maximum = function(a, b){if (a==null) b; else if (b==null) a; else if (a>b) a; else b;\n};\n",
-
-    "minimum": # JUST BECAUSE MVEL'S MAX ONLY USES MAX(int, int).  G*DDA*NIT!
-        "var minimum = function(a, b){if (a==null) b; else if (b==null) a; else if (a<b) a; else b;\n};\n",
-
-    "coalesce": # PICK FIRST NOT-NULL VALUE
-        "var coalesce = function(a, b){if (a==null) b; else a; \n};\n",
-
-    "zero2null": # ES MAKES IT DIFFICULT TO DETECT NULL/MISSING VALUES, BUT WHEN DEALING WITH NUMBERS, ES DEFAULTS TO RETURNING ZERO FOR missing VALUES!!
-        "var zero2null = function(a){if (a==0) null; else a; \n};\n",
-
-    "get": # MY OWN PERSONAL *FU* TO THE TWISTED MVEL PROPERTY ACCESS
-        "var get = function(hash, key){\n" +
-        "if (hash==null) null; else hash[key];\n" +
-        "};\n",
-
-    "isNumeric":
-        "var isNumeric = function(value){\n" +
-        "value = value + \"\";\n" +
-        # 			"try{ value-0; }catch(e){ 0; }"+
-        "var isNum = value.length()>0;\n" +
-        "for (v : value.toCharArray()){\n" +
-        "if (\"0123456789\".indexOf(v)==-1) isNum = false;\n" +
-        "};\n" +
-        "isNum;\n" +
-        "};\n",
-
-    "alpha2zero":
-        "var alpha2zero = function(value){\n" +
-        "var output = 0;\n" +
-        "if (isNumeric(value)) output = value-0;\n" +
-        "return output;" +
-        "};\n",
-
+    "floorDay": "var floorDay = function(value){ Math.floor(value/86400000))*86400000;};\n",
+    "floorInterval": "var floorInterval = function(value, interval){ Math.floor((double)value/(double)interval)*interval;};\n",
+    "maximum": "var maximum = function(a, b){if (a==null) b; else if (b==null) a; else if (a>b) a; else b;\n};\n",  # JUST BECAUSE MVEL'S MAX ONLY USES MAX(int, int).  G*DDA*NIT!
+    "minimum": "var minimum = function(a, b){if (a==null) b; else if (b==null) a; else if (a<b) a; else b;\n};\n",  # JUST BECAUSE MVEL'S MAX ONLY USES MAX(int, int).  G*DDA*NIT!
+    "coalesce": "var coalesce = function(a, b){if (a==null) b; else a; \n};\n",  # PICK FIRST NOT-NULL VALUE
+    "zero2null": "var zero2null = function(a){if (a==0) null; else a; \n};\n",  # ES MAKES IT DIFFICULT TO DETECT NULL/MISSING VALUES, BUT WHEN DEALING WITH NUMBERS, ES DEFAULTS TO RETURNING ZERO FOR missing VALUES!!
+    "get": "var get = function(hash, key){\n"  # MY OWN PERSONAL *FU* TO THE TWISTED MVEL PROPERTY ACCESS
+    + "if (hash==null) null; else hash[key];\n"
+    + "};\n",
+    "isNumeric": "var isNumeric = function(value){\n" + 'value = value + "";\n' +
+    # 			"try{ value-0; }catch(e){ 0; }"+
+    "var isNum = value.length()>0;\n"
+    + "for (v : value.toCharArray()){\n"
+    + 'if ("0123456789".indexOf(v)==-1) isNum = false;\n'
+    + "};\n"
+    + "isNum;\n"
+    + "};\n",
+    "alpha2zero": "var alpha2zero = function(value){\n"
+    + "var output = 0;\n"
+    + "if (isNumeric(value)) output = value-0;\n"
+    + "return output;"
+    + "};\n",
     # KANBAN SOFTWARE
     # CAN SEE QUEUE BLOCKAGES AND SEE SINGLE BLOCKERS
-
-
-    "concat":
-        "var concat = function(array){\n" +
-        "if (array==null) \"\"; else {\n" +
-        "var output = \"\";\n" +
-        "for (v : array){ output = output+\"|\"+v+\"|\"; };\n" +
-        "output;\n" +
-        "}};\n",
-
+    "concat": "var concat = function(array){\n"
+    + 'if (array==null) ""; else {\n'
+    + 'var output = "";\n'
+    + 'for (v : array){ output = output+"|"+v+"|"; };\n'
+    + "output;\n"
+    + "}};\n",
     # 	"contains":
     # 		"var contains = function(array, value){\n"+
     # 			"if (array==null) false; else {\n"+
@@ -660,71 +733,60 @@ FUNCTIONS = {
     # 			"for (v : array){ if (v==value) good=true; };\n"+
     # 			"good;\n"+
     # 		"}};\n",
-
-    "getFlagValue": # SPECIFICALLY FOR cf_* FLAGS: CONCATENATE THE ATTRIBUTE NAME WITH ATTRIBUTE VALUE, IF EXISTS
-        "var getFlagValue = function(name){\n" +
-        "if (_source[name]!=null)" +
-        "\" \"+name+_source[name];\n" +
-        "else \n" +
-        "\"\";\n" +
-        "};\n",
-
-    "getDocValue":
-        "var getDocValue = function(name){\n" +
-        "var out = [];\n" +
-        "var v = doc[name];\n" +
-        # 			"if (v is org.elasticsearch.common.mvel2.ast.Function) v = v();=n" +
-        "if (v==null || v.value==null) { null; } else\n" +
-        "if (v.values.size()<=1){ v.value; } else\n" + # ES MAKES NO DISTINCTION BETWEEN v or [v], SO NEITHER DO I
-        "{for(k : v.values) out.add(k); out;}" +
-        "};\n",
-
-    "getSourceValue":
-        "var getSourceValue = function(name){\n" +
-        "var out = [];\n" +
-        "var v = _source[name];\n" +
-        # 			"if (v is org.elasticsearch.common.mvel2.ast.Function) v = v();=n" +
-        "if (v==null) { null; } else\n" +
-        "if (v[\"values\"]==null || v.values.size()<=1){ v.value; } else {\n" + # ES MAKES NO DISTINCTION BETWEEN v or [v], SO NEITHER DO I
-        "for(k : v) out.add(k); out;\n" + # .size() MUST BE USED INSTEAD OF .length, THE LATTER WILL CRASH IF JITTED (https://github.com/elasticsearch/elasticsearch/issues/3094)
-        "}};\n",
-
-    "getDocArray":
-        "var getDocArray = function(name){\n" +
-        "var out = [];\n" +
-        "var v = doc[name];\n" +
-        "if (v!=null && v.value!=null) for(k : v.values) out.add(k);" +
-        "out;" +
-        "};\n",
-
-
-    "milli2Month":
-        "var milli2Month = function(value, milliOffset){\n" +
-        "g=new java.util.GregorianCalendar(new java.util.SimpleTimeZone(0, \"GMT\"));\n" +
-        "g.setTimeInMillis(value);\n" +
-        "g.add(java.util.GregorianCalendar.MILLISECOND, -milliOffset);\n" +
-        "m = g.get(java.util.GregorianCalendar.MONTH);\n" +
-        "output = \"\"+g.get(java.util.GregorianCalendar.YEAR)+(m>9?\"\":\"0\")+m;\n" +
-        "output;\n" +
-        "};\n",
-
-    "between":
-        "var between = function(value, prefix, suffix){\n" +
-        "if (value==null){ null; }else{\n" +
-        "var start = value.indexOf(prefix, 0);\n" +
-        "if (start==-1){ null; }else{\n" +
-        "var end = value.indexOf(suffix, start+prefix.length());\n" +
-        "if (end==-1){  null; }else{\n" +
-        "value.substring(start+prefix.length(), end);\n" +
-        "}}}\n" +
-        "};\n"
+    "getFlagValue": "var getFlagValue = function(name){\n"  # SPECIFICALLY FOR cf_* FLAGS: CONCATENATE THE ATTRIBUTE NAME WITH ATTRIBUTE VALUE, IF EXISTS
+    + "if (_source[name]!=null)"
+    + '" "+name+_source[name];\n'
+    + "else \n"
+    + '"";\n'
+    + "};\n",
+    "getDocValue": "var getDocValue = function(name){\n"
+    + "var out = [];\n"
+    + "var v = doc[name];\n"
+    +
+    # 			"if (v is org.elasticsearch.common.mvel2.ast.Function) v = v();=n" +
+    "if (v==null || v.value==null) { null; } else\n"
+    + "if (v.values.size()<=1){ v.value; } else\n"
+    + "{for(k : v.values) out.add(k); out;}"  # ES MAKES NO DISTINCTION BETWEEN v or [v], SO NEITHER DO I
+    + "};\n",
+    "getSourceValue": "var getSourceValue = function(name){\n"
+    + "var out = [];\n"
+    + "var v = _source[name];\n"
+    +
+    # 			"if (v is org.elasticsearch.common.mvel2.ast.Function) v = v();=n" +
+    "if (v==null) { null; } else\n"
+    + 'if (v["values"]==null || v.values.size()<=1){ v.value; } else {\n'
+    + "for(k : v) out.add(k); out;\n"  # ES MAKES NO DISTINCTION BETWEEN v or [v], SO NEITHER DO I
+    + "}};\n",  # .size() MUST BE USED INSTEAD OF .length, THE LATTER WILL CRASH IF JITTED (https://github.com/elasticsearch/elasticsearch/issues/3094)
+    "getDocArray": "var getDocArray = function(name){\n"
+    + "var out = [];\n"
+    + "var v = doc[name];\n"
+    + "if (v!=null && v.value!=null) for(k : v.values) out.add(k);"
+    + "out;"
+    + "};\n",
+    "milli2Month": "var milli2Month = function(value, milliOffset){\n"
+    + 'g=new java.util.GregorianCalendar(new java.util.SimpleTimeZone(0, "GMT"));\n'
+    + "g.setTimeInMillis(value);\n"
+    + "g.add(java.util.GregorianCalendar.MILLISECOND, -milliOffset);\n"
+    + "m = g.get(java.util.GregorianCalendar.MONTH);\n"
+    + 'output = ""+g.get(java.util.GregorianCalendar.YEAR)+(m>9?"":"0")+m;\n'
+    + "output;\n"
+    + "};\n",
+    "between": "var between = function(value, prefix, suffix){\n"
+    + "if (value==null){ null; }else{\n"
+    + "var start = value.indexOf(prefix, 0);\n"
+    + "if (start==-1){ null; }else{\n"
+    + "var end = value.indexOf(suffix, start+prefix.length());\n"
+    + "if (end==-1){  null; }else{\n"
+    + "value.substring(start+prefix.length(), end);\n"
+    + "}}}\n"
+    + "};\n",
 }
 
 
 def replacePrefix(value, prefix, new_prefix):
     try:
         if value.startswith(prefix):
-            return new_prefix+value[len(prefix)::]
+            return new_prefix + value[len(prefix) : :]
         return value
     except Exception as e:
         Log.error("can not replace prefix", e)

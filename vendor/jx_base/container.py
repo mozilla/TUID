@@ -20,7 +20,7 @@ from mo_future import generator_types, text_type
 from mo_logs import Log
 
 type2container = Data()
-config = Data()   # config.default IS EXPECTED TO BE SET BEFORE CALLS ARE MADE
+config = Data()  # config.default IS EXPECTED TO BE SET BEFORE CALLS ARE MADE
 _ListContainer = None
 _Cube = None
 _run = None
@@ -34,7 +34,9 @@ def _delayed_imports():
     global _run
     global _Query
 
-    from jx_python.containers.list_usingPythonList import ListContainer as _ListContainer
+    from jx_python.containers.list_usingPythonList import (
+        ListContainer as _ListContainer,
+    )
     from jx_python.containers.cube import Cube as _Cube
     from jx_python.jx import run as _run
     from jx_base.query import QueryOp as _Query
@@ -51,7 +53,6 @@ class Container(object):
     GENERAL JSON QUERY EXPRESSIONS ON ITS CONTENTS
     METADATA FOR A Container IS CALL A Namespace
     """
-
 
     @classmethod
     def new_instance(type, frum, schema=None):
@@ -72,16 +73,17 @@ class Container(object):
         elif isinstance(frum, text_type):
             # USE DEFAULT STORAGE TO FIND Container
             if not config.default.settings:
-                Log.error("expecting jx_base.container.config.default.settings to contain default elasticsearch connection info")
+                Log.error(
+                    "expecting jx_base.container.config.default.settings to contain default elasticsearch connection info"
+                )
 
             settings = set_default(
-                {
-                    "index": join_field(split_field(frum)[:1:]),
-                    "name": frum,
-                },
-                config.default.settings
+                {"index": join_field(split_field(frum)[:1:]), "name": frum},
+                config.default.settings,
             )
-            settings.type = None  # WE DO NOT WANT TO INFLUENCE THE TYPE BECAUSE NONE IS IN THE frum STRING ANYWAY
+            settings.type = (
+                None
+            )  # WE DO NOT WANT TO INFLUENCE THE TYPE BECAUSE NONE IS IN THE frum STRING ANYWAY
             return type2container["elasticsearch"](settings)
         elif isinstance(frum, Mapping):
             frum = wrap(frum)
@@ -94,7 +96,9 @@ class Container(object):
             else:
                 Log.error("Do not know how to handle {{frum|json}}", frum=frum)
         else:
-            Log.error("Do not know how to handle {{type}}", type=frum.__class__.__name__)
+            Log.error(
+                "Do not know how to handle {{type}}", type=frum.__class__.__name__
+            )
 
     def query(self, query):
         if query.frum != self:

@@ -39,15 +39,25 @@ class Cache(object):
     """
 
     @override
-    def __init__(self, rate=None, amortization_period=None, source=None, database=None, kwargs=None):
+    def __init__(
+        self,
+        rate=None,
+        amortization_period=None,
+        source=None,
+        database=None,
+        kwargs=None,
+    ):
         self.amortization_period = coalesce(amortization_period, AMORTIZATION_PERIOD)
         self.rate = coalesce(rate, HG_REQUEST_PER_SECOND)
         self.cache_locker = Lock()
         self.cache = {}  # MAP FROM url TO (ready, headers, response, timestamp) PAIR
         self.no_cache = {}  # VERY SHORT TERM CACHE
         self.workers = []
-        self.todo = Queue(APP_NAME+" todo")
-        self.requests = Queue(APP_NAME + " requests", max=int(self.rate * self.amortization_period.seconds))
+        self.todo = Queue(APP_NAME + " todo")
+        self.requests = Queue(
+            APP_NAME + " requests",
+            max=int(self.rate * self.amortization_period.seconds),
+        )
         self.url = URL(source.url)
         self.db = Sqlite(database)
         self.inbound_rate = RateLogger("Inbound")
@@ -65,11 +75,11 @@ class Cache(object):
                 )
 
         self.threads = [
-            Thread.run(APP_NAME+" worker" + text_type(i), self._worker)
+            Thread.run(APP_NAME + " worker" + text_type(i), self._worker)
             for i in range(CONCURRENCY)
         ]
-        self.limiter = Thread.run(APP_NAME+" limiter", self._rate_limiter)
-        self.cleaner = Thread.run(APP_NAME+" cleaner", self._cache_cleaner)
+        self.limiter = Thread.run(APP_NAME + " limiter", self._rate_limiter)
+        self.cleaner = Thread.run(APP_NAME + " cleaner", self._cache_cleaner)
 
     def _rate_limiter(self, please_stop):
         try:
@@ -98,7 +108,7 @@ class Cache(object):
     def _cache_cleaner(self, please_stop):
         while not please_stop:
             now = Date.now()
-            too_old = now-CACHE_RETENTION
+            too_old = now - CACHE_RETENTION
 
             remove = set()
             with self.cache_locker:
@@ -115,7 +125,21 @@ class Cache(object):
         """
         if path.endswith("/tip"):
             return False
-        if any(k in path for k in ["/json-annotate/", "/json-info/", "/json-log/", "/json-rev/", "/rev/", "/raw-rev/", "/raw-file/", "/json-pushes", "/pushloghtml", "/file/"]):
+        if any(
+            k in path
+            for k in [
+                "/json-annotate/",
+                "/json-info/",
+                "/json-log/",
+                "/json-rev/",
+                "/rev/",
+                "/raw-rev/",
+                "/raw-file/",
+                "/json-pushes",
+                "/pushloghtml",
+                "/file/",
+            ]
+        ):
             return True
 
         return False
@@ -131,7 +155,6 @@ class Cache(object):
             if pair is None:
                 self.cache[path] = (ready, None, None, now)
 
-
         if pair is not None:
             # REQUEST IS IN THE QUEUE ALREADY, WAIT
             ready, headers, response, then = pair
@@ -140,39 +163,43 @@ class Cache(object):
                 with self.cache_locker:
                     ready, headers, response, timestamp = self.cache.get(path)
             with self.db.transaction() as t:
-                t.execute("UPDATE cache SET timestamp=" + quote_value(now) + " WHERE path=" + quote_value(path) + " AND timestamp<" + quote_value(now))
-            return Response(
-                response,
-                status=200,
-                headers=json.loads(headers)
-            )
+                t.execute(
+                    "UPDATE cache SET timestamp="
+                    + quote_value(now)
+                    + " WHERE path="
+                    + quote_value(path)
+                    + " AND timestamp<"
+                    + quote_value(now)
+                )
+            return Response(response, status=200, headers=json.loads(headers))
 
         # TEST DB
-        db_response = self.db.query("SELECT headers, response FROM cache WHERE path=" + quote_value(path)).data
+        db_response = self.db.query(
+            "SELECT headers, response FROM cache WHERE path=" + quote_value(path)
+        ).data
         if db_response:
             headers, response = db_response[0]
             with self.db.transaction() as t:
-                t.execute("UPDATE cache SET timestamp=" + quote_value(now) + " WHERE path=" + quote_value(path) + " AND timestamp<" + quote_value(now))
+                t.execute(
+                    "UPDATE cache SET timestamp="
+                    + quote_value(now)
+                    + " WHERE path="
+                    + quote_value(path)
+                    + " AND timestamp<"
+                    + quote_value(now)
+                )
             with self.cache_locker:
-                self.cache[path] = (ready, headers, response.encode('latin1'), now)
+                self.cache[path] = (ready, headers, response.encode("latin1"), now)
             ready.go()
 
-            return Response(
-                response,
-                status=200,
-                headers=json.loads(headers)
-            )
+            return Response(response, status=200, headers=json.loads(headers))
 
         # MAKE A NETWORK REQUEST
         self.todo.add((ready, method, path, headers, now))
         ready.wait()
         with self.cache_locker:
             ready, headers, response, timestamp = self.cache[path]
-        return Response(
-            response,
-            status=200,
-            headers=json.loads(headers)
-        )
+        return Response(response, status=200, headers=json.loads(headers))
 
     def _worker(self, please_stop):
         while not please_stop:
@@ -186,14 +213,24 @@ class Cache(object):
                 self.outbound_rate.add(Date.now())
                 response = http.request(method, url, req_headers)
 
-                del response.headers['transfer-encoding']
+                del response.headers["transfer-encoding"]
                 resp_headers = value2json(response.headers)
                 resp_content = response.raw.read()
 
                 please_cache = self.please_cache(path)
                 if please_cache:
                     with self.db.transaction() as t:
-                        t.execute("INSERT INTO cache (path, headers, response, timestamp) VALUES" + quote_list((path, resp_headers, resp_content.decode('latin1'), timestamp)))
+                        t.execute(
+                            "INSERT INTO cache (path, headers, response, timestamp) VALUES"
+                            + quote_list(
+                                (
+                                    path,
+                                    resp_headers,
+                                    resp_content.decode("latin1"),
+                                    timestamp,
+                                )
+                            )
+                        )
                 with self.cache_locker:
                     self.cache[path] = (ready, resp_headers, resp_content, timestamp)
             except Exception as e:
@@ -203,6 +240,3 @@ class Cache(object):
                     del self.cache[path]
             finally:
                 ready.go()
-
-
-

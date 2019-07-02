@@ -26,7 +26,8 @@ class SQL(text_type):
     """
     ACTUAL SQL, DO NOT QUOTE THIS STRING
     """
-    def __init__(self, template='', param=None):
+
+    def __init__(self, template="", param=None):
         text_type.__init__(self)
         if isinstance(template, SQL):
             Log.error("Expecting text, not SQL")
@@ -39,15 +40,19 @@ class SQL(text_type):
 
     def __add__(self, other):
         if not isinstance(other, SQL):
-            if isinstance(other, text_type) and all(c not in other for c in ('"', '\'', '`')):
-               return SQL(self.sql + other)
+            if isinstance(other, text_type) and all(
+                c not in other for c in ('"', "'", "`")
+            ):
+                return SQL(self.sql + other)
             Log.error("Can only concat other SQL")
         else:
-            return SQL(self.sql+other.sql)
+            return SQL(self.sql + other.sql)
 
     def __radd__(self, other):
         if not isinstance(other, SQL):
-            if isinstance(other, text_type) and all(c not in other for c in ('"', '\'', '`')):
+            if isinstance(other, text_type) and all(
+                c not in other for c in ('"', "'", "`")
+            ):
                 return SQL(other + self.sql)
             Log.error("Can only concat other SQL")
         else:
@@ -60,12 +65,14 @@ class SQL(text_type):
         return SQL(self.sql.join(list_))
 
     if PY3:
+
         def __bytes__(self):
             Log.error("do not do this")
+
     else:
+
         def __str__(self):
             Log.error("do not do this")
-
 
 
 SQL_STAR = SQL(" * ")
@@ -106,12 +113,12 @@ SQL_LIMIT = SQL("\nLIMIT\n")
 
 
 class DB(object):
-
     def quote_column(self, column_name, table=None):
         raise NotImplementedError()
 
     def db_type_to_json_type(self, type):
         raise NotImplementedError()
+
 
 def sql_list(list_):
     list_ = list(list_)
@@ -121,7 +128,7 @@ def sql_list(list_):
 
 
 def sql_iso(sql):
-    return "("+sql+")"
+    return "(" + sql + ")"
 
 
 def sql_count(sql):
@@ -142,4 +149,3 @@ def sql_alias(value, alias):
 
 def sql_coalesce(list_):
     return "COALESCE(" + SQL_COMMA.join(list_) + ")"
-

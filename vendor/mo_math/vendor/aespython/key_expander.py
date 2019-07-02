@@ -20,10 +20,11 @@ try:
 except ValueError:
     import aes_tables
 
+
 class KeyExpander:
     """Perform AES Key Expansion"""
 
-    _expanded_key_length = {128 : 176, 192 : 208, 256 : 240}
+    _expanded_key_length = {128: 176, 192: 208, 256: 240}
 
     def __init__(self, key_length):
         self._key_length = key_length
@@ -32,11 +33,11 @@ class KeyExpander:
         if key_length in self._expanded_key_length:
             self._b = self._expanded_key_length[key_length]
         else:
-            raise LookupError('Invalid Key Size')
+            raise LookupError("Invalid Key Size")
 
     def _core(self, key_array, iteration):
         if len(key_array) != 4:
-            raise RuntimeError('_core(): key segment size invalid')
+            raise RuntimeError("_core(): key segment size invalid")
 
         # Append the list of elements 1-3 and list comprised of element 0 (circular rotate left)
         # For each element of this new list, put the result of sbox into output array.
@@ -49,7 +50,7 @@ class KeyExpander:
         return output
 
     def _xor_list(self, list_1, list_2):
-        return [ i ^ j for i,j in zip(list_1, list_2)]
+        return [i ^ j for i, j in zip(list_1, list_2)]
 
     def expand(self, key_array):
         """
@@ -59,7 +60,9 @@ class KeyExpander:
         """
 
         if len(key_array) != self._n:
-            raise RuntimeError('expand(): key size ' + str(len(key_array)) + ' is invalid')
+            raise RuntimeError(
+                "expand(): key size " + str(len(key_array)) + " is invalid"
+            )
 
         # First n bytes are copied from key. Copy prevents inplace modification of original key
         new_key = list(key_array)
@@ -78,7 +81,9 @@ class KeyExpander:
             t = new_key[-4:]
             t = self._core(t, rcon_iteration)
             rcon_iteration += 1
-            t = self._xor_list(t, new_key[-self._n : -self._n + 4])# self._n_bytes_before(len_new_key, new_key))
+            t = self._xor_list(
+                t, new_key[-self._n : -self._n + 4]
+            )  # self._n_bytes_before(len_new_key, new_key))
             new_key.extend(t)
             len_new_key += 4
 
@@ -94,7 +99,7 @@ class KeyExpander:
             # run through sbox before xor with 4 bytes n bytes from end of extended key
             if self._key_length == 256 and len_new_key < self._b:
                 t = new_key[-4:]
-                t2=[]
+                t2 = []
                 for x in t:
                     t2.append(aes_tables.sbox[x])
                 t = self._xor_list(t2, new_key[-self._n : -self._n + 4])
@@ -117,9 +122,11 @@ class KeyExpander:
 
         return new_key
 
-import unittest
-class TestKeyExpander(unittest.TestCase):
 
+import unittest
+
+
+class TestKeyExpander(unittest.TestCase):
     def test_keys(self):
         """Test All Key Expansions"""
         try:
@@ -132,12 +139,21 @@ class TestKeyExpander(unittest.TestCase):
         for key_size in [128, 192, 256]:
             test_expander = KeyExpander(key_size)
             test_expanded_key = test_expander.expand(test_data.test_key[key_size])
-            self.assertEqual (len([i for i, j in zip(test_expanded_key, test_data.test_expanded_key_validated[key_size]) if i == j]),
+            self.assertEqual(
+                len(
+                    [
+                        i
+                        for i, j in zip(
+                            test_expanded_key,
+                            test_data.test_expanded_key_validated[key_size],
+                        )
+                        if i == j
+                    ]
+                ),
                 len(test_data.test_expanded_key_validated[key_size]),
-                msg='Key expansion ' + str(key_size) + ' bit')
+                msg="Key expansion " + str(key_size) + " bit",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
-
-
-

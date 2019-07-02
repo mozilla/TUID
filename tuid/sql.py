@@ -33,7 +33,7 @@ class Sql:
     def get(self, sql, params=None):
         if params:
             for p in params:
-                sql = sql.replace('?', quote_value(p), 1)
+                sql = sql.replace("?", quote_value(p), 1)
         return self.db.query(sql).data
 
     def get_one(self, sql, params=None):
@@ -50,7 +50,7 @@ class Sql:
         return len(self.db.available_transactions)
 
 
-class Transaction():
+class Transaction:
     def __init__(self, transaction):
         self.transaction = transaction
 
@@ -65,13 +65,13 @@ class Transaction():
     def execute(self, sql, params=None):
         if params:
             for p in params:
-                sql = sql.replace('?', quote_value(p), 1)
+                sql = sql.replace("?", quote_value(p), 1)
         return self.transaction.execute(sql)
 
     def get(self, sql, params=None):
         if params:
             for p in params:
-                sql = sql.replace('?', quote_value(p), 1)
+                sql = sql.replace("?", quote_value(p), 1)
         return self.transaction.query(sql).data
 
     def get_one(self, sql, params=None):

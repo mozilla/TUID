@@ -23,7 +23,6 @@ APP_NAME = "HG Relay"
 
 
 class RelayApp(Flask):
-
     def run(self, *args, **kwargs):
         # ENSURE THE LOGGING IS CLEANED UP
         try:
@@ -49,9 +48,7 @@ def relay_get(path):
         return Response(
             unicode2utf8(value2json(e, pretty=True)),
             status=400,
-            headers={
-                "Content-Type": "text/html"
-            }
+            headers={"Content-Type": "text/html"},
         )
 
 
@@ -65,9 +62,7 @@ def relay_post(path):
         return Response(
             unicode2utf8(value2json(e, pretty=True)),
             status=400,
-            headers={
-                "Content-Type": "text/html"
-            }
+            headers={"Content-Type": "text/html"},
         )
 
 
@@ -75,10 +70,14 @@ def add(any_flask_app):
     global cache
 
     cache = Cache(config.cache)
-    any_flask_app.add_url_rule(str('/<path:path>'), None, relay_get, methods=[str('GET')])
-    any_flask_app.add_url_rule(str('/<path:path>'), None, relay_post, methods=[str('POST')])
-    any_flask_app.add_url_rule(str('/'), None, relay_get, methods=[str('GET')])
-    any_flask_app.add_url_rule(str('/'), None, relay_post, methods=[str('POST')])
+    any_flask_app.add_url_rule(
+        str("/<path:path>"), None, relay_get, methods=[str("GET")]
+    )
+    any_flask_app.add_url_rule(
+        str("/<path:path>"), None, relay_post, methods=[str("POST")]
+    )
+    any_flask_app.add_url_rule(str("/"), None, relay_get, methods=[str("GET")])
+    any_flask_app.add_url_rule(str("/"), None, relay_post, methods=[str("POST")])
 
 
 if __name__ in ("__main__",):
@@ -86,9 +85,7 @@ if __name__ in ("__main__",):
     flask_app = RelayApp(__name__)
 
     try:
-        config = startup.read_settings(
-            filename=os.environ.get('HG_RELAY_CONFIG')
-        )
+        config = startup.read_settings(filename=os.environ.get("HG_RELAY_CONFIG"))
         constants.set(config.constants)
         Log.start(config.debug)
 
@@ -96,7 +93,12 @@ if __name__ in ("__main__",):
         Log.note("Started " + APP_NAME + " Service")
     except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
         try:
-            Log.error("Serious problem with " + APP_NAME + " service construction!  Shutdown!", cause=e)
+            Log.error(
+                "Serious problem with "
+                + APP_NAME
+                + " service construction!  Shutdown!",
+                cause=e,
+            )
         finally:
             Log.stop()
 

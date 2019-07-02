@@ -41,7 +41,6 @@ class Normal(Namespace):
             return self._convert_query(expr)
         return expr
 
-
     def _convert_query(self, query):
         # if not isinstance(query["from"], Container):
         #     Log.error('Expecting from clause to be a Container')
@@ -56,12 +55,19 @@ class Normal(Namespace):
             output.select = convert_list(self._convert_select, query.select)
         else:
             if query.edges or query.groupby:
-                output.select = {"name": "count", "value": ".", "aggregate": "count", "default": 0}
+                output.select = {
+                    "name": "count",
+                    "value": ".",
+                    "aggregate": "count",
+                    "default": 0,
+                }
             else:
                 output.select = {"name": "__all__", "value": "*", "aggregate": "none"}
 
         if query.groupby and query.edges:
-            Log.error("You can not use both the `groupby` and `edges` clauses in the same query!")
+            Log.error(
+                "You can not use both the `groupby` and `edges` clauses in the same query!"
+            )
         elif query.edges:
             output.edges = convert_list(self._convert_edge, query.edges)
             output.groupby = None
@@ -84,10 +90,15 @@ class Normal(Namespace):
 
         # DEPTH ANALYSIS - LOOK FOR COLUMN REFERENCES THAT MAY BE DEEPER THAN
         # THE from SOURCE IS.
-        vars = get_all_vars(output, exclude_where=True)  # WE WILL EXCLUDE where VARIABLES
+        vars = get_all_vars(
+            output, exclude_where=True
+        )  # WE WILL EXCLUDE where VARIABLES
         for c in query.columns:
             if c.name in vars and len(c.nested_path) != 1:
-                Log.error("This query, with variable {{var_name}} is too deep", var_name=c.name)
+                Log.error(
+                    "This query, with variable {{var_name}} is too deep",
+                    var_name=c.name,
+                )
 
         output.having = convert_list(self._convert_having, query.having)
 
@@ -104,9 +115,11 @@ class Normal(Namespace):
     def _convert_select(self, select):
         if isinstance(select, text_type):
             return Data(
-                name=select.rstrip("."),  # TRAILING DOT INDICATES THE VALUE, BUT IS INVALID FOR THE NAME
+                name=select.rstrip(
+                    "."
+                ),  # TRAILING DOT INDICATES THE VALUE, BUT IS INVALID FOR THE NAME
                 value=select,
-                aggregate="none"
+                aggregate="none",
             )
         else:
             select = wrap(select)
@@ -120,32 +133,30 @@ class Normal(Namespace):
                 Log.error("Must give name to each column in select clause")
 
             if not output.name:
-                Log.error("expecting select to have a name: {{select}}",  select=select)
+                Log.error("expecting select to have a name: {{select}}", select=select)
 
-            output.aggregate = coalesce(canonical_aggregates.get(select.aggregate), select.aggregate, "none")
+            output.aggregate = coalesce(
+                canonical_aggregates.get(select.aggregate), select.aggregate, "none"
+            )
             return output
 
     def _convert_edge(self, edge):
         if isinstance(edge, text_type):
-            return Data(
-                name=edge,
-                value=edge,
-                domain=self._convert_domain()
-            )
+            return Data(name=edge, value=edge, domain=self._convert_domain())
         else:
             edge = wrap(edge)
             if not edge.name and not isinstance(edge.value, text_type):
-                Log.error("You must name compound edges: {{edge}}",  edge= edge)
+                Log.error("You must name compound edges: {{edge}}", edge=edge)
 
             if isinstance(edge.value, (Mapping, list)) and not edge.domain:
                 # COMPLEX EDGE IS SHORT HAND
-                domain =self._convert_domain()
+                domain = self._convert_domain()
                 domain.dimension = Data(fields=edge.value)
 
                 return Data(
                     name=edge.name,
                     allowNulls=False if edge.allowNulls is False else True,
-                    domain=domain
+                    domain=domain,
                 )
 
             domain = self._convert_domain(edge.domain)
@@ -154,30 +165,31 @@ class Normal(Namespace):
                 value=edge.value,
                 range=edge.range,
                 allowNulls=False if edge.allowNulls is False else True,
-                domain=domain
+                domain=domain,
             )
 
     def _convert_group(self, column):
         if isinstance(column, text_type):
-            return wrap({
-                "name": column,
-                "value": column,
-                "domain": {"type": "default"}
-            })
+            return wrap(
+                {"name": column, "value": column, "domain": {"type": "default"}}
+            )
         else:
             column = wrap(column)
-            if (column.domain and column.domain.type != "default") or column.allowNulls != None:
+            if (
+                column.domain and column.domain.type != "default"
+            ) or column.allowNulls != None:
                 Log.error("groupby does not accept complicated domains")
 
             if not column.name and not isinstance(column.value, text_type):
-                Log.error("You must name compound edges: {{edge}}",  edge= column)
+                Log.error("You must name compound edges: {{edge}}", edge=column)
 
-            return wrap({
-                "name": coalesce(column.name, column.value),
-                "value": column.value,
-                "domain": {"type": "default"}
-            })
-
+            return wrap(
+                {
+                    "name": coalesce(column.name, column.value),
+                    "value": column.value,
+                    "domain": {"type": "default"},
+                }
+            )
 
     def _convert_domain(self, domain=None):
         if not domain:
@@ -200,16 +212,12 @@ class Normal(Namespace):
         if range == None:
             return None
 
-        return Data(
-            min=range.min,
-            max=range.max
-        )
+        return Data(min=range.min, max=range.max)
 
     def _convert_where(self, where):
         if where == None:
             return TRUE
         return where
-
 
     def _convert_window(self, window):
         return Data(
@@ -219,9 +227,8 @@ class Normal(Namespace):
             sort=self._convert_sort(window.sort),
             aggregate=window.aggregate,
             range=self._convert_range(window.range),
-            where=self._convert_where(window.where)
+            where=self._convert_where(window.where),
         )
-
 
     def _convert_sort(self, sort):
         return normalize_sort(sort)
@@ -239,25 +246,21 @@ def normalize_sort(sort=None):
     for s in listwrap(sort):
         if isinstance(s, text_type) or Math.is_integer(s):
             output.append({"value": s, "sort": 1})
-        elif not s.field and not s.value and s.sort==None:
-            #ASSUME {name: sort} FORM
+        elif not s.field and not s.value and s.sort == None:
+            # ASSUME {name: sort} FORM
             for n, v in s.items():
                 output.append({"value": n, "sort": sort_direction[v]})
         else:
-            output.append({"value": coalesce(s.field, s.value), "sort": coalesce(sort_direction[s.sort], 1)})
+            output.append(
+                {
+                    "value": coalesce(s.field, s.value),
+                    "sort": coalesce(sort_direction[s.sort], 1),
+                }
+            )
     return wrap(output)
 
 
-sort_direction = {
-    "asc": 1,
-    "desc": -1,
-    "none": 0,
-    1: 1,
-    0: 0,
-    -1: -1,
-    None: 1,
-    Null: 1
-}
+sort_direction = {"asc": 1, "desc": -1, "none": 0, 1: 1, 0: 0, -1: -1, None: 1, Null: 1}
 
 canonical_aggregates = {
     "none": "none",
@@ -278,6 +281,5 @@ canonical_aggregates = {
     "std_deviation": "std",
     "var": "variance",
     "variance": "variance",
-    "stats": "stats"
+    "stats": "stats",
 }
-

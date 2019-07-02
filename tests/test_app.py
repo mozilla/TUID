@@ -38,10 +38,10 @@ def app():
             "TUID app",
             ["python", "tuid/app.py"],
             env={str("PYTHONPATH"): pythonpath},
-            debug=True
+            debug=True,
         )
         for line in app_process.stderr:
-            if line.startswith(b' * Running on '):
+            if line.startswith(b" * Running on "):
                 break
     yield
     app_process.stop()
@@ -61,7 +61,7 @@ def test_empty_query(config, app):
 @pytest.mark.skipif(True, reason="can not get this test to work")
 def test_query_too_big(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid/"
-    name = "a"*10000000
+    name = "a" * 10000000
     response = http.get(url, json={"from": name})
     assert response.status_code == 400
     assert response.content == b"request too large"
@@ -89,14 +89,19 @@ def test_shutdown(config, app):
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_zero_files(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
-    response = http.post_json(url, json={
-        "from": "files",
-        "where": {"and": [
-            {"eq": {"revision": "29dcc9cb77c372c97681a47496488ec6c623915d"}},
-            {"in": {"path": []}},
-            {"eq": {"branch": "mozilla-central"}}
-        ]}
-    })
+    response = http.post_json(
+        url,
+        json={
+            "from": "files",
+            "where": {
+                "and": [
+                    {"eq": {"revision": "29dcc9cb77c372c97681a47496488ec6c623915d"}},
+                    {"in": {"path": []}},
+                    {"eq": {"branch": "mozilla-central"}},
+                ]
+            },
+        },
+    )
 
     assert len(response.data) == 0
 
@@ -105,37 +110,47 @@ def test_zero_files(config, app):
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_single_file(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
-    response = http.post_json(url, json={
-        "from": "files",
-        "where": {"and": [
-            {"eq": {"revision": "29dcc9cb77c372c97681a47496488ec6c623915d"}},
-            {"in": {"path": ["gfx/thebes/gfxFontVariations.h"]}},
-            {"eq": {"branch": "mozilla-central"}}
-        ]}
-    })
+    response = http.post_json(
+        url,
+        json={
+            "from": "files",
+            "where": {
+                "and": [
+                    {"eq": {"revision": "29dcc9cb77c372c97681a47496488ec6c623915d"}},
+                    {"in": {"path": ["gfx/thebes/gfxFontVariations.h"]}},
+                    {"eq": {"branch": "mozilla-central"}},
+                ]
+            },
+        },
+    )
 
-    list_response = wrap([
-        {h: v for h, v in zip(response.header, r)}
-        for r in response.data
-    ])
+    list_response = wrap(
+        [{h: v for h, v in zip(response.header, r)} for r in response.data]
+    )
     tuids = list_response[0].tuids
 
     assert len(tuids) == 41  # 41 lines expected
     assert len(set(tuids)) == 41  # tuids much be unique
 
+
 @pytest.mark.first_run
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_single_file_list(config, app):
     url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
-    response = http.post_json(url, json={
-        "meta": {"format": "list"},
-        "from": "files",
-        "where": {"and": [
-            {"eq": {"revision": "29dcc9cb77c372c97681a47496488ec6c623915d"}},
-            {"in": {"path": ["gfx/thebes/gfxFontVariations.h"]}},
-            {"eq": {"branch": "mozilla-central"}}
-        ]}
-    })
+    response = http.post_json(
+        url,
+        json={
+            "meta": {"format": "list"},
+            "from": "files",
+            "where": {
+                "and": [
+                    {"eq": {"revision": "29dcc9cb77c372c97681a47496488ec6c623915d"}},
+                    {"in": {"path": ["gfx/thebes/gfxFontVariations.h"]}},
+                    {"eq": {"branch": "mozilla-central"}},
+                ]
+            },
+        },
+    )
 
     list_response = response.data
     tuids = list_response[0].tuids
@@ -151,7 +166,7 @@ def test_client(config, app):
     client.get_tuid(
         revision="29dcc9cb77c372c97681a47496488ec6c623915d",
         file="gfx/thebes/gfxFontVariations.h",
-        branch="mozilla-central"
+        branch="mozilla-central",
     )
 
 
@@ -160,8 +175,5 @@ def test_client(config, app):
 def test_client_w_try(config, app):
     client = TuidClient(config.client)
     client.get_tuid(
-        revision="0f4946791ddb",
-        file="dom/base/nsWrapperCache.cpp",
-        branch="try"
+        revision="0f4946791ddb", file="dom/base/nsWrapperCache.cpp", branch="try"
     )
-

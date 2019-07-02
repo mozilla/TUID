@@ -35,30 +35,23 @@ DEBUG = False
 
 
 def build_es_query(query):
-    output = wrap({
-        "query": {"match_all": {}},
-        "from": 0,
-        "size": 100 if DEBUG else 0,
-        "sort": [],
-        "facets": {
+    output = wrap(
+        {
+            "query": {"match_all": {}},
+            "from": 0,
+            "size": 100 if DEBUG else 0,
+            "sort": [],
+            "facets": {},
         }
-    })
+    )
 
     if DEBUG:
         # TO LIMIT RECORDS TO WHAT'S IN FACETS
         output.query = {
-            "bool": {
-                "query": {
-                    "match_all": {}
-                },
-                "filter": query.where.to_esfilter()
-            }
+            "bool": {"query": {"match_all": {}}, "filter": query.where.to_esfilter()}
         }
 
     return output
-
-
-
 
 
 def compileTime2Term(edge):
@@ -73,7 +66,7 @@ def compileTime2Term(edge):
     numPartitions = len(edge.domain.partitions)
     value = edge.value
     if is_variable_name(value):
-        value = "doc[\"" + value + "\"].value"
+        value = 'doc["' + value + '"].value'
 
     nullTest = compileNullTest(edge)
     ref = coalesce(edge.domain.min, edge.domain.max, datetime(2000, 1, 1))
@@ -92,14 +85,27 @@ def compileTime2Term(edge):
             d = datetime(str(value)[:4:], str(value)[-2:], 1)
             d = d.addMilli(offset)
             return edge.domain.getPartByKey(d)
+
     else:
-        partition2int = "Math.floor((" + value + "-" + value2MVEL(ref) + ")/" + edge.domain.interval.milli + ")"
-        partition2int = "((" + nullTest + ") ? " + numPartitions + " : " + partition2int + ")"
+        partition2int = (
+            "Math.floor(("
+            + value
+            + "-"
+            + value2MVEL(ref)
+            + ")/"
+            + edge.domain.interval.milli
+            + ")"
+        )
+        partition2int = (
+            "((" + nullTest + ") ? " + numPartitions + " : " + partition2int + ")"
+        )
 
         def int2Partition(value):
             if Math.round(value) == numPartitions:
                 return edge.domain.NULL
-            return edge.domain.getPartByKey(ref.add(edge.domain.interval.multiply(value)))
+            return edge.domain.getPartByKey(
+                ref.add(edge.domain.interval.multiply(value))
+            )
 
     return Data(toTerm={"head": "", "body": partition2int}, fromTerm=int2Partition)
 
@@ -114,7 +120,7 @@ def compileDuration2Term(edge):
     numPartitions = len(edge.domain.partitions)
     value = edge.value
     if is_variable_name(value):
-        value = "doc[\"" + value + "\"].value"
+        value = 'doc["' + value + '"].value'
 
     ref = coalesce(edge.domain.min, edge.domain.max, durations.ZERO)
     nullTest = compileNullTest(edge)
@@ -124,7 +130,9 @@ def compileDuration2Term(edge):
         ms = durations.YEAR.milli / 12 * edge.domain.interval.month
 
     partition2int = "Math.floor((" + value + "-" + value2MVEL(ref) + ")/" + ms + ")"
-    partition2int = "((" + nullTest + ") ? " + numPartitions + " : " + partition2int + ")"
+    partition2int = (
+        "((" + nullTest + ") ? " + numPartitions + " : " + partition2int + ")"
+    )
 
     def int2Partition(value):
         if Math.round(value) == numPartitions:
@@ -146,28 +154,56 @@ def compileNumeric2Term(edge):
     numPartitions = len(edge.domain.partitions)
     value = edge.value
     if is_variable_name(value):
-        value = "doc[\"" + value + "\"].value"
+        value = 'doc["' + value + '"].value'
 
     if not edge.domain.max:
         if not edge.domain.min:
             ref = 0
-            partition2int = "Math.floor(" + value + ")/" + value2MVEL(edge.domain.interval) + ")"
+            partition2int = (
+                "Math.floor(" + value + ")/" + value2MVEL(edge.domain.interval) + ")"
+            )
             nullTest = "false"
         else:
             ref = value2MVEL(edge.domain.min)
-            partition2int = "Math.floor((" + value + "-" + ref + ")/" + value2MVEL(edge.domain.interval) + ")"
+            partition2int = (
+                "Math.floor(("
+                + value
+                + "-"
+                + ref
+                + ")/"
+                + value2MVEL(edge.domain.interval)
+                + ")"
+            )
             nullTest = "" + value + "<" + ref
     elif not edge.domain.min:
         ref = value2MVEL(edge.domain.max)
-        partition2int = "Math.floor((" + value + "-" + ref + ")/" + value2MVEL(edge.domain.interval) + ")"
+        partition2int = (
+            "Math.floor(("
+            + value
+            + "-"
+            + ref
+            + ")/"
+            + value2MVEL(edge.domain.interval)
+            + ")"
+        )
         nullTest = "" + value + ">=" + ref
     else:
         top = value2MVEL(edge.domain.max)
         ref = value2MVEL(edge.domain.min)
-        partition2int = "Math.floor((" + value + "-" + ref + ")/" + value2MVEL(edge.domain.interval) + ")"
+        partition2int = (
+            "Math.floor(("
+            + value
+            + "-"
+            + ref
+            + ")/"
+            + value2MVEL(edge.domain.interval)
+            + ")"
+        )
         nullTest = "(" + value + "<" + ref + ") or (" + value + ">=" + top + ")"
 
-    partition2int = "((" + nullTest + ") ? " + numPartitions + " : " + partition2int + ")"
+    partition2int = (
+        "((" + nullTest + ") ? " + numPartitions + " : " + partition2int + ")"
+    )
     offset = convert.value2int(ref)
 
     def int2Partition(value):
@@ -191,10 +227,7 @@ def compileString2Term(edge):
     def fromTerm(value):
         return edge.domain.getPartByKey(value)
 
-    return Data(
-        toTerm={"head": "", "body": value},
-        fromTerm=fromTerm
-    )
+    return Data(toTerm={"head": "", "body": value}, fromTerm=fromTerm)
 
 
 def compileNullTest(edge):
@@ -207,7 +240,7 @@ def compileNullTest(edge):
     # IS THERE A LIMIT ON THE DOMAIN?
     value = edge.value
     if is_variable_name(value):
-        value = "doc[\"" + value + "\"].value"
+        value = 'doc["' + value + '"].value'
 
     if not edge.domain.max:
         if not edge.domain.min:
@@ -245,28 +278,19 @@ def compileEdges2Term(mvel_compiler, edges, constants):
             return FlatList([edge0.domain.getPartByKey(term)])
 
         if edge0.value and is_variable_name(edge0.value):
-            return Data(
-                field=edge0.value,
-                term2parts=temp
-            )
+            return Data(field=edge0.value, term2parts=temp)
         elif COUNT(edge0.domain.dimension.fields) == 1:
-            return Data(
-                field=edge0.domain.dimension.fields[0],
-                term2parts=temp
-            )
+            return Data(field=edge0.domain.dimension.fields[0], term2parts=temp)
         elif not edge0.value and edge0.domain.partitions:
             script = mvel_compiler.Parts2TermScript(edge0.domain)
-            return Data(
-                expression=script,
-                term2parts=temp
-            )
+            return Data(expression=script, term2parts=temp)
         else:
             return Data(
                 expression=mvel_compiler.compile_expression(edge0.value, constants),
-                term2parts=temp
+                term2parts=temp,
             )
 
-    mvel_terms = []     # FUNCTION TO PACK TERMS
+    mvel_terms = []  # FUNCTION TO PACK TERMS
     fromTerm2Part = []  # UNPACK TERMS BACK TO PARTS
     for e in edges:
         domain = e.domain
@@ -274,10 +298,7 @@ def compileEdges2Term(mvel_compiler, edges, constants):
 
         if not e.value and fields:
             code, decode = mvel_compiler.Parts2Term(e.domain)
-            t = Data(
-                toTerm=code,
-                fromTerm=decode
-            )
+            t = Data(toTerm=code, fromTerm=decode)
         elif fields:
             Log.error("not expected")
         elif e.domain.type == "time":
@@ -287,14 +308,12 @@ def compileEdges2Term(mvel_compiler, edges, constants):
         elif e.domain.type in domains.ALGEBRAIC:
             t = compileNumeric2Term(e)
         elif e.domain.type == "set" and not fields:
+
             def fromTerm(term):
                 return e.domain.getPartByKey(term)
 
             code, decode = mvel_compiler.Parts2Term(e.domain)
-            t = Data(
-                toTerm=code,
-                fromTerm=decode
-            )
+            t = Data(toTerm=code, fromTerm=decode)
         else:
             t = compileString2Term(e)
 
@@ -307,14 +326,16 @@ def compileEdges2Term(mvel_compiler, edges, constants):
 
     # REGISTER THE DECODE FUNCTION
     def temp(term):
-        terms = term.split('|')
+        terms = term.split("|")
 
         output = FlatList([t2p(t) for t, t2p in zip(terms, fromTerm2Part)])
         return output
 
     return Data(
-        expression=mvel_compiler.compile_expression("+'|'+".join(mvel_terms), constants),
-        term2parts=temp
+        expression=mvel_compiler.compile_expression(
+            "+'|'+".join(mvel_terms), constants
+        ),
+        term2parts=temp,
     )
 
 
@@ -349,7 +370,5 @@ aggregates = {
     "std": "std_deviation",
     "stddev": "std_deviation",
     "var": "variance",
-    "variance": "variance"
+    "variance": "variance",
 }
-
-

@@ -26,7 +26,6 @@ from jx_base.query import QueryOp
 
 
 class Rename(Namespace):
-
     def __init__(self, dimensions, source):
         """
         EXPECTING A LIST OF {"name":name, "value":value} OBJECTS TO PERFORM A MAPPING
@@ -34,7 +33,11 @@ class Rename(Namespace):
         dimensions = wrap(dimensions)
         if isinstance(dimensions, Mapping) and dimensions.name == None:
             # CONVERT TO A REAL DIMENSION DEFINITION
-            dimensions = {"name": ".", "type": "set", "edges":[{"name": k, "field": v} for k, v in dimensions.items()]}
+            dimensions = {
+                "name": ".",
+                "type": "set",
+                "edges": [{"name": k, "field": v} for k, v in dimensions.items()],
+            }
 
         self.dimensions = Dimension(dimensions, None, source)
 
@@ -60,8 +63,10 @@ class Rename(Namespace):
             if expr["from"]:
                 return self._convert_query(expr)
             elif len(expr) >= 2:
-                #ASSUME WE HAVE A NAMED STRUCTURE, NOT AN EXPRESSION
-                return wrap({name: self.convert(value) for name, value in expr.leaves()})
+                # ASSUME WE HAVE A NAMED STRUCTURE, NOT AN EXPRESSION
+                return wrap(
+                    {name: self.convert(value) for name, value in expr.leaves()}
+                )
             else:
                 # ASSUME SINGLE-CLAUSE EXPRESSION
                 k, v = expr.items()[0]
@@ -84,9 +89,6 @@ class Rename(Namespace):
 
         return output
 
-
-
-
     def _convert_bop(self, op, term):
         if isinstance(term, list):
             return {op: map(self.convert, term)}
@@ -108,7 +110,7 @@ class Rename(Namespace):
             return edge
 
         if len(listwrap(dim.fields)) == 1:
-            #TODO: CHECK IF EDGE DOMAIN AND DIMENSION DOMAIN CONFLICT
+            # TODO: CHECK IF EDGE DOMAIN AND DIMENSION DOMAIN CONFLICT
             new_edge = set_default({"value": unwraplist(dim.fields)}, edge)
             return new_edge
             new_edge.domain = dim.getDomain()
@@ -131,11 +133,11 @@ class Rename(Namespace):
         else:
             return [set_default({"value": self.convert(c.value)}, c) for c in clause]
 
+
 converter_map = {
     "and": Rename._convert_many,
     "or": Rename._convert_many,
     "not": Rename.convert,
     "missing": Rename.convert,
-    "exists": Rename.convert
+    "exists": Rename.convert,
 }
-

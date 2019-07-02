@@ -60,7 +60,7 @@ def set(constants):
                             module=prefix,
                             attribute=name,
                             old_value=old_value,
-                            new_value=new_value
+                            new_value=new_value,
                         )
                     break
         except Exception as e:

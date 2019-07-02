@@ -16,7 +16,14 @@ from copy import deepcopy
 
 from mo_dots.lists import FlatList
 
-from mo_dots import _getdefault, hash_value, literal_field, coalesce, listwrap, get_logger
+from mo_dots import (
+    _getdefault,
+    hash_value,
+    literal_field,
+    coalesce,
+    listwrap,
+    get_logger,
+)
 from mo_future import text_type, PY2, iteritems, none_type, generator_types
 
 _get = object.__getattribute__
@@ -141,7 +148,7 @@ class Data(MutableMapping):
                     d.pop(seq[-1], None)
                 except Exception as _:
                     pass
-            elif d==None:
+            elif d == None:
                 d[literal_field(seq[-1])] = value
             else:
                 d[seq[-1]] = value
@@ -213,7 +220,9 @@ class Data(MutableMapping):
 
     def items(self):
         d = self._internal_dict
-        return [(k, wrap(v)) for k, v in d.items() if v != None or isinstance(v, Mapping)]
+        return [
+            (k, wrap(v)) for k, v in d.items() if v != None or isinstance(v, Mapping)
+        ]
 
     def leaves(self, prefix=None):
         """
@@ -282,7 +291,7 @@ class Data(MutableMapping):
 
     def __repr__(self):
         try:
-            return "Data("+dict.__repr__(self._internal_dict)+")"
+            return "Data(" + dict.__repr__(self._internal_dict) + ")"
         except Exception as e:
             return "Data()"
 
@@ -317,7 +326,6 @@ def _split_field(field):
 
 
 class _DictUsingSelf(dict):
-
     def __init__(self, **kwargs):
         """
         CALLING Data(**something) WILL RESULT IN A COPY OF something, WHICH
@@ -334,7 +342,7 @@ class _DictUsingSelf(dict):
         if isinstance(key, str):
             key = key.decode("utf8")
 
-        d=self
+        d = self
         if key.find(".") >= 0:
             seq = _split_field(key)
             for n in seq:
@@ -352,7 +360,7 @@ class _DictUsingSelf(dict):
             get_logger().error("key is empty string.  Probably a bad idea")
         if isinstance(key, str):
             key = key.decode("utf8")
-        d=self
+        d = self
         try:
             value = unwrap(value)
             if key.find(".") == -1:
@@ -428,7 +436,11 @@ class _DictUsingSelf(dict):
         return wrap(dict.get(self, key, default))
 
     def items(self):
-        return [(k, wrap(v)) for k, v in dict.items(self) if v != None or isinstance(v, Mapping)]
+        return [
+            (k, wrap(v))
+            for k, v in dict.items(self)
+            if v != None or isinstance(v, Mapping)
+        ]
 
     def leaves(self, prefix=None):
         """
@@ -444,14 +456,16 @@ class _DictUsingSelf(dict):
         return output
 
     if PY2:
+
         def iteritems(self):
             for k, v in dict.iteritems(self):
                 yield k, wrap(v)
+
     else:
+
         def iteritems(self):
             for k, v in dict.items(self):
                 yield k, wrap(v)
-
 
     def keys(self):
         return set(dict.keys(self))
@@ -508,7 +522,7 @@ class _DictUsingSelf(dict):
 
     def __repr__(self):
         try:
-            return "Data("+dict.__repr__(self)+")"
+            return "Data(" + dict.__repr__(self) + ")"
         except Exception as e:
             return "Data()"
 
@@ -518,13 +532,13 @@ def _str(value, depth):
     FOR DEBUGGING POSSIBLY RECURSIVE STRUCTURES
     """
     output = []
-    if depth >0 and isinstance(value, Mapping):
+    if depth > 0 and isinstance(value, Mapping):
         for k, v in value.items():
             output.append(str(k) + "=" + _str(v, depth - 1))
         return "{" + ",\n".join(output) + "}"
-    elif depth >0 and isinstance(value, list):
+    elif depth > 0 and isinstance(value, list):
         for v in value:
-            output.append(_str(v, depth-1))
+            output.append(_str(v, depth - 1))
         return "[" + ",\n".join(output) + "]"
     else:
         return str(type(value))

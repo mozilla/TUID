@@ -23,8 +23,23 @@ from datetime import timedelta, date
 from json.encoder import encode_basestring
 
 from mo_dots import coalesce, wrap, get_module, Data
-from mo_future import text_type, xrange, binary_type, round as _round, get_function_name, zip_longest, transpose, PY3
-from mo_logs.convert import datetime2unix, datetime2string, value2json, milli2datetime, unix2datetime
+from mo_future import (
+    text_type,
+    xrange,
+    binary_type,
+    round as _round,
+    get_function_name,
+    zip_longest,
+    transpose,
+    PY3,
+)
+from mo_logs.convert import (
+    datetime2unix,
+    datetime2string,
+    value2json,
+    milli2datetime,
+    unix2datetime,
+)
 
 # from mo_files.url import value2url_param
 
@@ -60,7 +75,7 @@ def formatter(func):
     """
     register formatters
     """
-    FORMATTERS[get_function_name(func)]=func
+    FORMATTERS[get_function_name(func)] = func
     return func
 
 
@@ -193,17 +208,13 @@ def tab(value):
     """
     if isinstance(value, Mapping):
         h, d = transpose(*wrap(value).leaves())
-        return (
-            "\t".join(map(value2json, h)) +
-            "\n" +
-            "\t".join(map(value2json, d))
-        )
+        return "\t".join(map(value2json, h)) + "\n" + "\t".join(map(value2json, d))
     else:
         text_type(value)
 
 
 @formatter
-def indent(value, prefix=u"\t", indent=None):
+def indent(value, prefix="\t", indent=None):
     """
     indent given string, using prefix * indent as prefix for each line
     :param value:
@@ -217,11 +228,16 @@ def indent(value, prefix=u"\t", indent=None):
     value = toString(value)
     try:
         content = value.rstrip()
-        suffix = value[len(content):]
+        suffix = value[len(content) :]
         lines = content.splitlines()
-        return prefix + (u"\n" + prefix).join(lines) + suffix
+        return prefix + ("\n" + prefix).join(lines) + suffix
     except Exception as e:
-        raise Exception(u"Problem with indent of value (" + e.message + u")\n" + text_type(toString(value)))
+        raise Exception(
+            "Problem with indent of value ("
+            + e.message
+            + ")\n"
+            + text_type(toString(value))
+        )
 
 
 @formatter
@@ -238,7 +254,7 @@ def outdent(value):
             trim = len(l.lstrip())
             if trim > 0:
                 num = min(num, len(l) - len(l.lstrip()))
-        return u"\n".join([l[num:] for l in lines])
+        return "\n".join([l[num:] for l in lines])
     except Exception as e:
         if not _Log:
             _late_import()
@@ -338,7 +354,7 @@ def strip(value):
 
     for i in reversed(range(s, e)):
         if ord(value[i]) > 32:
-            return value[s:i + 1]
+            return value[s : i + 1]
 
     return ""
 
@@ -380,7 +396,9 @@ def between(value, prefix, suffix, start=0):
     if e == -1:
         return None
 
-    s = value.rfind(prefix, start, e) + len(prefix)  # WE KNOW THIS EXISTS, BUT THERE MAY BE A RIGHT-MORE ONE
+    s = value.rfind(prefix, start, e) + len(
+        prefix
+    )  # WE KNOW THIS EXISTS, BUT THERE MAY BE A RIGHT-MORE ONE
 
     return value[s:e]
 
@@ -394,7 +412,7 @@ def right(value, len):
     :return:
     """
     if len <= 0:
-        return u""
+        return ""
     return value[-len:]
 
 
@@ -406,7 +424,7 @@ def right_align(value, length):
     :return:
     """
     if length <= 0:
-        return u""
+        return ""
 
     value = text_type(value)
 
@@ -419,7 +437,7 @@ def right_align(value, length):
 @formatter
 def left_align(value, length):
     if length <= 0:
-        return u""
+        return ""
 
     value = text_type(value)
 
@@ -438,7 +456,7 @@ def left(value, len):
     :return:
     """
     if len <= 0:
-        return u""
+        return ""
     return value[0:len]
 
 
@@ -504,6 +522,7 @@ def limit(value, length):
             _late_import()
         _Log.error("Not expected", cause=e)
 
+
 @formatter
 def split(value, sep="\n"):
     # GENERATOR VERSION OF split()
@@ -517,6 +536,7 @@ def split(value, sep="\n"):
         n = value.find(sep, s)
     yield value[s:]
     value = None
+
 
 """
 THE REST OF THIS FILE IS TEMPLATE EXPANSION CODE USED BY mo-logs 
@@ -550,9 +570,11 @@ def find_first(value, find_arr, start=0):
     i = len(value)
     for f in find_arr:
         temp = value.find(f, start)
-        if temp == -1: continue
+        if temp == -1:
+            continue
         i = min(i, temp)
-    if i == len(value): return -1
+    if i == len(value):
+        return -1
     return i
 
 
@@ -563,7 +585,11 @@ def is_hex(value):
 if PY3:
     delchars = "".join(c for c in map(chr, range(256)) if not c.isalnum())
 else:
-    delchars = "".join(c.decode("latin1") for c in map(chr, range(256)) if not c.decode("latin1").isalnum())
+    delchars = "".join(
+        c.decode("latin1")
+        for c in map(chr, range(256))
+        if not c.decode("latin1").isalnum()
+    )
 
 
 def deformat(value):
@@ -626,12 +652,14 @@ def _simple_expand(template, seq):
         try:
             val = seq[-depth]
             if var:
-                if isinstance(val, (list, tuple)) and float(var) == _round(float(var), 0):
+                if isinstance(val, (list, tuple)) and float(var) == _round(
+                    float(var), 0
+                ):
                     val = val[int(var)]
                 else:
                     val = val[var]
             for func_name in ops[1:]:
-                parts = func_name.split('(')
+                parts = func_name.split("(")
                 if len(parts) > 1:
                     val = eval(parts[0] + "(val, " + ("(".join(parts[1::])))
                 else:
@@ -652,9 +680,11 @@ def _simple_expand(template, seq):
                     _late_import()
 
                 _Log.warning(
-                    "Can not expand " + "|".join(ops) + " in template: {{template_|json}}",
+                    "Can not expand "
+                    + "|".join(ops)
+                    + " in template: {{template_|json}}",
                     template_=template,
-                    cause=e
+                    cause=e,
                 )
             return "[template expansion error: (" + str(e.message) + ")]"
 
@@ -680,17 +710,19 @@ def toString(val):
         return val
     elif isinstance(val, str):
         try:
-            return val.decode('utf8')
+            return val.decode("utf8")
         except Exception as _:
             pass
 
         try:
-            return val.decode('latin1')
+            return val.decode("latin1")
         except Exception as e:
             if not _Log:
                 _late_import()
 
-            _Log.error(text_type(type(val)) + " type can not be converted to unicode", cause=e)
+            _Log.error(
+                text_type(type(val)) + " type can not be converted to unicode", cause=e
+            )
     else:
         try:
             return text_type(val)
@@ -698,7 +730,9 @@ def toString(val):
             if not _Log:
                 _late_import()
 
-            _Log.error(text_type(type(val)) + " type can not be converted to unicode", cause=e)
+            _Log.error(
+                text_type(type(val)) + " type can not be converted to unicode", cause=e
+            )
 
 
 def edit_distance(s1, s2):
@@ -717,7 +751,9 @@ def edit_distance(s1, s2):
     for i, c1 in enumerate(s1):
         current_row = [i + 1]
         for j, c2 in enumerate(s2):
-            insertions = previous_row[j + 1] + 1  # j+1 instead of j since previous_row and current_row are one character longer
+            insertions = (
+                previous_row[j + 1] + 1
+            )  # j+1 instead of j since previous_row and current_row are one character longer
             deletions = current_row[j] + 1  # than s2
             substitutions = previous_row[j] + (c1 != c2)
             current_row.append(min(insertions, deletions, substitutions))
@@ -755,21 +791,36 @@ def apply_diff(text, diff, reverse=False, verify=True):
         return text
     output = text
     hunks = [
-        (new_diff[start_hunk], new_diff[start_hunk+1:end_hunk])
-        for new_diff in [[d.lstrip() for d in diff if d.lstrip() and d != "\\ No newline at end of file"] + ["@@"]]  # ANOTHER REPAIR
-        for start_hunk, end_hunk in pairwise(i for i, l in enumerate(new_diff) if l.startswith('@@'))
+        (new_diff[start_hunk], new_diff[start_hunk + 1 : end_hunk])
+        for new_diff in [
+            [
+                d.lstrip()
+                for d in diff
+                if d.lstrip() and d != "\\ No newline at end of file"
+            ]
+            + ["@@"]
+        ]  # ANOTHER REPAIR
+        for start_hunk, end_hunk in pairwise(
+            i for i, l in enumerate(new_diff) if l.startswith("@@")
+        )
     ]
-    for header, hunk_body in (reversed(hunks) if reverse else hunks):
+    for header, hunk_body in reversed(hunks) if reverse else hunks:
         matches = DIFF_PREFIX.match(header.strip())
         if not matches:
             if not _Log:
                 _late_import()
 
-            _Log.error("Can not handle \n---\n{{diff}}\n---\n",  diff=diff)
+            _Log.error("Can not handle \n---\n{{diff}}\n---\n", diff=diff)
 
-        removes = tuple(int(i.strip()) for i in matches.group(1).split(","))  # EXPECTING start_line, length TO REMOVE
-        remove = Data(start=removes[0], length=1 if len(removes) == 1 else removes[1])  # ASSUME FIRST LINE
-        adds = tuple(int(i.strip()) for i in matches.group(2).split(","))  # EXPECTING start_line, length TO ADD
+        removes = tuple(
+            int(i.strip()) for i in matches.group(1).split(",")
+        )  # EXPECTING start_line, length TO REMOVE
+        remove = Data(
+            start=removes[0], length=1 if len(removes) == 1 else removes[1]
+        )  # ASSUME FIRST LINE
+        adds = tuple(
+            int(i.strip()) for i in matches.group(2).split(",")
+        )  # EXPECTING start_line, length TO ADD
         add = Data(start=adds[0], length=1 if len(adds) == 1 else adds[1])
 
         if add.length == 0 and add.start == 0:
@@ -791,10 +842,12 @@ def apply_diff(text, diff, reverse=False, verify=True):
 
                 last_line = last_lines[0]
                 for problem_index, problem_line in enumerate(hunk_body):
-                    if problem_line.startswith('-') and problem_line.endswith('+' + last_line):
+                    if problem_line.startswith("-") and problem_line.endswith(
+                        "+" + last_line
+                    ):
                         split_point = len(problem_line) - (len(last_line) + 1)
                         break
-                    elif problem_line.startswith('+' + last_line + "-"):
+                    elif problem_line.startswith("+" + last_line + "-"):
                         split_point = len(last_line) + 1
                         break
                 else:
@@ -804,34 +857,37 @@ def apply_diff(text, diff, reverse=False, verify=True):
                     return hunk_body
                 last_line = output[-1]
                 for problem_index, problem_line in enumerate(hunk_body):
-                    if problem_line.startswith('+') and problem_line.endswith('-' + last_line):
+                    if problem_line.startswith("+") and problem_line.endswith(
+                        "-" + last_line
+                    ):
                         split_point = len(problem_line) - (len(last_line) + 1)
                         break
-                    elif problem_line.startswith('-' + last_line + "+"):
+                    elif problem_line.startswith("-" + last_line + "+"):
                         split_point = len(last_line) + 1
                         break
                 else:
                     return hunk_body
 
             new_hunk_body = (
-                hunk_body[:problem_index] +
-                [problem_line[:split_point], problem_line[split_point:]] +
-                hunk_body[problem_index + 1:]
+                hunk_body[:problem_index]
+                + [problem_line[:split_point], problem_line[split_point:]]
+                + hunk_body[problem_index + 1 :]
             )
             return new_hunk_body
+
         hunk_body = repair_hunk(hunk_body)
 
         if reverse:
             new_output = (
-                output[:add.start - 1] +
-                [d[1:] for d in hunk_body if d and d[0] == '-'] +
-                output[add.start + add.length - 1:]
+                output[: add.start - 1]
+                + [d[1:] for d in hunk_body if d and d[0] == "-"]
+                + output[add.start + add.length - 1 :]
             )
         else:
             new_output = (
-                output[:add.start - 1] +
-                [d[1:] for d in hunk_body if d and d[0] == '+'] +
-                output[add.start + remove.length - 1:]
+                output[: add.start - 1]
+                + [d[1:] for d in hunk_body if d and d[0] == "+"]
+                + output[add.start + remove.length - 1 :]
             )
         output = new_output
 
@@ -840,7 +896,7 @@ def apply_diff(text, diff, reverse=False, verify=True):
         if set(text) != set(original):  # bugzilla-etl diffs are a jumble
 
             for t, o in zip_longest(text, original):
-                if t in ['reports: https://goo.gl/70o6w6\r']:
+                if t in ["reports: https://goo.gl/70o6w6\r"]:
                     break  # KNOWN INCONSISTENCIES
                 if t != o:
                     if not _Log:
@@ -852,7 +908,7 @@ def apply_diff(text, diff, reverse=False, verify=True):
 
 
 def unicode2utf8(value):
-    return value.encode('utf8')
+    return value.encode("utf8")
 
 
 def utf82unicode(value):
@@ -866,14 +922,22 @@ def utf82unicode(value):
             _late_import()
 
         if not isinstance(value, binary_type):
-            _Log.error("Can not convert {{type}} to unicode because it's not bytes",  type= type(value).__name__)
+            _Log.error(
+                "Can not convert {{type}} to unicode because it's not bytes",
+                type=type(value).__name__,
+            )
 
         e = _Except.wrap(e)
         for i, c in enumerate(value):
             try:
                 c.decode("utf8")
             except Exception as f:
-                _Log.error("Can not convert charcode {{c}} in string index {{i}}", i=i, c=ord(c), cause=[e, _Except.wrap(f)])
+                _Log.error(
+                    "Can not convert charcode {{c}} in string index {{i}}",
+                    i=i,
+                    c=ord(c),
+                    cause=[e, _Except.wrap(f)],
+                )
 
         try:
             latin1 = text_type(value.decode("latin1"))
@@ -887,13 +951,13 @@ def utf82unicode(value):
         except Exception:
             pass
 
-        _Log.error("Can not explain conversion failure of " + type(value).__name__ + "!", e)
+        _Log.error(
+            "Can not explain conversion failure of " + type(value).__name__ + "!", e
+        )
 
 
 def wordify(value):
     return [w for w in re.split(r"[\W_]", value) if strip(w)]
-
-
 
 
 def pairwise(values):

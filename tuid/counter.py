@@ -1,4 +1,3 @@
-
 # encoding: utf-8
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
@@ -55,6 +54,7 @@ class ManyCounter(object):
     """
     Not meant for external use
     """
+
     def __init__(self, parent, increment):
         self.parent = parent
         self.increment = increment

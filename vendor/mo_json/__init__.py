@@ -25,7 +25,9 @@ from mo_logs.strings import expand_template
 from mo_times import Date, Duration
 
 FIND_LOOPS = False
-SNAP_TO_BASE_10 = True  # Identify floats near a round base10 value (has 000 or 999) and shorten
+SNAP_TO_BASE_10 = (
+    True
+)  # Identify floats near a round base10 value (has 000 or 999) and shorten
 CAN_NOT_DECODE_JSON = "Can not decode JSON"
 
 
@@ -33,16 +35,16 @@ _get = object.__getattribute__
 
 
 ESCAPE_DCT = {
-    u"\\": u"\\\\",
-    u"\"": u"\\\"",
-    u"\b": u"\\b",
-    u"\f": u"\\f",
-    u"\n": u"\\n",
-    u"\r": u"\\r",
-    u"\t": u"\\t",
+    "\\": "\\\\",
+    '"': '\\"',
+    "\b": "\\b",
+    "\f": "\\f",
+    "\n": "\\n",
+    "\r": "\\r",
+    "\t": "\\t",
 }
 for i in range(0x20):
-    ESCAPE_DCT.setdefault(chr(i), u'\\u{0:04x}'.format(i))
+    ESCAPE_DCT.setdefault(chr(i), "\\u{0:04x}".format(i))
 
 ESCAPE = re.compile(r'[\x00-\x1f\\"\b\f\n\r\t]')
 
@@ -58,7 +60,7 @@ def float2json(value):
     :return: unicode
     """
     if value == 0:
-        return u'0'
+        return "0"
     try:
         sign = "-" if value < 0 else ""
         value = abs(value)
@@ -67,30 +69,47 @@ def float2json(value):
         digits, more_digits = _snap_to_base_10(mantissa)
         int_exp = int(str_exp) + more_digits
         if int_exp > 15:
-            return sign + digits[0] + '.' + (digits[1:].rstrip('0') or '0') + u"e" + text_type(int_exp)
+            return (
+                sign
+                + digits[0]
+                + "."
+                + (digits[1:].rstrip("0") or "0")
+                + "e"
+                + text_type(int_exp)
+            )
         elif int_exp >= 0:
-            return sign + (digits[:1 + int_exp] + '.' + digits[1 + int_exp:].rstrip('0')).rstrip('.')
+            return sign + (
+                digits[: 1 + int_exp] + "." + digits[1 + int_exp :].rstrip("0")
+            ).rstrip(".")
         elif -4 < int_exp:
             digits = ("0" * (-int_exp)) + digits
-            return sign + (digits[:1] + '.' + digits[1:].rstrip('0')).rstrip('.')
+            return sign + (digits[:1] + "." + digits[1:].rstrip("0")).rstrip(".")
         else:
-            return sign + digits[0] + '.' + (digits[1:].rstrip('0') or '0') + u"e" + text_type(int_exp)
+            return (
+                sign
+                + digits[0]
+                + "."
+                + (digits[1:].rstrip("0") or "0")
+                + "e"
+                + text_type(int_exp)
+            )
     except Exception as e:
         from mo_logs import Log
+
         Log.error("not expected", e)
 
 
 def _snap_to_base_10(mantissa):
-    digits = mantissa.replace('.', '')
+    digits = mantissa.replace(".", "")
     if SNAP_TO_BASE_10:
-        f9 = strings.find(digits, '999')
-        f0 = strings.find(digits, '000')
+        f9 = strings.find(digits, "999")
+        f0 = strings.find(digits, "000")
         if f9 == 0:
-            return '1000000000000000', 1
+            return "1000000000000000", 1
         elif f9 < f0:
-            digits = text_type(int(digits[:f9]) + 1) + ('0' * (16 - f9))
+            digits = text_type(int(digits[:f9]) + 1) + ("0" * (16 - f9))
         else:
-            digits = digits[:f0]+('0'*(16-f0))
+            digits = digits[:f0] + ("0" * (16 - f0))
     return digits, 0
 
 
@@ -171,7 +190,7 @@ def _scrub(value, is_done, stack, scrub_text, scrub_number):
             if isinstance(k, text_type):
                 pass
             elif isinstance(k, binary_type):
-                k = k.decode('utf8')
+                k = k.decode("utf8")
             # elif hasattr(k, "__unicode__"):
             #     k = text_type(k)
             else:
@@ -190,27 +209,29 @@ def _scrub(value, is_done, stack, scrub_text, scrub_number):
         return output
     elif type_ is type:
         return value.__name__
-    elif type_.__name__ == "bool_":  # DEAR ME!  Numpy has it's own booleans (value==False could be used, but 0==False in Python.  DOH!)
+    elif (
+        type_.__name__ == "bool_"
+    ):  # DEAR ME!  Numpy has it's own booleans (value==False could be used, but 0==False in Python.  DOH!)
         if value == False:
             return False
         else:
             return True
     elif not isinstance(value, Except) and isinstance(value, Exception):
         return _scrub(Except.wrap(value), is_done, stack, scrub_text, scrub_number)
-    elif hasattr(value, '__data__'):
+    elif hasattr(value, "__data__"):
         try:
             return _scrub(value.__data__(), is_done, stack, scrub_text, scrub_number)
         except Exception as e:
             Log.error("problem with calling __json__()", e)
-    elif hasattr(value, 'co_code') or hasattr(value, "f_locals"):
+    elif hasattr(value, "co_code") or hasattr(value, "f_locals"):
         return None
-    elif hasattr(value, '__iter__'):
+    elif hasattr(value, "__iter__"):
         output = []
         for v in value:
             v = _scrub(v, is_done, stack, scrub_text, scrub_number)
             output.append(v)
         return output
-    elif hasattr(value, '__call__'):
+    elif hasattr(value, "__call__"):
         return text_type(repr(value))
     else:
         return _scrub(DataObject(value), is_done, stack, scrub_text, scrub_number)
@@ -225,11 +246,16 @@ def value2json(obj, pretty=False, sort_keys=False, keep_whitespace=True):
     :return:
     """
     if FIND_LOOPS:
-        obj = scrub(obj, scrub_text=_keep_whitespace if keep_whitespace else _trim_whitespace())
+        obj = scrub(
+            obj, scrub_text=_keep_whitespace if keep_whitespace else _trim_whitespace()
+        )
     try:
         json = json_encoder(obj, pretty=pretty)
         if json == None:
-            Log.note(str(type(obj)) + " is not valid{{type}}JSON", type=" (pretty) " if pretty else " ")
+            Log.note(
+                str(type(obj)) + " is not valid{{type}}JSON",
+                type=" (pretty) " if pretty else " ",
+            )
             Log.error("Not valid JSON: " + str(obj) + " of type " + str(type(obj)))
         return json
     except Exception as e:
@@ -239,7 +265,9 @@ def value2json(obj, pretty=False, sort_keys=False, keep_whitespace=True):
             return json
         except Exception:
             pass
-        Log.error("Can not encode into JSON: {{value}}", value=text_type(repr(obj)), cause=e)
+        Log.error(
+            "Can not encode into JSON: {{value}}", value=text_type(repr(obj)), cause=e
+        )
 
 
 def remove_line_comment(line):
@@ -252,7 +280,7 @@ def remove_line_comment(line):
                 mode = 0
             else:
                 mode = 1
-        elif c == '\\':
+        elif c == "\\":
             if mode == 0:
                 mode = 0
             elif mode == 1:
@@ -283,8 +311,12 @@ def json2value(json_string, params=Null, flexible=False, leaves=False):
         if flexible:
             # REMOVE """COMMENTS""", # COMMENTS, //COMMENTS, AND \n \r
             # DERIVED FROM https://github.com/jeads/datasource/blob/master/datasource/bases/BaseHub.py# L58
-            json_string = re.sub(r"\"\"\".*?\"\"\"", r"\n", json_string, flags=re.MULTILINE)
-            json_string = "\n".join(remove_line_comment(l) for l in json_string.split("\n"))
+            json_string = re.sub(
+                r"\"\"\".*?\"\"\"", r"\n", json_string, flags=re.MULTILINE
+            )
+            json_string = "\n".join(
+                remove_line_comment(l) for l in json_string.split("\n")
+            )
             # ALLOW DICTIONARY'S NAME:VALUE LIST TO END WITH COMMA
             json_string = re.sub(r",\s*\}", r"}", json_string)
             # ALLOW LISTS TO END WITH COMMA
@@ -319,7 +351,7 @@ def json2value(json_string, params=Null, flexible=False, leaves=False):
             column = int(strings.between(c.message, " column ", " ")) - 1
             line = json_string.split("\n")[line_index].replace("\t", " ")
             if column > 20:
-                sample = "..." + line[column - 20:]
+                sample = "..." + line[column - 20 :]
                 pointer = "   " + (" " * 20) + "^"
             else:
                 sample = line
@@ -328,26 +360,42 @@ def json2value(json_string, params=Null, flexible=False, leaves=False):
             if len(sample) > 43:
                 sample = sample[:43] + "..."
 
-            Log.error(CAN_NOT_DECODE_JSON + " at:\n\t{{sample}}\n\t{{pointer}}\n", sample=sample, pointer=pointer)
+            Log.error(
+                CAN_NOT_DECODE_JSON + " at:\n\t{{sample}}\n\t{{pointer}}\n",
+                sample=sample,
+                pointer=pointer,
+            )
 
-        base_str = strings.limit(json_string, 1000).encode('utf8')
+        base_str = strings.limit(json_string, 1000).encode("utf8")
         hexx_str = bytes2hex(base_str, " ")
         try:
-            char_str = " " + "  ".join((c.decode("latin1") if ord(c) >= 32 else ".") for c in base_str)
+            char_str = " " + "  ".join(
+                (c.decode("latin1") if ord(c) >= 32 else ".") for c in base_str
+            )
         except Exception:
             char_str = " "
-        Log.error(CAN_NOT_DECODE_JSON + ":\n{{char_str}}\n{{hexx_str}}\n", char_str=char_str, hexx_str=hexx_str, cause=e)
+        Log.error(
+            CAN_NOT_DECODE_JSON + ":\n{{char_str}}\n{{hexx_str}}\n",
+            char_str=char_str,
+            hexx_str=hexx_str,
+            cause=e,
+        )
+
 
 if PY2:
+
     def bytes2hex(value, separator=" "):
-        return separator.join('{:02X}'.format(ord(x)) for x in value)
+        return separator.join("{:02X}".format(ord(x)) for x in value)
+
+
 else:
+
     def bytes2hex(value, separator=" "):
-        return separator.join('{:02X}'.format(x) for x in value)
+        return separator.join("{:02X}".format(x) for x in value)
 
 
 def utf82unicode(value):
-    return value.decode('utf8')
+    return value.decode("utf8")
 
 
 def datetime2unix(d):
@@ -359,12 +407,14 @@ def datetime2unix(d):
         elif isinstance(d, date):
             epoch = date(1970, 1, 1)
         else:
-            Log.error("Can not convert {{value}} of type {{type}}",  value= d,  type= d.__class__)
+            Log.error(
+                "Can not convert {{value}} of type {{type}}", value=d, type=d.__class__
+            )
 
         diff = d - epoch
         return float(diff.total_seconds())
     except Exception as e:
-        Log.error("Can not convert {{value}}",  value= d, cause=e)
+        Log.error("Can not convert {{value}}", value=d, cause=e)
 
 
 from mo_json.decoder import json_decoder

@@ -99,7 +99,7 @@ def dominator(graph, head):
         if node in visited:
             common = INTERSECT(p[1::] for p in todo)  # DO NOT INCLUDE head
             if node in common:
-                dom.output = node  #ALL REMAINING PATHS HAVE node IN COMMON TOO
+                dom.output = node  # ALL REMAINING PATHS HAVE node IN COMMON TOO
             return False
         return True
 
@@ -169,8 +169,7 @@ def dominator_tree(graph):
             continue
 
         paths_from_roots = [
-            list(reversed(dominator.get_path_to_root(p)))
-            for p in parents
+            list(reversed(dominator.get_path_to_root(p))) for p in parents
         ]
 
         if any(p[0] is ROOTS for p in paths_from_roots):
@@ -187,7 +186,7 @@ def dominator_tree(graph):
         num_paths = len(paths_from_roots)
         for i, x in enumerate(zip_longest(*paths_from_roots)):
             if x.count(x[0]) != num_paths:
-                dom = paths_from_roots[0][i-1]
+                dom = paths_from_roots[0][i - 1]
                 if dom is LOOPS:
                     # CAN BE REACHED FROM MORE THAN ONE LOOP, PICK ONE TO BLAME
                     dom = paths_from_roots[0][-1]

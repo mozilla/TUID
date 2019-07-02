@@ -16,7 +16,14 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from mo_dots import wrap, unwrap, Data, FlatList, NullType, get_attr, set_attr, SLOT
-from mo_future import text_type, binary_type, get_function_defaults, get_function_arguments, none_type, generator_types
+from mo_future import (
+    text_type,
+    binary_type,
+    get_function_defaults,
+    get_function_arguments,
+    none_type,
+    generator_types,
+)
 
 _get = object.__getattribute__
 _set = object.__setattr__
@@ -58,9 +65,7 @@ class DataObject(Mapping):
             return obj.__dict__.items()
         except Exception as e:
             return [
-                (k, getattr(obj, k, None))
-                for k in dir(obj)
-                if not k.startswith("__")
+                (k, getattr(obj, k, None)) for k in dir(obj) if not k.startswith("__")
             ]
 
     def iteritems(self):
@@ -68,11 +73,13 @@ class DataObject(Mapping):
         try:
             return obj.__dict__.iteritems()
         except Exception as e:
+
             def output():
                 for k in dir(obj):
                     if k.startswith("__"):
                         continue
                     yield k, getattr(obj, k, None)
+
             return output()
 
     def __data__(self):
@@ -110,12 +117,27 @@ def datawrap(v):
     elif type_ is DataObject:
         return v
     elif type_ is none_type:
-        return None   # So we allow `is None`
+        return None  # So we allow `is None`
     elif type_ is list:
         return FlatList(v)
     elif type_ in generator_types:
         return (wrap(vv) for vv in v)
-    elif isinstance(v, (text_type, binary_type, int, float, Decimal, datetime, date, Data, FlatList, NullType, none_type)):
+    elif isinstance(
+        v,
+        (
+            text_type,
+            binary_type,
+            int,
+            float,
+            Decimal,
+            datetime,
+            date,
+            Data,
+            FlatList,
+            NullType,
+            none_type,
+        ),
+    ):
         return v
     elif isinstance(v, Mapping):
         return DataObject(v)
@@ -148,7 +170,9 @@ class DictClass(object):
 
         ordered_params = dict(zip(params, args))
 
-        output = self.class_(**params_pack(params, ordered_params, kwargs, settings, defaults))
+        output = self.class_(
+            **params_pack(params, ordered_params, kwargs, settings, defaults)
+        )
         return DataObject(output)
 
 
@@ -163,5 +187,3 @@ def params_pack(params, *args):
 
     output = {str(k): unwrap(settings[k]) for k in params if k in settings}
     return output
-
-

@@ -1,4 +1,3 @@
-
 # encoding: utf-8
 #
 #
@@ -34,7 +33,7 @@ DEBUG = False
 # MAX_DATETIME = datetime(2286, 11, 20, 17, 46, 39)
 DEFAULT_WAIT_TIME = 10 * 60  # SECONDS
 
-datetime.strptime('2012-01-01', '%Y-%m-%d')  # http://bugs.python.org/issue7980
+datetime.strptime("2012-01-01", "%Y-%m-%d")  # http://bugs.python.org/issue7980
 
 
 class Queue(object):
@@ -43,7 +42,9 @@ class Queue(object):
      IS DIFFICULT TO USE JUST BETWEEN THREADS (SERIALIZATION REQUIRED)
     """
 
-    def __init__(self, name, max=None, silent=False, unique=False, allow_add_after_close=False):
+    def __init__(
+        self, name, max=None, silent=False, unique=False, allow_add_after_close=False
+    ):
         """
         max - LIMIT THE NUMBER IN THE QUEUE, IF TOO MANY add() AND extend() WILL BLOCK
         silent - COMPLAIN IF THE READERS ARE TOO SLOW
@@ -52,7 +53,7 @@ class Queue(object):
         self.name = name
         self.max = coalesce(max, 2 ** 10)
         self.silent = silent
-        self.allow_add_after_close=allow_add_after_close
+        self.allow_add_after_close = allow_add_after_close
         self.unique = unique
         self.please_stop = Signal("stop signal for " + name)
         self.lock = Lock("lock for queue " + name)
@@ -141,7 +142,9 @@ class Queue(object):
         """
         wait_time = 5
 
-        (DEBUG and len(self.queue) > 1 * 1000 * 1000) and Log.warning("Queue {{name}} has over a million items")
+        (DEBUG and len(self.queue) > 1 * 1000 * 1000) and Log.warning(
+            "Queue {{name}} has over a million items"
+        )
 
         now = time()
         if timeout != None:
@@ -168,7 +171,7 @@ class Queue(object):
                             "Queue by name of {{name|quote}} is full with ({{num}} items), thread(s) have been waiting {{wait_time}} sec",
                             name=self.name,
                             num=len(self.queue),
-                            wait_time=wait_time
+                            wait_time=wait_time,
                         )
 
     def __len__(self):
@@ -225,7 +228,7 @@ class Queue(object):
             elif not self.queue:
                 return None
             else:
-                v =self.queue.pop()
+                v = self.queue.pop()
                 if v is THREAD_STOP:  # SENDING A STOP INTO THE QUEUE IS ALSO AN OPTION
                     self.please_stop.go()
                 return v
@@ -259,10 +262,10 @@ class ThreadedQueue(Queue):
         period=None,  # MAX TIME (IN SECONDS) BETWEEN FLUSHES TO SLOWER QUEUE
         silent=False,  # WRITES WILL COMPLAIN IF THEY ARE WAITING TOO LONG
         error_target=None  # CALL THIS WITH ERROR **AND THE LIST OF OBJECTS ATTEMPTED**
-                           # BE CAREFUL!  THE THREAD MAKING THE CALL WILL NOT BE YOUR OWN!
-                           # DEFAULT BEHAVIOUR: THIS WILL KEEP RETRYING WITH WARNINGS
+        # BE CAREFUL!  THE THREAD MAKING THE CALL WILL NOT BE YOUR OWN!
+        # DEFAULT BEHAVIOUR: THIS WILL KEEP RETRYING WITH WARNINGS
     ):
-        if period !=None and not isinstance(period, (int, float, long)):
+        if period != None and not isinstance(period, (int, float, long)):
             Log.error("Expecting a float for the period")
 
         batch_size = coalesce(batch_size, int(max_size / 2) if max_size else None, 900)
@@ -320,14 +323,10 @@ class ThreadedQueue(Queue):
                             Log.warning(
                                 "`error_target` should not throw, just deal",
                                 name=name,
-                                cause=f
+                                cause=f,
                             )
                     else:
-                        Log.warning(
-                            "Unexpected problem",
-                            name=name,
-                            cause=e
-                        )
+                        Log.warning("Unexpected problem", name=name, cause=e)
 
                 try:
                     if len(_buffer) >= batch_size or next_push:
@@ -345,21 +344,23 @@ class ThreadedQueue(Queue):
                             Log.warning(
                                 "`error_target` should not throw, just deal",
                                 name=name,
-                                cause=f
+                                cause=f,
                             )
                     else:
                         Log.warning(
                             "Problem with {{name}} pushing {{num}} items to data sink",
                             name=name,
                             num=len(_buffer),
-                            cause=e
+                            cause=e,
                         )
 
             if _buffer:
                 # ONE LAST PUSH, DO NOT HAVE TIME TO DEAL WITH ERRORS
                 push_to_queue()
 
-        self.thread = Thread.run("threaded queue for " + name, worker_bee) # parent_thread=self)
+        self.thread = Thread.run(
+            "threaded queue for " + name, worker_bee
+        )  # parent_thread=self)
 
     def add(self, value, timeout=None):
         with self.lock:
@@ -398,5 +399,3 @@ class ThreadedQueue(Queue):
     def stop(self):
         self.add(THREAD_STOP)
         self.thread.join()
-
-

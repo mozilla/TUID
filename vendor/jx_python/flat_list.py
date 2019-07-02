@@ -53,7 +53,7 @@ class PartFlatList(list):
 
     def select(self, fields):
         if isinstance(fields, Mapping):
-            fields=fields.value
+            fields = fields.value
 
         if isinstance(fields, text_type):
             # RETURN LIST OF VALUES
@@ -64,7 +64,10 @@ class PartFlatList(list):
                     return [d[0][fields] for d in self.data]
             else:
                 keys = split_field(fields)
-                depth = coalesce(MIN([i for i, (k, p) in enumerate(zip(keys, self.path)) if k != p]), len(self.path))  # LENGTH OF COMMON PREFIX
+                depth = coalesce(
+                    MIN([i for i, (k, p) in enumerate(zip(keys, self.path)) if k != p]),
+                    len(self.path),
+                )  # LENGTH OF COMMON PREFIX
                 short_key = keys[depth:]
 
                 output = FlatList()
@@ -114,11 +117,11 @@ class PartFlatList(list):
         temp = [[]] * len(self.path)
         for d in self.data:
             for i, p in enumerate(self.path):
-                temp[i] = d[i][p]    # REMEMBER THE LIST THAT IS HERE
-                d[i][p] = d[i + 1]   # REPLACE WITH INSTANCE
-            yield d[0]               # DO THE WORK
+                temp[i] = d[i][p]  # REMEMBER THE LIST THAT IS HERE
+                d[i][p] = d[i + 1]  # REPLACE WITH INSTANCE
+            yield d[0]  # DO THE WORK
             for i, p in enumerate(self.path):
-                d[i][p] = temp[i]    # RETURN LIST BACK TO PLACE
+                d[i][p] = temp[i]  # RETURN LIST BACK TO PLACE
 
 
 def _select1(data, field, depth, output):

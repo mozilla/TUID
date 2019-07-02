@@ -26,11 +26,13 @@ from jx_base.query import QueryOp
 INDEX = "__index__"
 PARENT = "__parent__"
 
+
 class DocStore(Container):
     """
     SIMPLE COLUMNAR DATASTORE, EVERYTHING IS INDEXED, WITH QUERY INTERFACE
     HOPE IS IT WILL USE NUMPY
     """
+
     def __init__(self, uid="_id"):
         self._uid = uid  # COLUMN NAME HOLDING UID
         self._source = []  # ORDERED LIST OF ALL wrapped DOCUMENTS
@@ -83,7 +85,9 @@ class DocStore(Container):
                 v = "."
             elif _type == "nested":
                 for vv in v:
-                    curr_index = self._index_values(vv, curr_index + 1, start_index, prefix=k + ".")
+                    curr_index = self._index_values(
+                        vv, curr_index + 1, start_index, prefix=k + "."
+                    )
                 _type = "object"
                 v = "."
 
@@ -120,16 +124,16 @@ class DocStore(Container):
 
     def _index_columns(self, columns):
         # INDEX ALL COLUMNS, ESPECIALLY THOSE FUNCTION RESULTS
-        indexed_values = [None]*len(columns)
+        indexed_values = [None] * len(columns)
         for i, s in enumerate(columns):
             index = self._index.get(s.value, None)
             if index is not None:
-                indexed_values[i]=index
+                indexed_values[i] = index
                 continue
 
             function_name = value2json(s.value.__data__(), sort_keys=True)
             index = self._index.get(function_name, None)
-            indexed_values[i]=index
+            indexed_values[i] = index
             if index is not None:
                 continue
 
@@ -155,6 +159,7 @@ class DocStore(Container):
 
         # RECURSIVE SORTING
         output = []
+
         def _sort_more(short_list, i, sorts):
             if len(sorts) == 0:
                 output.extend(short_list)
@@ -198,21 +203,20 @@ class DocStore(Container):
         if format == "list":
             return {
                 "meta": {"format": "list"},
-                "data": [self._source[i] for i in self._unique_index.values()]
+                "data": [self._source[i] for i in self._unique_index.values()],
             }
         elif format == "table":
             columns = list(self._index.keys())
-            data = [[self._source[i].get(c, None) for c in columns] for i in self._unique_index.values()]
-            return {
-                "meta": {"format": "table"},
-                "header": columns,
-                "data": data
-            }
+            data = [
+                [self._source[i].get(c, None) for c in columns]
+                for i in self._unique_index.values()
+            ]
+            return {"meta": {"format": "table"}, "header": columns, "data": data}
         elif format == "cube":
             Log.error("not supported")
 
     def get_leaves(self, table_name):
-        return {"name":c for c in self._index.keys()}
+        return {"name": c for c in self._index.keys()}
 
     def _filter(self, where):
         return filters[where.name](self, where)
@@ -234,11 +238,7 @@ class DocStore(Container):
         return self._unique_index.values()
 
 
-filters={
-    "eq": DocStore._eq,
-    "and": DocStore._and,
-    "true": DocStore._true
-}
+filters = {"eq": DocStore._eq, "and": DocStore._and, "true": DocStore._true}
 
 _type_map = {
     text_type: "text",
@@ -248,5 +248,5 @@ _type_map = {
     list: "nested",
     FlatList: "nested",
     dict: "object",
-    Data: "object"
+    Data: "object",
 }

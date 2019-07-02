@@ -48,7 +48,9 @@ class PersistentQueue(object):
                 with suppress_exception:
                     delta = mo_json.json2value(line)
                     apply_delta(self.db, delta)
-            if self.db.status.start == None:  # HAPPENS WHEN ONLY ADDED TO QUEUE, THEN CRASH
+            if (
+                self.db.status.start == None
+            ):  # HAPPENS WHEN ONLY ADDED TO QUEUE, THEN CRASH
                 self.db.status.start = 0
             self.start = self.db.status.start
 
@@ -56,19 +58,20 @@ class PersistentQueue(object):
             lost = 0
             for k in self.db.keys():
                 with suppress_exception:
-                    if k!="status" and int(k) < self.start:
+                    if k != "status" and int(k) < self.start:
                         self.db[k] = None
                         lost += 1
-                  # HAPPENS FOR self.db.status, BUT MAYBE OTHER PROPERTIES TOO
+                # HAPPENS FOR self.db.status, BUT MAYBE OTHER PROPERTIES TOO
             if lost:
-                Log.warning("queue file had {{num}} items lost",  num= lost)
+                Log.warning("queue file had {{num}} items lost", num=lost)
 
-            DEBUG and Log.note("Persistent queue {{name}} found with {{num}} items", name=self.file.abspath, num=len(self))
-        else:
-            self.db.status = Data(
-                start=0,
-                end=0
+            DEBUG and Log.note(
+                "Persistent queue {{name}} found with {{num}} items",
+                name=self.file.abspath,
+                num=len(self),
             )
+        else:
+            self.db.status = Data(start=0, end=0)
             self.start = self.db.status.start
             DEBUG and Log.note("New persistent queue {{name}}", name=self.file.abspath)
 
@@ -80,7 +83,6 @@ class PersistentQueue(object):
         for delta in self.pending:
             apply_delta(self.db, delta)
         self.pending = []
-
 
     def __iter__(self):
         """
@@ -174,10 +176,15 @@ class PersistentQueue(object):
                 for i in range(self.db.status.start, self.start):
                     self._add_pending({"remove": str(i)})
 
-                if self.db.status.end - self.start < 10 or Random.range(0, 1000) == 0:  # FORCE RE-WRITE TO LIMIT FILE SIZE
+                if (
+                    self.db.status.end - self.start < 10 or Random.range(0, 1000) == 0
+                ):  # FORCE RE-WRITE TO LIMIT FILE SIZE
                     # SIMPLY RE-WRITE FILE
                     if DEBUG:
-                        Log.note("Re-write {{num_keys}} keys to persistent queue", num_keys=self.db.status.end - self.start)
+                        Log.note(
+                            "Re-write {{num_keys}} keys to persistent queue",
+                            num_keys=self.db.status.end - self.start,
+                        )
                         for k in self.db.keys():
                             if k == "status" or int(k) >= self.db.status.start:
                                 continue
@@ -205,12 +212,19 @@ class PersistentQueue(object):
                 DEBUG and Log.note("persistent queue clear and closed")
                 self.file.delete()
             else:
-                DEBUG and Log.note("persistent queue closed with {{num}} items left", num=len(self))
+                DEBUG and Log.note(
+                    "persistent queue closed with {{num}} items left", num=len(self)
+                )
                 try:
                     self._add_pending({"add": {"status.start": self.start}})
                     for i in range(self.db.status.start, self.start):
                         self._add_pending({"remove": str(i)})
-                    self.file.write(mo_json.value2json({"add": self.db}) + "\n" + ("\n".join(mo_json.value2json(p) for p in self.pending)) + "\n")
+                    self.file.write(
+                        mo_json.value2json({"add": self.db})
+                        + "\n"
+                        + ("\n".join(mo_json.value2json(p) for p in self.pending))
+                        + "\n"
+                    )
                     self._apply_pending()
                 except Exception as e:
                     raise e

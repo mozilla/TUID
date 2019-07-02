@@ -47,11 +47,13 @@ class UniqueIndex(Set, Mapping):
                 d = self._data.get(_key)
                 return wrap(d)
             else:
-                output = wrap([
-                    d
-                    for d in self._data.values()
-                    if all(wrap(d)[k] == v for k, v in _key.items())
-                ])
+                output = wrap(
+                    [
+                        d
+                        for d in self._data.values()
+                        if all(wrap(d)[k] == v for k, v in _key.items())
+                    ]
+                )
                 return output
         except Exception as e:
             Log.error("something went wrong", e)
@@ -89,12 +91,18 @@ class UniqueIndex(Set, Mapping):
             self.count += 1
         elif d is not val:
             if self.fail_on_dup:
-                Log.error("{{new|json}} with key {{key|json}} already filled with {{old|json}}", key=key, new=val, old=self[val])
+                Log.error(
+                    "{{new|json}} with key {{key|json}} already filled with {{old|json}}",
+                    key=key,
+                    new=val,
+                    old=self[val],
+                )
             elif DEBUG:
-                Log.warning("key {{key|json}} already filled\nExisting\n{{existing|json|indent}}\nValue\n{{value|json|indent}}",
+                Log.warning(
+                    "key {{key|json}} already filled\nExisting\n{{existing|json|indent}}\nValue\n{{value|json|indent}}",
                     key=key,
                     existing=d,
-                    value=val
+                    value=val,
                 )
 
     def extend(self, values):
@@ -118,9 +126,12 @@ class UniqueIndex(Set, Mapping):
         return self[key] != None
 
     if PY2:
+
         def __iter__(self):
             return (wrap(v) for v in self._data.itervalues())
+
     else:
+
         def __iter__(self):
             return (wrap(v) for v in self._data.values())
 
@@ -158,7 +169,7 @@ class UniqueIndex(Set, Mapping):
         if not isinstance(other, Iterable):
             Log.error("Expecting other to be iterable")
         other = UniqueIndex(keys=self._keys, data=other, fail_on_dup=False)
-        return (self-other) | (other-self)
+        return (self - other) | (other - self)
 
     def __len__(self):
         if self.count == 0:

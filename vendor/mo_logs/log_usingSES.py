@@ -27,7 +27,6 @@ from mo_times import Date, Duration, HOUR, MINUTE
 
 
 class StructuredLogger_usingSES(StructuredLogger):
-
     @override
     def __init__(
         self,
@@ -40,7 +39,7 @@ class StructuredLogger_usingSES(StructuredLogger):
         cc=None,
         log_type="ses",
         average_interval=HOUR,
-        kwargs=None
+        kwargs=None,
     ):
         """
         SEND WARNINGS AND ERRORS VIA EMAIL
@@ -99,14 +98,16 @@ class StructuredLogger_usingSES(StructuredLogger):
                         to_addresses=listwrap(to_address),
                         subject=self.settings.subject,
                         body="\n\n".join(content),
-                        format="text"
+                        format="text",
                     )
 
             self.accumulation = []
         except Exception as e:
             Log.warning("Could not send", e)
         finally:
-            self.next_send = Date.now() + self.settings.average_interval * (2 * Random.float())
+            self.next_send = Date.now() + self.settings.average_interval * (
+                2 * Random.float()
+            )
 
 
 class Emailer(object):
@@ -114,7 +115,7 @@ class Emailer(object):
         self.resource = connect_to_region(
             settings.region,
             aws_access_key_id=unwrap(settings.aws_access_key_id),
-            aws_secret_access_key=unwrap(settings.aws_secret_access_key)
+            aws_secret_access_key=unwrap(settings.aws_secret_access_key),
         )
 
     def __enter__(self):

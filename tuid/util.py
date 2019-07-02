@@ -107,10 +107,14 @@ class AnnotateFile(SourceFile, object):
                     for linenum in insert_lines
                 ]
 
-                records = wrap([
-                    self.tuid_service._make_record_temporal(tuid, revision, file, line)
-                    for tuid, file, revision, line in insert_entries
-                ])
+                records = wrap(
+                    [
+                        self.tuid_service._make_record_temporal(
+                            tuid, revision, file, line
+                        )
+                        for tuid, file, revision, line in insert_entries
+                    ]
+                )
                 insert(self.tuid_service.temporal, records)
             except Exception as e:
                 Log.note(
@@ -190,9 +194,7 @@ def insert(index, records):
     index.refresh()
     wait_until(
         index,
-        lambda: index.search(
-            {"size": 0, "query": {"terms": {"_id": ids}}}
-        ).hits.total
+        lambda: index.search({"size": 0, "query": {"terms": {"_id": ids}}}).hits.total
         == len(records),
     )
 

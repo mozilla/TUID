@@ -51,6 +51,7 @@ class Lock(object):
     """
     A NON-RE-ENTRANT LOCK WITH wait()
     """
+
     __slots__ = ["name", "lock", "waiting"]
 
     def __init__(self, name=""):
@@ -82,7 +83,11 @@ class Lock(object):
         waiter = Signal()
         if self.waiting:
             if DEBUG:
-                _Log.note("waiting with {{num}} others on {{name|quote}}", num=len(self.waiting), name=self.name)
+                _Log.note(
+                    "waiting with {{num}} others on {{name|quote}}",
+                    num=len(self.waiting),
+                    name=self.name,
+                )
             self.waiting.insert(0, waiter)
         else:
             if DEBUG:
@@ -95,7 +100,11 @@ class Lock(object):
                 _Log.note("out of lock {{name|quote}}", name=self.name)
             (waiter | till).wait()
             if DEBUG:
-                _Log.note("done minimum wait (for signal {{till|quote}})", till=till.name if till else "", name=self.name)
+                _Log.note(
+                    "done minimum wait (for signal {{till|quote}})",
+                    till=till.name if till else "",
+                    name=self.name,
+                )
         except Exception as e:
             if not _Log:
                 _late_import()

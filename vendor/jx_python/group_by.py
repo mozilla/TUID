@@ -52,6 +52,7 @@ def groupby(data, keys=None, size=None, min_size=None, max_size=None, contiguous
         keys = listwrap(keys)
         if not contiguous:
             from jx_python import jx
+
             data = jx.sort(data, keys)
 
         if not data:
@@ -60,7 +61,9 @@ def groupby(data, keys=None, size=None, min_size=None, max_size=None, contiguous
         if any(isinstance(k, Expression) for k in keys):
             Log.error("can not handle expressions")
         else:
-            accessor = jx_expression_to_function(jx_expression({"tuple": keys}))  # CAN RETURN Null, WHICH DOES NOT PLAY WELL WITH __cmp__
+            accessor = jx_expression_to_function(
+                jx_expression({"tuple": keys})
+            )  # CAN RETURN Null, WHICH DOES NOT PLAY WELL WITH __cmp__
 
         def _output():
             start = 0
@@ -93,6 +96,7 @@ def groupby_size(data, size):
         Log.error("do not know how to handle this type")
 
     done = FlatList()
+
     def more():
         output = FlatList()
         for i in range(size):
@@ -132,30 +136,33 @@ def groupby_Multiset(data, min_size, max_size):
             g = [k]
 
         if total >= max_size:
-            Log.error("({{min}}, {{max}}) range is too strict given step of {{increment}}",
+            Log.error(
+                "({{min}}, {{max}}) range is too strict given step of {{increment}}",
                 min=min_size,
                 max=max_size,
-                increment=c
+                increment=c,
             )
 
     if g:
         yield (i, g)
 
 
-def groupby_min_max_size(data, min_size=0, max_size=None, ):
+def groupby_min_max_size(data, min_size=0, max_size=None):
     if max_size == None:
         max_size = sys.maxint
 
     if isinstance(data, (bytearray, text_type, binary_type, list)):
+
         def _iter():
-            num = int(math.ceil(len(data)/max_size))
+            num = int(math.ceil(len(data) / max_size))
             for i in range(num):
-                output = (i, data[i * max_size:i * max_size + max_size:])
+                output = (i, data[i * max_size : i * max_size + max_size :])
                 yield output
 
         return _iter()
 
     elif hasattr(data, "__iter__"):
+
         def _iter():
             g = 0
             out = FlatList()
@@ -180,4 +187,3 @@ def groupby_min_max_size(data, min_size=0, max_size=None, ):
         return groupby_size(data, max_size)
     else:
         return groupby_Multiset(data, min_size, max_size)
-
