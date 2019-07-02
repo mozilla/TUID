@@ -94,8 +94,10 @@ def apply_diff(file, diff):
     :return: file, lines_inserted
     '''
     # Ignore merges, they have duplicate entries.
+    # Variable chnaged is True when this revision has changed the file
+    changed = False
     if diff['merge']:
-        return file
+        return file, changed
     if file.filename.lstrip('/') == 'dev/null':
         file.lines = []
         return file
@@ -105,10 +107,11 @@ def apply_diff(file, diff):
         old_fname = f_proc['old'].name.lstrip('/')
         if new_fname != file.filename and old_fname != file.filename:
             continue
+        changed = True
         if old_fname != new_fname:
             if new_fname == 'dev/null':
                 file.lines = []
-                return file
+                return file, changed
             # Change the file name so that new lines
             # are correctly created.
             file.filename = new_fname
@@ -122,7 +125,7 @@ def apply_diff(file, diff):
             elif change.action == '-':
                 file.remove_one(change.line + 1)
         break
-    return file
+    return file, changed
 
 
 def apply_diff_backwards(file, diff):

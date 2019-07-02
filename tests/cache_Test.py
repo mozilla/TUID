@@ -33,45 +33,27 @@ def service(config, new_db):
 
 
 def test_caching(service):
-    # Partition is to make sure threads are taken care by the caller itself
-    service.clogger._fill_in_range(5, 'd63ed14ed622')
 
-    query = {
-        "_source": {"includes": ["revnum", "revision"]},
-        "query": {
-            "bool": {
-                "must_not": {
-                    "exists": {
-                        "field": "done"
-                    }
-                }
-            }
-        },
-        "sort": [{"revnum": {"order": "desc"}}],
-        "size":100
-    }
-    result = service.clogger.csetlog.search(query)
-    for r in result.hits.hits:
-        revision = r._source.revision
-        revnum = r._source.revnum
-        branch = service.config.hg.branch
+    old_revision = "aa0394eb1c57"
+    new_revision = "c0200f9fc1ab"
+    service.clogger.initialize_to_range(old_revision, new_revision)
 
-        old_revision = "d63ed14ed622"
-        new_revision = "c0200f9fc1ab"
+    test_files = [
+        ["/dom/html/HTMLCanvasElement.cpp"],
+        ["/gfx/layers/ipc/CompositorBridgeChild.cpp"],
+        ["/gfx/layers/wr/WebRenderCommandBuilder.h"],
+        ["/gfx/layers/wr/WebRenderUserData.cpp"],
+        ["/gfx/layers/wr/WebRenderUserData.h"],
+        ["/layout/generic/nsFrame.cpp"],
+        ["/layout/generic/nsIFrame.h"],
+        ["/layout/generic/nsImageFrame.cpp"],
+        ["/layout/painting/FrameLayerBuilder.cpp"],
+        ["/widget/cocoa/nsNativeThemeCocoa.mm"]
+    ]
+    result1 = None
+    for temp, elem in enumerate(test_files[9:]):
+        result1 = service.get_tuids_from_files(elem,old_revision, going_forward=True)
 
-        test_files = [
-            ["/dom/html/HTMLCanvasElement.cpp"],
-            ["/gfx/layers/ipc/CompositorBridgeChild.cpp"]
-            ]
-
-
-        result1 = service.get_tuids_from_files(test_files[1],old_revision)
-
-        result2 = service.get_tuids_from_files(test_files[1], new_revision)
-
-        # Update done = true
-        updated_record = service.clogger._make_record_csetlog(revnum, revision, -1)
-        updated_record["value"].update({"done": "true"})
-        service.clogger.csetlog.add(updated_record)
+    result2 = service.get_tuids_from_files(test_files[9], new_revision, going_forward=True)
 
     assert True

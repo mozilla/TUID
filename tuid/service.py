@@ -232,9 +232,11 @@ class TUIDService:
         }
         return {"value": record}
 
-    def _make_record_annotations(self, revision, file, annotation):
+    def _make_record_annotations(self, revision, file, annotation, rev_origin=None):
+        if rev_origin is None:
+            rev_origin = revision
         record = {
-            "_id": revision + file,
+            "_id": str(rev_origin) + "-" + file,
             "revision": revision,
             "file": file,
             "annotation": annotation,
@@ -281,17 +283,22 @@ class TUIDService:
         return temp
 
     def _get_annotation(self, rev, file):
+        if isinstance(rev, list):
+            filter = {"terms": {"revision": rev}}
+        else:
+            filter = {"term": {"revision": rev}}
+
         query = {
-            "_source": {"includes": ["annotation"]},
+            "_source": {"includes": ["annotation", "revision"]},
             "query": {
                 "bool": {
-                    "must": [{"term": {"revision": rev}}, {"term": {"file": file}}]
+                    "must": [filter, {"term": {"file": file}}]
                 }
             },
             "size": 1,
         }
-        temp = self.annotations.search(query).hits.hits[0]._source.annotation
-        return temp
+        r = self.annotations.search(query).hits.hits[0]
+        return (r._source.annotation, r._id)
 
     def _get_one_tuid(self, cset, path, line):
         # Returns a single TUID if it exists else None
@@ -639,7 +646,7 @@ class TUIDService:
 
             with self.conn.transaction() as t:
                 latest_rev = self._get_latest_revision(file, t)
-                already_ann = self._get_annotation(revision, file)
+                already_ann, _ = self._get_annotation(revision, file)
 
             # Check if the file has already been collected at
             # this revision and get the result if so
@@ -917,7 +924,7 @@ class TUIDService:
 
         # Check if the files were already annotated.
         for file in files:
-            already_ann = self._get_annotation(revision, file)
+            already_ann, _ = self._get_annotation(revision, file)
             if already_ann and already_ann[0] == "":
                 result.append((file, []))
                 log_existing_files.append("removed|" + file)
@@ -1091,7 +1098,7 @@ class TUIDService:
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
                     for rev, filename, tuids in tmp_inserts:
-                        tmp_ann = self._get_annotation(
+                        tmp_ann, _ = self._get_annotation(
                             rev, filename
                         )
                         if not tmp_ann and tmp_ann != "":
@@ -1231,15 +1238,17 @@ class TUIDService:
         anns_to_get = []
         total = len(file_to_frontier)
         tmp_results = {}
-
         with self.conn.transaction() as transaction:
             for count, (file, old_frontier) in enumerate(frontier_list):
                 # If the file was modified, get it's newest
                 # annotation and update the file.
                 tmp_res = None
+                revisions_not_changed = []
+                temp = None
                 if file in files_to_process:
                     # Process this file using the diffs found
-                    tmp_ann = self._get_annotation(old_frontier, file)
+                    tmp_ann, id = self._get_annotation(old_frontier, file)
+                    rev_source = id.split("-")[0]
                     if (
                         tmp_ann is None
                         or tmp_ann == ""
@@ -1277,6 +1286,7 @@ class TUIDService:
                         # backwards or the current frontier, if we are
                         # going forward.
                         csets_to_proc = csets_to_proc[1:]
+                        #revisions_not_changed.append(csets_to_proc[0])
 
                         # Apply the diffs
                         for diff_count, (_, rev) in enumerate(csets_to_proc):
@@ -1289,11 +1299,11 @@ class TUIDService:
 
                             rev_to_proc = next_rev
                             if backwards:
-                                file_to_modify = apply_diff_backwards(
+                                file_to_modify, changed = apply_diff_backwards(
                                     file_to_modify, parsed_diffs[rev]
                                 )
                             else:
-                                file_to_modify = apply_diff(
+                                file_to_modify, changed = apply_diff(
                                     file_to_modify, parsed_diffs[rev]
                                 )
                                 rev_to_proc = rev
@@ -1310,12 +1320,27 @@ class TUIDService:
                                 break
                             file_to_modify.reset_new_lines()
 
+                            if not changed:
+                                revisions_not_changed.append(rev_to_proc)
+                                tmp_res = file_to_modify.lines_to_annotation()
+                                continue
+
+                            if not file_to_modify.failed_file:
+                                if temp:
+                                    # If changed, save old file_to_modify and
+                                    # insert the file, revision-list and TUIDs to the annotations table
+                                    ann_inserts.append(
+                                        (revisions_not_changed, file, self.stringify_tuids(tmp_res))
+                                    )
+
+                                revisions_not_changed = [rev_to_proc]
+                                tmp_res = file_to_modify.lines_to_annotation()
+
                         if not file_to_modify.failed_file:
                             tmp_res = file_to_modify.lines_to_annotation()
-
-                        ann_inserts.append(
-                            (revision, file, self.stringify_tuids(tmp_res))
-                        )
+                            ann_inserts.append(
+                                (revisions_not_changed, file, self.stringify_tuids(tmp_res))
+                            )
                         Log.note(
                             "Frontier update - modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} "
                             "| {{rev}}|{{file}} ",
@@ -1326,7 +1351,7 @@ class TUIDService:
                             percent=count / total,
                         )
                 else:
-                    old_ann = self._get_annotation(old_frontier, file)
+                    old_ann, _ = self._get_annotation(old_frontier, file)
                     if old_ann is None or (old_ann == "" and file in added_files):
                         # File is new (likely from an error), or re-added - we need to create
                         # a new initial entry for this file.
@@ -1393,7 +1418,7 @@ class TUIDService:
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
                     for rev, filename, string_tuids in tmp_inserts:
-                        tmp_ann = self._get_annotation(rev, filename)
+                        tmp_ann, _ = self._get_annotation(rev, filename)
                         if not tmp_ann and tmp_ann != "":
                             recomputed_inserts.append((rev, filename, string_tuids))
                         else:
@@ -1450,7 +1475,7 @@ class TUIDService:
 
             annotations_to_get = []
             for file in new_files:
-                already_ann = self._get_annotation(revision, file)
+                already_ann, _ = self._get_annotation(revision, file)
                 if already_ann:
                     results.append((file, self.destringify_tuids(already_ann)))
                 elif already_ann == "":
@@ -1488,7 +1513,7 @@ class TUIDService:
                 old_annotations_len = len(annotations_to_get)
                 new_annotations_to_get = []
                 for file in annotations_to_get:
-                    already_ann = self._get_annotation(revision, file)
+                    already_ann, _ = self._get_annotation(revision, file)
                     if already_ann:
                         results.append((file, self.destringify_tuids(already_ann)))
                     elif already_ann == "":
@@ -1662,7 +1687,7 @@ class TUIDService:
                 # TODO: at the same revision and if it is not empty as well.
                 # Make sure we are not adding the same thing another thread
                 # added.
-                tmp_ann = self._get_annotation(revision, file)
+                tmp_ann, _ = self._get_annotation(revision, file)
                 if tmp_ann != None:
                     results.append((file, self.destringify_tuids(tmp_ann)))
                     continue
