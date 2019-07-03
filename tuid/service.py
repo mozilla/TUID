@@ -233,10 +233,8 @@ class TUIDService:
         return {"value": record}
 
     def _make_record_annotations(self, revision, file, annotation, rev_origin=None):
-        if rev_origin is None:
-            rev_origin = revision
         record = {
-            "_id": str(rev_origin) + "-" + file,
+            "_id": revision+file,
             "revision": revision,
             "file": file,
             "annotation": annotation,
@@ -298,6 +296,7 @@ class TUIDService:
             "size": 1,
         }
         r = self.annotations.search(query).hits.hits[0]
+        # TODO: Return origin revision of this TUIDs instead of r._id
         return (r._source.annotation, r._id)
 
     def _get_one_tuid(self, cset, path, line):
@@ -1247,8 +1246,7 @@ class TUIDService:
                 temp = None
                 if file in files_to_process:
                     # Process this file using the diffs found
-                    tmp_ann, id = self._get_annotation(old_frontier, file)
-                    rev_source = id.split("-")[0]
+                    tmp_ann, _ = self._get_annotation(old_frontier, file)
                     if (
                         tmp_ann is None
                         or tmp_ann == ""
@@ -1286,7 +1284,6 @@ class TUIDService:
                         # backwards or the current frontier, if we are
                         # going forward.
                         csets_to_proc = csets_to_proc[1:]
-                        #revisions_not_changed.append(csets_to_proc[0])
 
                         # Apply the diffs
                         for diff_count, (_, rev) in enumerate(csets_to_proc):
@@ -1319,28 +1316,11 @@ class TUIDService:
                                 )
                                 break
                             file_to_modify.reset_new_lines()
-
-                            if not changed:
-                                revisions_not_changed.append(rev_to_proc)
-                                tmp_res = file_to_modify.lines_to_annotation()
-                                continue
-
-                            if not file_to_modify.failed_file:
-                                if temp:
-                                    # If changed, save old file_to_modify and
-                                    # insert the file, revision-list and TUIDs to the annotations table
-                                    ann_inserts.append(
-                                        (revisions_not_changed, file, self.stringify_tuids(tmp_res))
-                                    )
-
-                                revisions_not_changed = [rev_to_proc]
-                                tmp_res = file_to_modify.lines_to_annotation()
-
-                        if not file_to_modify.failed_file:
                             tmp_res = file_to_modify.lines_to_annotation()
                             ann_inserts.append(
-                                (revisions_not_changed, file, self.stringify_tuids(tmp_res))
+                                (rev_to_proc, file, self.stringify_tuids(tmp_res))
                             )
+
                         Log.note(
                             "Frontier update - modified: {{count}}/{{total}} - {{percent|percent(decimal=0)}} "
                             "| {{rev}}|{{file}} ",
