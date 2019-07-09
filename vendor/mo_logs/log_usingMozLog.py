@@ -27,6 +27,7 @@ class StructuredLogger_usingMozLog(StructuredLogger):
     WRITE TO MozLog STANDARD FORMAT
     https://wiki.mozilla.org/Firefox/Services/Logging
     """
+
     @override
     def __init__(self, stream, app_name):
         """
@@ -38,32 +39,30 @@ class StructuredLogger_usingMozLog(StructuredLogger):
         if not app_name:
             Log.error("mozlog expects an `app_name` in the config")
         if not Log.trace:
-            Log.error("mozlog expects trace=True so it get s the information it requires")
+            Log.error(
+                "mozlog expects trace=True so it get s the information it requires"
+            )
 
     def write(self, template, params):
         output = {
-            "Timestamp": (Decimal(datetime2unix(params.timestamp)) * Decimal(1e9)).to_integral_exact(),  # NANOSECONDS
+            "Timestamp": (
+                Decimal(datetime2unix(params.timestamp)) * Decimal(1e9)
+            ).to_integral_exact(),  # NANOSECONDS
             "Type": params.template,
             "Logger": params.machine.name,
             "Hostname": self.app_name,
             "EnvVersion": "2.0",
-            "Severity": severity_map.get(params.context, 3),  # https://en.wikipedia.org/wiki/Syslog#Severity_levels
+            "Severity": severity_map.get(
+                params.context, 3
+            ),  # https://en.wikipedia.org/wiki/Syslog#Severity_levels
             "Pid": params.machine.pid,
-            "Fields": {
-                k: _deep_json_to_string(v, 0)
-                for k, v in wrap(params).leaves()
-            }
+            "Fields": {k: _deep_json_to_string(v, 0) for k, v in wrap(params).leaves()},
         }
-        self.stream.write(value2json(output).encode('utf8'))
-        self.stream.write(b'\n')
+        self.stream.write(value2json(output).encode("utf8"))
+        self.stream.write(b"\n")
 
 
-severity_map = {
-    ERROR: 3,
-    WARNING: 4,
-    ALARM: 5,
-    NOTE: 6
-}
+severity_map = {ERROR: 3, WARNING: 4, ALARM: 5, NOTE: 6}
 
 
 def datatime2decimal(value):

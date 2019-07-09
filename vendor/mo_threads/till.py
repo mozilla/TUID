@@ -32,6 +32,7 @@ class Till(Signal):
     """
     TIMEOUT AS A SIGNAL
     """
+
     __slots__ = []
 
     locker = _allocate_lock()
@@ -96,7 +97,7 @@ def daemon(please_stop):
                         "Call to sleep failed with ({{later}}, {{interval}})",
                         later=later,
                         interval=INTERVAL,
-                        cause=e
+                        cause=e,
                     )
                 continue
 
@@ -108,7 +109,9 @@ def daemon(please_stop):
                 if len(new_timers) > 5:
                     Log.note("{{num}} new timers", num=len(new_timers))
                 else:
-                    Log.note("new timers: {{timers}}", timers=[t for t, _ in new_timers])
+                    Log.note(
+                        "new timers: {{timers}}", timers=[t for t, _ in new_timers]
+                    )
 
             sorted_timers.extend(new_timers)
 
@@ -127,7 +130,9 @@ def daemon(please_stop):
                     DEBUG and Log.note(
                         "done: {{timers}}.  Remaining {{pending}}",
                         timers=[t for t, s in work] if len(work) <= 5 else len(work),
-                        pending=[t for t, s in sorted_timers] if len(sorted_timers) <= 5 else len(sorted_timers)
+                        pending=[t for t, s in sorted_timers]
+                        if len(sorted_timers) <= 5
+                        else len(sorted_timers),
                     )
 
                     for t, r in work:

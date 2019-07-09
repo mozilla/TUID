@@ -25,7 +25,9 @@ from mo_math import AND
 def is_terms(query):
     select = listwrap(query.select)
 
-    isSimple = not query.select or AND(aggregates[s.aggregate] in ("none", "count") for s in select)
+    isSimple = not query.select or AND(
+        aggregates[s.aggregate] in ("none", "count") for s in select
+    )
     if isSimple:
         return True
     return False
@@ -49,9 +51,9 @@ def es_terms(es, mvel, query):
             "terms": {
                 "field": packed_term.field,
                 "script_field": packed_term.expression,
-                "size": coalesce(query.limit, 200000)
+                "size": coalesce(query.limit, 200000),
             },
-            "facet_filter": simplify_esfilter(query.where)
+            "facet_filter": simplify_esfilter(query.where),
         }
 
     term2Parts = packed_term.term2parts
@@ -112,12 +114,11 @@ def _es_terms2(es, mvel, query):
             FromES.facets[s.name + "," + str(i)] = {
                 "terms": {
                     "field": query.edges[1].value,
-                    "size": coalesce(query.limit, 200000)
+                    "size": coalesce(query.limit, 200000),
                 },
-                "facet_filter": simplify_esfilter({"and": [
-                    query.where,
-                    {"term": {query.edges[0].value: v}}
-                ]})
+                "facet_filter": simplify_esfilter(
+                    {"and": [query.where, {"term": {query.edges[0].value: v}}]}
+                ),
             }
 
     data = es_post(es, FromES, query.limit)
@@ -128,7 +129,9 @@ def _es_terms2(es, mvel, query):
         values2.update(f.terms.term)
     values2 = jx.sort(values2)
     term2index = {v: i for i, v in enumerate(values2)}
-    query.edges[1].domain.partitions = FlatList([{"name": v, "value": v} for v in values2])
+    query.edges[1].domain.partitions = FlatList(
+        [{"name": v, "value": v} for v in values2]
+    )
 
     # MAKE CUBE
     output = {}
@@ -149,4 +152,3 @@ def _es_terms2(es, mvel, query):
     cube = Cube(query.select, query.edges, output)
     cube.query = query
     return cube
-

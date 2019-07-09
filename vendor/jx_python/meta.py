@@ -21,9 +21,27 @@ from jx_base import Column, Table
 from jx_base.schema import Schema
 from jx_python import jx
 from mo_collections import UniqueIndex
-from mo_dots import Data, concat_field, listwrap, unwraplist, NullType, FlatList, set_default, split_field, join_field, ROOT_PATH, wrap, coalesce
+from mo_dots import (
+    Data,
+    concat_field,
+    listwrap,
+    unwraplist,
+    NullType,
+    FlatList,
+    set_default,
+    split_field,
+    join_field,
+    ROOT_PATH,
+    wrap,
+    coalesce,
+)
 from mo_future import none_type, text_type, long, PY2
-from mo_json.typed_encoder import untype_path, unnest_path, python_type_to_json_type, STRUCT
+from mo_json.typed_encoder import (
+    untype_path,
+    unnest_path,
+    python_type_to_json_type,
+    STRUCT,
+)
 from mo_logs import Log
 from mo_threads import Lock
 from mo_times.dates import Date
@@ -126,7 +144,7 @@ class ColumnList(Table, jx_base.Container):
             return iter(self._all_columns())
 
     def __len__(self):
-        return self.data['meta.columns']['es_index'].count
+        return self.data["meta.columns"]["es_index"].count
 
     def update(self, command):
         self.dirty = True
@@ -138,11 +156,7 @@ class ColumnList(Table, jx_base.Container):
                 if len(eq) == 1:
                     # FASTEST
                     with self.locker:
-                        columns = [
-                            c
-                            for cs in all_columns
-                            for c in cs
-                        ]
+                        columns = [c for cs in all_columns for c in cs]
                 elif eq.es_column and len(eq) == 2:
                     # FASTER
                     with self.locker:
@@ -160,7 +174,9 @@ class ColumnList(Table, jx_base.Container):
                             c
                             for cs in all_columns
                             for c in cs
-                            if all(c[k] == v for k, v in eq.items())  # THIS LINE IS VERY SLOW
+                            if all(
+                                c[k] == v for k, v in eq.items()
+                            )  # THIS LINE IS VERY SLOW
                         ]
             else:
                 columns = list(self)
@@ -171,10 +187,10 @@ class ColumnList(Table, jx_base.Container):
                     for k in command["clear"]:
                         if k == ".":
                             lst = self.data[col.es_index]
-                            cols = lst[col.names['.']]
+                            cols = lst[col.names["."]]
                             cols.remove(col)
                             if len(cols) == 0:
-                                del lst[col.names['.']]
+                                del lst[col.names["."]]
                                 if len(lst) == 0:
                                     del self.data[col.es_index]
                         else:
@@ -191,10 +207,13 @@ class ColumnList(Table, jx_base.Container):
         with self.locker:
             self._update_meta()
             if not self._schema:
-                self._schema = Schema(".", [c for cs in self.data["meta.columns"].values() for c in cs])
+                self._schema = Schema(
+                    ".", [c for cs in self.data["meta.columns"].values() for c in cs]
+                )
             snapshot = self._all_columns()
 
         from jx_python.containers.list_usingPythonList import ListContainer
+
         query.frum = ListContainer("meta.columns", snapshot, self._schema)
         return jx.run(query)
 
@@ -208,7 +227,9 @@ class ColumnList(Table, jx_base.Container):
         if not self._schema:
             with self.locker:
                 self._update_meta()
-                self._schema = Schema(".", [c for cs in self.data["meta.columns"].values() for c in cs])
+                self._schema = Schema(
+                    ".", [c for cs in self.data["meta.columns"].values() for c in cs]
+                )
         return self._schema
 
     @property
@@ -238,7 +259,7 @@ class ColumnList(Table, jx_base.Container):
                     "count": c.count,
                     "nested_path": [unnest_path(n) for n in c.nested_path],
                     "es_type": c.es_type,
-                    "type": c.jx_type
+                    "type": c.jx_type,
                 }
                 for tname, css in self.data.items()
                 for cname, cs in css.items()
@@ -248,13 +269,11 @@ class ColumnList(Table, jx_base.Container):
             ]
 
         from jx_python.containers.list_usingPythonList import ListContainer
+
         return ListContainer(
             self.name,
             data=output,
-            schema=jx_base.Schema(
-                "meta.columns",
-                SIMPLE_METADATA_COLUMNS
-            )
+            schema=jx_base.Schema("meta.columns", SIMPLE_METADATA_COLUMNS),
         )
 
 
@@ -290,11 +309,13 @@ def _get_schema_from_list(frum, table_name, parent, nested_path, columns):
                     es_index=".",
                     jx_type=python_type_to_json_type[d.__class__],
                     es_type=row_type,
-                    nested_path=nested_path
+                    nested_path=nested_path,
                 )
                 columns.add(column)
             column.es_type = _merge_type[column.es_type][row_type]
-            column.jx_type = _merge_type[coalesce(column.jx_type, "undefined")][row_type]
+            column.jx_type = _merge_type[coalesce(column.jx_type, "undefined")][
+                row_type
+            ]
         else:
             for name, value in d.items():
                 full_name = concat_field(parent, name)
@@ -305,7 +326,7 @@ def _get_schema_from_list(frum, table_name, parent, nested_path, columns):
                         es_column=full_name,
                         es_index=".",
                         es_type="undefined",
-                        nested_path=nested_path
+                        nested_path=nested_path,
                     )
                     columns.add(column)
                 if isinstance(value, (list, set)):  # GET TYPE OF MULTIVALUE
@@ -324,11 +345,15 @@ def _get_schema_from_list(frum, table_name, parent, nested_path, columns):
                 column.es_type = new_type
 
                 if this_type == "object":
-                    _get_schema_from_list([value], table_name, full_name, nested_path, columns)
+                    _get_schema_from_list(
+                        [value], table_name, full_name, nested_path, columns
+                    )
                 elif this_type == "nested":
                     np = listwrap(nested_path)
                     newpath = unwraplist([join_field(split_field(np[0]) + [name])] + np)
-                    _get_schema_from_list(value, table_name, full_name, newpath, columns)
+                    _get_schema_from_list(
+                        value, table_name, full_name, newpath, columns
+                    )
 
 
 METADATA_COLUMNS = (
@@ -338,34 +363,37 @@ METADATA_COLUMNS = (
             es_index="meta.columns",
             es_column=c,
             es_type="string",
-            nested_path=ROOT_PATH
+            nested_path=ROOT_PATH,
         )
         for c in ["es_type", "jx_type", "nested_path", "es_column", "es_index"]
-    ] + [
+    ]
+    + [
         Column(
             es_index="meta.columns",
             names={".": c},
             es_column=c,
             es_type="object",
-            nested_path=ROOT_PATH
+            nested_path=ROOT_PATH,
         )
         for c in ["names", "partitions"]
-    ] + [
+    ]
+    + [
         Column(
             names={".": c},
             es_index="meta.columns",
             es_column=c,
             es_type="long",
-            nested_path=ROOT_PATH
+            nested_path=ROOT_PATH,
         )
         for c in ["count", "cardinality", "multi"]
-    ] + [
+    ]
+    + [
         Column(
             names={".": "last_updated"},
             es_index="meta.columns",
             es_column="last_updated",
             es_type="time",
-            nested_path=ROOT_PATH
+            nested_path=ROOT_PATH,
         )
     ]
 )
@@ -377,25 +405,27 @@ SIMPLE_METADATA_COLUMNS = (
             es_index="meta.columns",
             es_column=c,
             es_type="string",
-            nested_path=ROOT_PATH
+            nested_path=ROOT_PATH,
         )
         for c in ["table", "name", "type", "nested_path"]
-    ] + [
+    ]
+    + [
         Column(
             names={".": c},
             es_index="meta.columns",
             es_column=c,
             es_type="long",
-            nested_path=ROOT_PATH
+            nested_path=ROOT_PATH,
         )
         for c in ["count", "cardinality", "multi"]
-    ] + [
+    ]
+    + [
         Column(
             names={".": "last_updated"},
             es_index="meta.columns",
             es_column="last_updated",
             es_type="time",
-            nested_path=ROOT_PATH
+            nested_path=ROOT_PATH,
         )
     ]
 )
@@ -417,7 +447,7 @@ _type_to_name = {
     Date: "double",
     Decimal: "double",
     datetime: "double",
-    date: "double"
+    date: "double",
 }
 
 if PY2:
@@ -434,7 +464,7 @@ _merge_type = {
         "number": "number",
         "string": "string",
         "object": "object",
-        "nested": "nested"
+        "nested": "nested",
     },
     "boolean": {
         "undefined": "boolean",
@@ -446,7 +476,7 @@ _merge_type = {
         "number": "number",
         "string": "string",
         "object": None,
-        "nested": None
+        "nested": None,
     },
     "integer": {
         "undefined": "integer",
@@ -458,7 +488,7 @@ _merge_type = {
         "number": "number",
         "string": "string",
         "object": None,
-        "nested": None
+        "nested": None,
     },
     "long": {
         "undefined": "long",
@@ -470,7 +500,7 @@ _merge_type = {
         "number": "number",
         "string": "string",
         "object": None,
-        "nested": None
+        "nested": None,
     },
     "float": {
         "undefined": "float",
@@ -482,7 +512,7 @@ _merge_type = {
         "number": "number",
         "string": "string",
         "object": None,
-        "nested": None
+        "nested": None,
     },
     "double": {
         "undefined": "double",
@@ -494,7 +524,7 @@ _merge_type = {
         "number": "number",
         "string": "string",
         "object": None,
-        "nested": None
+        "nested": None,
     },
     "number": {
         "undefined": "number",
@@ -506,7 +536,7 @@ _merge_type = {
         "number": "number",
         "string": "string",
         "object": None,
-        "nested": None
+        "nested": None,
     },
     "string": {
         "undefined": "string",
@@ -518,7 +548,7 @@ _merge_type = {
         "number": "string",
         "string": "string",
         "object": None,
-        "nested": None
+        "nested": None,
     },
     "object": {
         "undefined": "object",
@@ -530,7 +560,7 @@ _merge_type = {
         "number": None,
         "string": None,
         "object": "object",
-        "nested": "nested"
+        "nested": "nested",
     },
     "nested": {
         "undefined": "nested",
@@ -542,6 +572,6 @@ _merge_type = {
         "number": None,
         "string": None,
         "object": "nested",
-        "nested": "nested"
-    }
+        "nested": "nested",
+    },
 }

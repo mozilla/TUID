@@ -46,17 +46,21 @@ def compile_expression(source):
     fake_locals = {}
     try:
         exec(
-"""
+            """
 def output(row, rownum=None, rows=None):
-    _source = """ + convert.value2quote(source) + """
+    _source = """
+            + convert.value2quote(source)
+            + """
     try:
-        return """ + source + """
+        return """
+            + source
+            + """
     except Exception as e:
         Log.error("Problem with dynamic function {{func|quote}}",  func=_source, cause=e)
 """,
             globals(),
-            fake_locals
+            fake_locals,
         )
     except Exception as e:
         Log.error("Bad source: {{source}}", source=source, cause=e)
-    return fake_locals['output']
+    return fake_locals["output"]

@@ -25,6 +25,7 @@ After cloning the repo into `~/TUID`:
 
     cd ~/TUID
     pip install -r ./tests/requirements.txt
+    pre-commit install
     export PYTHONPATH=.:vendor
     python -m pytest -m first_run --capture=no ./tests
     python -m pytest -m 'not first_run' --capture=no ./tests
@@ -33,6 +34,7 @@ After cloning the repo into `~/TUID`:
 
     cd %userprofile%\TUID
     pip install -r .\tests\requirements.txt
+    pre-commit install
     set PYTHONPATH=.;vendor
     python -m pytest -m first_run --capture=no tests
     python -m pytest -m 'not first_run' --capture=no tests

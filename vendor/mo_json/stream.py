@@ -15,21 +15,25 @@ import json
 from collections import Mapping
 from types import GeneratorType
 
-from mo_dots import split_field, startswith_field, relative_field, Data, join_field, Null, wrap
+from mo_dots import (
+    split_field,
+    startswith_field,
+    relative_field,
+    Data,
+    join_field,
+    Null,
+    wrap,
+)
 from mo_logs import Log
 
 DEBUG = False
 
-MIN_READ_SIZE = 8*1024
+MIN_READ_SIZE = 8 * 1024
 WHITESPACE = b" \n\r\t"
-CLOSE = {
-    b"{": b"}",
-    b"[": b"]"
-}
+CLOSE = {b"{": b"}", b"[": b"]"}
 NO_VARS = set()
 
 json_decoder = json.JSONDecoder().decode
-
 
 
 def parse(json, query_path, expected_vars=NO_VARS):
@@ -56,20 +60,23 @@ def parse(json, query_path, expected_vars=NO_VARS):
     if hasattr(json, "read"):
         # ASSUME IT IS A STREAM
         temp = json
+
         def get_more():
             return temp.read(MIN_READ_SIZE)
+
         json = List_usingStream(get_more)
     elif hasattr(json, "__call__"):
         json = List_usingStream(json)
     elif isinstance(json, GeneratorType):
         json = List_usingStream(json.next)
     else:
-        Log.error("Expecting json to be a stream, or a function that will return more bytes")
-
+        Log.error(
+            "Expecting json to be a stream, or a function that will return more bytes"
+        )
 
     def _iterate_list(index, c, parent_path, path, expected_vars):
         c, index = skip_whitespace(index)
-        if c == b']':
+        if c == b"]":
             yield index
             return
 
@@ -77,21 +84,21 @@ def parse(json, query_path, expected_vars=NO_VARS):
             if not path:
                 index = _assign_token(index, c, expected_vars)
                 c, index = skip_whitespace(index)
-                if c == b']':
+                if c == b"]":
                     yield index
                     _done(parent_path)
                     return
-                elif c == b',':
+                elif c == b",":
                     yield index
                     c, index = skip_whitespace(index)
             else:
                 for index in _decode_token(index, c, parent_path, path, expected_vars):
                     c, index = skip_whitespace(index)
-                    if c == b']':
+                    if c == b"]":
                         yield index
                         _done(parent_path)
                         return
-                    elif c == b',':
+                    elif c == b",":
                         yield index
                         c, index = skip_whitespace(index)
 
@@ -101,11 +108,16 @@ def parse(json, query_path, expected_vars=NO_VARS):
 
     def _decode_object(index, c, parent_path, query_path, expected_vars):
         if "." in expected_vars:
-            if len(done[0]) <= len(parent_path) and all(d == p for d, p in zip(done[0], parent_path)):
+            if len(done[0]) <= len(parent_path) and all(
+                d == p for d, p in zip(done[0], parent_path)
+            ):
                 Log.error("Can not pick up more variables, iterator is done")
 
             if query_path:
-                Log.error("Can not extract objects that contain the iteration", var=join_field(query_path))
+                Log.error(
+                    "Can not extract objects that contain the iteration",
+                    var=join_field(query_path),
+                )
 
             index = _assign_token(index, c, expected_vars)
             # c, index = skip_whitespace(index)
@@ -115,13 +127,13 @@ def parse(json, query_path, expected_vars=NO_VARS):
         did_yield = False
         while True:
             c, index = skip_whitespace(index)
-            if c == b',':
+            if c == b",":
                 continue
             elif c == b'"':
                 name, index = simple_token(index, c)
 
                 c, index = skip_whitespace(index)
-                if c != b':':
+                if c != b":":
                     Log.error("Expecting colon")
                 c, index = skip_whitespace(index)
 
@@ -131,15 +143,22 @@ def parse(json, query_path, expected_vars=NO_VARS):
                     if not query_path:
                         index = _assign_token(index, c, child_expected)
                     elif query_path[0] == name:
-                        for index in _decode_token(index, c, child_path, query_path[1:], child_expected):
+                        for index in _decode_token(
+                            index, c, child_path, query_path[1:], child_expected
+                        ):
                             did_yield = True
                             yield index
                     else:
                         if len(done[0]) <= len(child_path):
-                            Log.error("Can not pick up more variables, iterator over {{path}} is done", path=join_field(done[0]))
+                            Log.error(
+                                "Can not pick up more variables, iterator over {{path}} is done",
+                                path=join_field(done[0]),
+                            )
                         index = _assign_token(index, c, child_expected)
                 elif query_path and query_path[0] == name:
-                    for index in _decode_token(index, c, child_path, query_path[1:], child_expected):
+                    for index in _decode_token(
+                        index, c, child_path, query_path[1:], child_expected
+                    ):
                         yield index
                 else:
                     index = jump_to_end(index, c)
@@ -166,7 +185,7 @@ def parse(json, query_path, expected_vars=NO_VARS):
         c, index = skip_whitespace(index)
         num_items = 0
         while True:
-            if c == b',':
+            if c == b",":
                 c, index = skip_whitespace(index)
             elif c == b'"':
                 name, index = simple_token(index, c)
@@ -176,24 +195,28 @@ def parse(json, query_path, expected_vars=NO_VARS):
                             destination[i] = name
 
                 c, index = skip_whitespace(index)
-                if c != b':':
+                if c != b":":
                     Log.error("Expecting colon")
                 c, index = skip_whitespace(index)
 
                 child_expected = needed("value", expected_vars)
                 index = _assign_token(index, c, child_expected)
                 c, index = skip_whitespace(index)
-                DEBUG and not num_items % 1000 and Log.note("{{num}} items iterated", num=num_items)
+                DEBUG and not num_items % 1000 and Log.note(
+                    "{{num}} items iterated", num=num_items
+                )
                 yield index
                 num_items += 1
             elif c == b"}":
                 break
 
     def _decode_token(index, c, parent_path, query_path, expected_vars):
-        if c == b'{':
+        if c == b"{":
             if query_path and query_path[0] == "$items":
                 if any(expected_vars):
-                    for index in _decode_object_items(index, c, parent_path, query_path[1:], expected_vars):
+                    for index in _decode_object_items(
+                        index, c, parent_path, query_path[1:], expected_vars
+                    ):
                         yield index
                 else:
                     index = jump_to_end(index, c)
@@ -202,10 +225,14 @@ def parse(json, query_path, expected_vars=NO_VARS):
                 index = jump_to_end(index, c)
                 yield index
             else:
-                for index in _decode_object(index, c, parent_path, query_path, expected_vars):
+                for index in _decode_object(
+                    index, c, parent_path, query_path, expected_vars
+                ):
                     yield index
-        elif c == b'[':
-            for index in _iterate_list(index, c, parent_path, query_path, expected_vars):
+        elif c == b"[":
+            for index in _iterate_list(
+                index, c, parent_path, query_path, expected_vars
+            ):
                 yield index
         else:
             index = _assign_token(index, c, expected_vars)
@@ -228,7 +255,7 @@ def parse(json, query_path, expected_vars=NO_VARS):
             while True:
                 c = json[index]
                 index += 1
-                if c == b'\\':
+                if c == b"\\":
                     index += 1
                 elif c == b'"':
                     break
@@ -237,7 +264,7 @@ def parse(json, query_path, expected_vars=NO_VARS):
             while True:
                 c = json[index]
                 index += 1
-                if c in b',]}':
+                if c in b",]}":
                     break
             return index - 1
 
@@ -253,18 +280,18 @@ def parse(json, query_path, expected_vars=NO_VARS):
                 while True:
                     c = json[index]
                     index += 1
-                    if c == b'\\':
+                    if c == b"\\":
                         index += 1
                     elif c == b'"':
                         break
-            elif c in b'[{':
+            elif c in b"[{":
                 i += 1
                 stack[i] = CLOSE[c]
             elif c == stack[i]:
                 i -= 1
                 if i == -1:
                     return index  # FOUND THE MATCH!  RETURN
-            elif c in b']}':
+            elif c in b"]}":
                 Log.error("expecting {{symbol}}", symbol=stack[i])
 
     def simple_token(index, c):
@@ -279,7 +306,7 @@ def parse(json, query_path, expected_vars=NO_VARS):
                     break
             return json_decoder(json.release(index).decode("utf8")), index
         elif c in b"{[":
-            json.mark(index-1)
+            json.mark(index - 1)
             index = jump_to_end(index, c)
             value = wrap(json_decoder(json.release(index).decode("utf8")))
             return value, index
@@ -290,10 +317,10 @@ def parse(json, query_path, expected_vars=NO_VARS):
         elif c == b"f" and json.slice(index, index + 4) == b"alse":
             return False, index + 4
         else:
-            json.mark(index-1)
+            json.mark(index - 1)
             while True:
                 c = json[index]
-                if c in b',]}':
+                if c in b",]}":
                     break
                 index += 1
             text = json.release(index)
@@ -313,7 +340,9 @@ def parse(json, query_path, expected_vars=NO_VARS):
         return c, index + 1
 
     if isinstance(query_path, Mapping) and query_path.get("items"):
-        path_list = split_field(query_path.get("items")) + ["$items"]  # INSERT A MARKER SO THAT OBJECT IS STREAM DECODED
+        path_list = split_field(query_path.get("items")) + [
+            "$items"
+        ]  # INSERT A MARKER SO THAT OBJECT IS STREAM DECODED
     else:
         path_list = split_field(query_path)
 
@@ -336,10 +365,12 @@ def needed(name, required):
         for r in required
     ]
 
+
 class List_usingStream(object):
     """
     EXPECTING A FUNCTION
     """
+
     def __init__(self, get_more_bytes):
         """
         get_more_bytes() SHOULD RETURN AN ARRAY OF BYTES OF ANY SIZE
@@ -357,10 +388,14 @@ class List_usingStream(object):
     def __getitem__(self, index):
         offset = index - self.start
         if offset < len(self.buffer):
-            return self.buffer[offset:offset + 1]
+            return self.buffer[offset : offset + 1]
 
         if offset < 0:
-            Log.error("Can not go in reverse on stream index=={{index}} (offset={{offset}})", index=index, offset=offset)
+            Log.error(
+                "Can not go in reverse on stream index=={{index}} (offset={{offset}})",
+                index=index,
+                offset=offset,
+            )
 
         if self._mark == -1:
             self.start += self.buffer_length
@@ -371,7 +406,7 @@ class List_usingStream(object):
                 more = self.get_more()
                 self.buffer += more
                 self.buffer_length = len(self.buffer)
-            return self.buffer[offset:offset+1]
+            return self.buffer[offset : offset + 1]
 
         needless_bytes = self._mark - self.start
         if needless_bytes:
@@ -386,7 +421,7 @@ class List_usingStream(object):
             self.buffer_length = len(self.buffer)
 
         try:
-            return self.buffer[offset:offset+1]
+            return self.buffer[offset : offset + 1]
         except Exception as e:
             Log.error("error", cause=e)
 
@@ -413,6 +448,6 @@ class List_usingStream(object):
             self.buffer += self.get_more()
             self.buffer_length = len(self.buffer)
 
-        output = self.buffer[self._mark - self.start:end_offset]
+        output = self.buffer[self._mark - self.start : end_offset]
         self._mark = -1
         return output

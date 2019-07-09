@@ -14,11 +14,27 @@ from __future__ import unicode_literals
 from jx_base.expressions import NULL
 from jx_base.query import DEFAULT_LIMIT
 from jx_elasticsearch import post as es_post
-from jx_elasticsearch.es14.expressions import split_expression_by_depth, AndOp, Variable, LeavesOp
+from jx_elasticsearch.es14.expressions import (
+    split_expression_by_depth,
+    AndOp,
+    Variable,
+    LeavesOp,
+)
 from jx_elasticsearch.es14.setop import format_dispatch, get_pull_function, get_pull
 from jx_elasticsearch.es14.util import jx_sort_to_es_sort, es_query_template
 from jx_python.expressions import compile_expression, jx_expression_to_function
-from mo_dots import split_field, FlatList, listwrap, literal_field, coalesce, Data, concat_field, set_default, relative_field, startswith_field
+from mo_dots import (
+    split_field,
+    FlatList,
+    listwrap,
+    literal_field,
+    coalesce,
+    Data,
+    concat_field,
+    set_default,
+    relative_field,
+    startswith_field,
+)
 from mo_json.typed_encoder import NESTED
 from mo_json.typed_encoder import untype_path, EXISTS_TYPE
 from mo_logs import Log
@@ -69,7 +85,7 @@ def es_deepop(es, query):
         more_filter = {
             "and": [
                 es_filters[0],
-                {"missing": {"field": untype_path(query_path) + "." + EXISTS_TYPE}}
+                {"missing": {"field": untype_path(query_path) + "." + EXISTS_TYPE}},
             ]
         }
     else:
@@ -101,12 +117,18 @@ def es_deepop(es, query):
                     es_query.fields += [c.es_column]
                 c_name = untype_path(c.names[query_path])
                 col_names.add(c_name)
-                new_select.append({
-                    "name": concat_field(s.name, c_name),
-                    "nested_path": c.nested_path[0],
-                    "put": {"name": concat_field(s.name, literal_field(c_name)), "index": i, "child": "."},
-                    "pull": get_pull_function(c)
-                })
+                new_select.append(
+                    {
+                        "name": concat_field(s.name, c_name),
+                        "nested_path": c.nested_path[0],
+                        "put": {
+                            "name": concat_field(s.name, literal_field(c_name)),
+                            "index": i,
+                            "child": ".",
+                        },
+                        "pull": get_pull_function(c),
+                    }
+                )
                 i += 1
 
             # REMOVE DOTS IN PREFIX IF NAME NOT AMBIGUOUS
@@ -117,12 +139,14 @@ def es_deepop(es, query):
         elif isinstance(s.value, Variable):
             net_columns = schema.leaves(s.value.var)
             if not net_columns:
-                new_select.append({
-                    "name": s.name,
-                    "nested_path": ".",
-                    "put": {"name": s.name, "index": i, "child": "."},
-                    "pull": NULL
-                })
+                new_select.append(
+                    {
+                        "name": s.name,
+                        "nested_path": ".",
+                        "put": {"name": s.name, "index": i, "child": "."},
+                        "pull": NULL,
+                    }
+                )
             else:
                 for n in net_columns:
                     pull = get_pull_function(n)
@@ -138,18 +162,18 @@ def es_deepop(es, query):
                             child = relative_field(c_name, s.value.var)
                             break
                     else:
-                        child = relative_field(untype_path(n.names[n.nested_path[0]]), s.value.var)
+                        child = relative_field(
+                            untype_path(n.names[n.nested_path[0]]), s.value.var
+                        )
 
-                    new_select.append({
-                        "name": s.name,
-                        "pull": pull,
-                        "nested_path": n.nested_path[0],
-                        "put": {
+                    new_select.append(
+                        {
                             "name": s.name,
-                            "index": i,
-                            "child": child
+                            "pull": pull,
+                            "nested_path": n.nested_path[0],
+                            "put": {"name": s.name, "index": i, "child": child},
                         }
-                    })
+                    )
             i += 1
         else:
             expr = s.value
@@ -163,27 +187,34 @@ def es_deepop(es, query):
             pull_name = EXPRESSION_PREFIX + s.name
             map_to_local = MapToLocal(schema)
             pull = jx_expression_to_function(pull_name)
-            post_expressions[pull_name] = compile_expression(expr.map(map_to_local).to_python())
+            post_expressions[pull_name] = compile_expression(
+                expr.map(map_to_local).to_python()
+            )
 
-            new_select.append({
-                "name": s.name if is_list else ".",
-                "pull": pull,
-                "value": expr.__data__(),
-                "put": {"name": s.name, "index": i, "child": "."}
-            })
+            new_select.append(
+                {
+                    "name": s.name if is_list else ".",
+                    "pull": pull,
+                    "value": expr.__data__(),
+                    "put": {"name": s.name, "index": i, "child": "."},
+                }
+            )
             i += 1
 
     # <COMPLICATED> ES needs two calls to get all documents
     more = []
+
     def get_more(please_stop):
-        more.append(es_post(
-            es,
-            Data(
-                query={"filtered": {"filter": more_filter}},
-                fields=es_query.fields
-            ),
-            query.limit
-        ))
+        more.append(
+            es_post(
+                es,
+                Data(
+                    query={"filtered": {"filter": more_filter}}, fields=es_query.fields
+                ),
+                query.limit,
+            )
+        )
+
     if more_filter:
         need_more = Thread.run("get more", target=get_more)
 
@@ -202,7 +233,8 @@ def es_deepop(es, query):
             Thread.join(need_more)
             for t in more[0].hits.hits:
                 yield t
-    #</COMPLICATED>
+
+    # </COMPLICATED>
 
     try:
         formatter, groupby_formatter, mime_type = format_dispatch[query.format]
@@ -220,6 +252,7 @@ class MapToLocal(object):
     """
     MAP FROM RELATIVE/ABSOLUTE NAMESPACE TO PYTHON THAT WILL EXTRACT RESULT
     """
+
     def __init__(self, map_to_columns):
         self.map_to_columns = map_to_columns
 
@@ -234,5 +267,3 @@ class MapToLocal(object):
             return get_pull(cs[0])
         else:
             return "coalesce(" + (",".join(get_pull(c) for c in cs)) + ")"
-
-

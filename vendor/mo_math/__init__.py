@@ -27,12 +27,12 @@ class Math(object):
     func(None, *kwargs)) == None
     """
 
-
     @staticmethod
     def bayesian_add(*args):
         a = args[0]
         if a >= 1 or a <= 0:
             from mo_logs import Log
+
             Log.error("Only allowed values *between* zero and one")
 
         for b in args[1:]:
@@ -40,6 +40,7 @@ class Math(object):
                 continue
             if b >= 1 or b <= 0:
                 from mo_logs import Log
+
                 Log.error("Only allowed values *between* zero and one")
             a = a * b / (a * b + (1 - a) * (1 - b))
 
@@ -48,7 +49,6 @@ class Math(object):
     @staticmethod
     def bayesian_subtract(a, b):
         return Math.bayesian_add(a, 1 - b)
-
 
     @staticmethod
     def abs(v):
@@ -80,8 +80,8 @@ class Math(object):
             return math.log(v, base)
         except Exception as e:
             from mo_logs import Log
-            Log.error("error in log")
 
+            Log.error("error in log")
 
     @staticmethod
     def log10(v):
@@ -103,7 +103,6 @@ class Math(object):
             return +1
         return 0
 
-
     @staticmethod
     def is_number(s):
         if s is True or s is False or s == None:
@@ -117,7 +116,7 @@ class Math(object):
 
     @staticmethod
     def is_nan(s):
-        return s==None or math.isnan(s)
+        return s == None or math.isnan(s)
 
     @staticmethod
     def is_finite(s):
@@ -180,12 +179,12 @@ class Math(object):
                     return _round(value / m, digits) * m
                 except Exception as e:
                     from mo_logs import Log
+
                     Log.error("not expected", e)
         elif decimal <= 0:
             return int(_round(value, decimal))
         else:
             return _round(value, decimal)
-
 
     @staticmethod
     def floor(value, mod=1):
@@ -200,11 +199,9 @@ class Math(object):
         elif mod == 1:
             return int(math.floor(value))
         elif Math.is_integer(mod):
-            return int(math.floor(value/mod))*mod
+            return int(math.floor(value / mod)) * mod
         else:
-            return math.floor(value/mod)*mod
-
-
+            return math.floor(value / mod) * mod
 
     @staticmethod
     def mod(value, mod=1):
@@ -220,8 +217,6 @@ class Math(object):
             return (value % mod + mod) % mod
         else:
             return value % mod
-
-
 
     # RETURN A VALUE CLOSE TO value, BUT WITH SHORTER len(text_type(value))<len(text_type(value)):
     @staticmethod
@@ -261,9 +256,9 @@ class Math(object):
     @staticmethod
     def range(start, stop, interval):
         i = start
-        while i<stop:
+        while i < stop:
             yield i
-            i+=interval
+            i += interval
 
     @staticmethod
     def max(*values):
@@ -282,6 +277,7 @@ def MIN(values, *others):
 
     if others:
         from mo_logs import Log
+
         Log.warning("Calling wrong")
         return MIN([values] + list(others))
 
@@ -306,6 +302,7 @@ def MAX(values, *others):
 
     if others:
         from mo_logs import Log
+
         Log.warning("Calling wrong")
         return MAX([values] + list(others))
 
@@ -337,6 +334,7 @@ def SUM(values):
 def PRODUCT(values, *others):
     if len(others) > 0:
         from mo_logs import Log
+
         Log.error("no longer accepting args, use a single list")
 
     output = Null
@@ -355,6 +353,7 @@ def PRODUCT(values, *others):
 def AND(values, *others):
     if len(others) > 0:
         from mo_logs import Log
+
         Log.error("no longer accepting args, use a single list")
 
     for v in values:
@@ -368,6 +367,7 @@ def AND(values, *others):
 def OR(values, *others):
     if len(others) > 0:
         from mo_logs import Log
+
         Log.error("no longer accepting args, use a single list")
 
     for v in values:
@@ -381,6 +381,7 @@ def OR(values, *others):
 def UNION(values, *others):
     if len(others) > 0:
         from mo_logs import Log
+
         Log.error("no longer accepting args, use a single list")
 
     output = set()
@@ -398,6 +399,7 @@ def UNION(values, *others):
 def INTERSECT(values, *others):
     if len(others) > 0:
         from mo_logs import Log
+
         Log.error("no longer accepting args, use a single list")
 
     output = set(values[0])
@@ -425,7 +427,10 @@ def almost_equal(first, second, digits=None, places=None, delta=None):
         return False
     except Exception as e:
         from mo_logs import Log
+
         Log.error("problem comparing", cause=e)
 
+
 from mo_math import stats
+
 _ = stats

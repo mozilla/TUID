@@ -45,12 +45,11 @@ class StructuredLogger_usingStream(StructuredLogger):
 
 
 class _UTF8Encoder(object):
-
     def __init__(self, stream):
         self.stream = stream
 
     def write(self, v):
         try:
-            self.stream.write(v.encode('utf8'))
+            self.stream.write(v.encode("utf8"))
         except Exception:
             sys.stderr.write("can not handle")

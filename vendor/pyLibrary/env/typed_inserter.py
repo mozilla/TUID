@@ -44,14 +44,17 @@ class TypedInserter(object):
         :return:  dict with id and json properties
         """
         try:
-            value = r['value']
+            value = r["value"]
             if "json" in r:
                 value = json2value(r["json"])
             elif isinstance(value, Mapping) or value != None:
                 pass
             else:
                 from mo_logs import Log
-                raise Log.error("Expecting every record given to have \"value\" or \"json\" property")
+
+                raise Log.error(
+                    'Expecting every record given to have "value" or "json" property'
+                )
 
             _buffer = UnicodeBuilder(1024)
             net_new_properties = []
@@ -59,12 +62,12 @@ class TypedInserter(object):
             if isinstance(value, Mapping):
                 given_id = self.get_id(value)
                 if self.remove_id:
-                    value['_id'] = None
+                    value["_id"] = None
             else:
                 given_id = None
 
             if given_id:
-                record_id = r.get('id')
+                record_id = r.get("id")
                 if record_id and record_id != given_id:
                     from mo_logs import Log
 
@@ -72,10 +75,10 @@ class TypedInserter(object):
                         "expecting {{property}} of record ({{record_id|quote}}) to match one given ({{given|quote}})",
                         property=self.id_column,
                         record_id=record_id,
-                        given=given_id
+                        given=given_id,
                     )
             else:
-                record_id = r.get('id')
+                record_id = r.get("id")
                 if record_id:
                     given_id = record_id
                 else:
@@ -94,5 +97,3 @@ class TypedInserter(object):
             from mo_logs import Log
 
             Log.error("Serialization of JSON problems", cause=e)
-
-

@@ -14,7 +14,6 @@ from mo_dots import listwrap
 
 
 class Record(object):
-
     def __init__(self, coord, cube):
         self.coord = coord
         self.cube = cube

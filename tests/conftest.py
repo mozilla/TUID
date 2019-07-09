@@ -21,8 +21,9 @@ def pytest_addoption(parser):
         "--new-db",
         action="store",
         default="no",
-        help="`yes` or `no` to use a new database"
+        help="`yes` or `no` to use a new database",
     )
+
 
 @pytest.fixture
 def new_db(request):
@@ -31,8 +32,7 @@ def new_db(request):
 
 @pytest.fixture(scope="session")
 def config():
-    config = startup.read_settings(filename=os.environ.get('TUID_CONFIG'))
+    config = startup.read_settings(filename=os.environ.get("TUID_CONFIG"))
     constants.set(config.constants)
     Log.start(config.debug)
     return config
-

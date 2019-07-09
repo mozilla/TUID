@@ -29,7 +29,7 @@ def encrypt(text, _key, salt=None):
     """
 
     if isinstance(text, text_type):
-        encoding = 'utf8'
+        encoding = "utf8"
         data = bytearray(text.encode("utf8"))
     elif isinstance(text, binary_type):
         encoding = None
@@ -62,7 +62,7 @@ def encrypt(text, _key, salt=None):
     for _, d in _groupby16(data):
         encrypted.extend(aes_cbc_256.encrypt_block(d))
     output.data = bytes2base64(encrypted)
-    json = get_module("mo_json").value2json(output, pretty=True).encode('utf8')
+    json = get_module("mo_json").value2json(output, pretty=True).encode("utf8")
 
     if DEBUG:
         test = decrypt(json, _key)
@@ -80,7 +80,9 @@ def decrypt(data, _key):
     if _key is None:
         Log.error("Expecting a key")
 
-    _input = get_module("mo_json").json2value(data.decode('utf8'), leaves=False, flexible=False)
+    _input = get_module("mo_json").json2value(
+        data.decode("utf8"), leaves=False, flexible=False
+    )
 
     # Initialize encryption using key and iv
     key_expander_256 = key_expander.KeyExpander(256)
@@ -95,10 +97,9 @@ def decrypt(data, _key):
         out_data.extend(aes_cbc_256.decrypt_block(e))
 
     if _input.encoding:
-        return binary_type(out_data[:_input.length:]).decode(_input.encoding)
+        return binary_type(out_data[: _input.length :]).decode(_input.encoding)
     else:
-        return binary_type(out_data[:_input.length:])
-
+        return binary_type(out_data[: _input.length :])
 
 
 def bytes2base64(value):
@@ -119,6 +120,6 @@ def _groupby16(bytes):
     index = 0
     length = len(bytes)
     while index < length:
-        yield count, bytes[index: index + 16]
+        yield count, bytes[index : index + 16]
         count += 1
         index += 16

@@ -34,14 +34,22 @@ def is_fieldop(query):
 
     select = listwrap(query.select)
     if not query.edges:
-        isDeep = len(split_field(query.frum.name)) > 1  # LOOKING INTO NESTED WILL REQUIRE A SCRIPT
-        isSimple = AND(s.value != None and (s.value == "*" or is_variable_name(s.value)) for s in select)
+        isDeep = (
+            len(split_field(query.frum.name)) > 1
+        )  # LOOKING INTO NESTED WILL REQUIRE A SCRIPT
+        isSimple = AND(
+            s.value != None and (s.value == "*" or is_variable_name(s.value))
+            for s in select
+        )
         noAgg = AND(s.aggregate == "none" for s in select)
 
         if not isDeep and isSimple and noAgg:
             return True
     else:
-        isSmooth = AND((e.domain.type in domains.ALGEBRAIC and e.domain.interval == "none") for e in query.edges)
+        isSmooth = AND(
+            (e.domain.type in domains.ALGEBRAIC and e.domain.interval == "none")
+            for e in query.edges
+        )
         if isSmooth:
             return True
 
@@ -53,10 +61,8 @@ def es_fieldop(es, query):
     select = listwrap(query.select)
     FromES.query = {
         "bool": {
-            "query": {
-                "match_all": {}
-            },
-            "filter": jx_expression(query.where).to_esfilter()
+            "query": {"match_all": {}},
+            "filter": jx_expression(query.where).to_esfilter(),
         }
     }
     FromES.size = coalesce(query.limit, 200000)
@@ -82,14 +88,25 @@ def es_fieldop(es, query):
         elif isinstance(s.value, Mapping):
             # for k, v in s.value.items():
             #     matricies[join_field(split_field(s.name)+[k])] = Matrix.wrap([unwrap(t.fields)[v] for t in T])
-            matricies[s.name] = Matrix.wrap([{k: unwrap(t.fields).get(v, None) for k, v in s.value.items()}for t in T])
+            matricies[s.name] = Matrix.wrap(
+                [
+                    {k: unwrap(t.fields).get(v, None) for k, v in s.value.items()}
+                    for t in T
+                ]
+            )
         elif isinstance(s.value, list):
-            matricies[s.name] = Matrix.wrap([tuple(unwrap(t.fields).get(ss, None) for ss in s.value) for t in T])
+            matricies[s.name] = Matrix.wrap(
+                [tuple(unwrap(t.fields).get(ss, None) for ss in s.value) for t in T]
+            )
         elif not s.value:
-            matricies[s.name] = Matrix.wrap([unwrap(t.fields).get(s.value, None) for t in T])
+            matricies[s.name] = Matrix.wrap(
+                [unwrap(t.fields).get(s.value, None) for t in T]
+            )
         else:
             try:
-                matricies[s.name] = Matrix.wrap([unwrap(t.fields).get(s.value, None) for t in T])
+                matricies[s.name] = Matrix.wrap(
+                    [unwrap(t.fields).get(s.value, None) for t in T]
+                )
             except Exception as e:
                 Log.error("", e)
 
@@ -102,14 +119,21 @@ def is_setop(query):
     select = listwrap(query.select)
 
     if not query.edges:
-        isDeep = len(split_field(query.frum.name)) > 1  # LOOKING INTO NESTED WILL REQUIRE A SCRIPT
-        simpleAgg = AND([s.aggregate in ("count", "none") for s in select])   # CONVERTING esfilter DEFINED PARTS WILL REQUIRE SCRIPT
+        isDeep = (
+            len(split_field(query.frum.name)) > 1
+        )  # LOOKING INTO NESTED WILL REQUIRE A SCRIPT
+        simpleAgg = AND(
+            [s.aggregate in ("count", "none") for s in select]
+        )  # CONVERTING esfilter DEFINED PARTS WILL REQUIRE SCRIPT
 
         # NO EDGES IMPLIES SIMPLER QUERIES: EITHER A SET OPERATION, OR RETURN SINGLE AGGREGATE
         if simpleAgg or isDeep:
             return True
     else:
-        isSmooth = AND((e.domain.type in domains.ALGEBRAIC and e.domain.interval == "none") for e in query.edges)
+        isSmooth = AND(
+            (e.domain.type in domains.ALGEBRAIC and e.domain.interval == "none")
+            for e in query.edges
+        )
         if isSmooth:
             return True
 
@@ -120,46 +144,58 @@ def es_setop(es, mvel, query):
     FromES = es09.util.build_es_query(query)
     select = listwrap(query.select)
 
-    isDeep = len(split_field(query.frum.name)) > 1  # LOOKING INTO NESTED WILL REQUIRE A SCRIPT
-    isComplex = OR([s.value == None and s.aggregate not in ("count", "none") for s in select])   # CONVERTING esfilter DEFINED PARTS WILL REQUIRE SCRIPT
+    isDeep = (
+        len(split_field(query.frum.name)) > 1
+    )  # LOOKING INTO NESTED WILL REQUIRE A SCRIPT
+    isComplex = OR(
+        [s.value == None and s.aggregate not in ("count", "none") for s in select]
+    )  # CONVERTING esfilter DEFINED PARTS WILL REQUIRE SCRIPT
 
     if not isDeep and not isComplex:
         if len(select) == 1 and isinstance(select[0].value, LeavesOp):
-            FromES = wrap({
-                "query": {"bool": {
-                    "query": {"match_all": {}},
-                    "filter": query.where.to_esfilter()
-                }},
-                "sort": query.sort,
-                "size": 0
-            })
+            FromES = wrap(
+                {
+                    "query": {
+                        "bool": {
+                            "query": {"match_all": {}},
+                            "filter": query.where.to_esfilter(),
+                        }
+                    },
+                    "sort": query.sort,
+                    "size": 0,
+                }
+            )
         elif all(isinstance(v, Variable) for v in select.value):
-            FromES = wrap({
-                "query": {"bool": {
-                    "query": {"match_all": {}},
-                    "filter": query.where.to_esfilter()
-                }},
-                "fields": select.value,
-                "sort": query.sort,
-                "size": coalesce(query.limit, 200000)
-            })
+            FromES = wrap(
+                {
+                    "query": {
+                        "bool": {
+                            "query": {"match_all": {}},
+                            "filter": query.where.to_esfilter(),
+                        }
+                    },
+                    "fields": select.value,
+                    "sort": query.sort,
+                    "size": coalesce(query.limit, 200000),
+                }
+            )
     elif not isDeep:
         simple_query = query.copy()
         simple_query.where = TRUE  # THE FACET FILTER IS FASTER
         FromES.facets.mvel = {
             "terms": {
                 "script_field": mvel.code(simple_query),
-                "size": coalesce(simple_query.limit, 200000)
+                "size": coalesce(simple_query.limit, 200000),
             },
-            "facet_filter": jx_expression(query.where).to_esfilter()
+            "facet_filter": jx_expression(query.where).to_esfilter(),
         }
     else:
         FromES.facets.mvel = {
             "terms": {
                 "script_field": mvel.code(query),
-                "size": coalesce(query.limit, 200000)
+                "size": coalesce(query.limit, 200000),
             },
-            "facet_filter": jx_expression(query.where).to_esfilter()
+            "facet_filter": jx_expression(query.where).to_esfilter(),
         }
 
     data = es_post(es, FromES, query.limit)
@@ -176,12 +212,13 @@ def es_setop(es, mvel, query):
             cube = Cube(select, [], {s.name: Matrix.wrap([]) for s in select})
         else:
             output = transpose(*data_list)
-            cube = Cube(select, [], {s.name: Matrix(list=output[i]) for i, s in enumerate(select)})
+            cube = Cube(
+                select,
+                [],
+                {s.name: Matrix(list=output[i]) for i, s in enumerate(select)},
+            )
 
-    return Data(
-        meta={"esquery": FromES},
-        data=cube
-    )
+    return Data(meta={"esquery": FromES}, data=cube)
 
 
 def is_deep(query):
@@ -192,12 +229,14 @@ def is_deep(query):
     if aggregates[select[0].aggregate] not in ("none", "count"):
         return False
 
-    if len(query.edges)<=1:
+    if len(query.edges) <= 1:
         return False
 
-    isDeep = len(split_field(query["from"].name)) > 1  # LOOKING INTO NESTED WILL REQUIRE A SCRIPT
+    isDeep = (
+        len(split_field(query["from"].name)) > 1
+    )  # LOOKING INTO NESTED WILL REQUIRE A SCRIPT
     if not isDeep:
-        return False   # BETTER TO USE TERM QUERY
+        return False  # BETTER TO USE TERM QUERY
 
     return True
 
@@ -211,11 +250,8 @@ def es_deepop(es, mvel, query):
     temp_query.select = select
     temp_query.edges = FlatList()
     FromES.facets.mvel = {
-        "terms": {
-            "script_field": mvel.code(temp_query),
-            "size": query.limit
-        },
-        "facet_filter": jx_expression(query.where).to_esfilter()
+        "terms": {"script_field": mvel.code(temp_query), "size": query.limit},
+        "facet_filter": jx_expression(query.where).to_esfilter(),
     }
 
     data = es_post(es, FromES, query.limit)
@@ -240,7 +276,9 @@ def es_deepop(es, mvel, query):
 
     # FILL CUBE
     for r in rows:
-        term_coord = [e.domain.getPartByKey(r[i]).dataIndex for i, e in enumerate(edges)]
+        term_coord = [
+            e.domain.getPartByKey(r[i]).dataIndex for i, e in enumerate(edges)
+        ]
         output[term_coord] = SUM(output[term_coord], r[-1])
 
     cube = Cube(query.select, query.edges, {query.select.name: output})

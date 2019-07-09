@@ -31,28 +31,40 @@ def es_query_template(path):
     if path != ".":
         f0 = {}
         f1 = {}
-        output = wrap({
-            "query": {"filtered": {"filter": es_and([
-                f0,
-                {"nested": {
-                    "path": path,
-                    "filter": f1,
-                    "inner_hits": {"size": 100000}
-                }}
-            ])}},
-            "from": 0,
-            "size": 0,
-            "sort": []
-        })
+        output = wrap(
+            {
+                "query": {
+                    "filtered": {
+                        "filter": es_and(
+                            [
+                                f0,
+                                {
+                                    "nested": {
+                                        "path": path,
+                                        "filter": f1,
+                                        "inner_hits": {"size": 100000},
+                                    }
+                                },
+                            ]
+                        )
+                    }
+                },
+                "from": 0,
+                "size": 0,
+                "sort": [],
+            }
+        )
         return output, wrap([f0, f1])
     else:
         f0 = {}
-        output = wrap({
-            "query": {"filtered": {"filter": es_and([f0])}},
-            "from": 0,
-            "size": 0,
-            "sort": []
-        })
+        output = wrap(
+            {
+                "query": {"filtered": {"filter": es_and([f0])}},
+                "from": 0,
+                "size": 0,
+                "sort": [],
+            }
+        )
         return output, wrap([f0])
 
 
@@ -109,7 +121,7 @@ aggregates = {
     "union": "union",
     "var": "variance",
     "variance": "variance",
-    "stats": "stats"
+    "stats": "stats",
 }
 
 NON_STATISTICAL_AGGS = {"none", "one"}

@@ -35,6 +35,7 @@ class ListContainer(Container, jx_base.Namespace, jx_base.Table):
     """
     A CONTAINER WITH ONLY ONE TABLE
     """
+
     def __init__(self, name, data, schema=None):
         # TODO: STORE THIS LIKE A CUBE FOR FASTER ACCESS AND TRANSFORMATION
         data = list(unwrap(data))
@@ -88,7 +89,7 @@ class ListContainer(Container, jx_base.Namespace, jx_base.Table):
 
             if q.select:
                 output = output.select(q.select)
-        #TODO: ADD EXTRA COLUMN DESCRIPTIONS TO RESULTING SCHEMA
+        # TODO: ADD EXTRA COLUMN DESCRIPTIONS TO RESULTING SCHEMA
         for param in q.window:
             output.window(param)
 
@@ -96,26 +97,27 @@ class ListContainer(Container, jx_base.Namespace, jx_base.Table):
             if q.format == "list":
                 return Data(data=output.data, meta={"format": "list"})
             elif q.format == "table":
-                head = [c.names['.'] for c in output.schema.columns]
-                data = [
-                    [r if h == '.' else r[h] for h in head]
-                    for r in output.data
-                ]
+                head = [c.names["."] for c in output.schema.columns]
+                data = [[r if h == "." else r[h] for h in head] for r in output.data]
                 return Data(header=head, data=data, meta={"format": "table"})
             elif q.format == "cube":
-                head = [c.names['.'] for c in output.schema.columns]
-                rows = [
-                    [r[h] for h in head]
-                    for r in output.data
-                ]
+                head = [c.names["."] for c in output.schema.columns]
+                rows = [[r[h] for h in head] for r in output.data]
                 data = {h: c for h, c in zip(head, zip(*rows))}
                 return Data(
                     data=data,
                     meta={"format": "cube"},
-                    edges=[{
-                        "name": "rownum",
-                        "domain": {"type": "rownum", "min": 0, "max": len(rows), "interval": 1}
-                    }]
+                    edges=[
+                        {
+                            "name": "rownum",
+                            "domain": {
+                                "type": "rownum",
+                                "min": 0,
+                                "max": len(rows),
+                                "interval": 1,
+                            },
+                        }
+                    ],
                 )
             else:
                 Log.error("unknown format {{format}}", format=q.format)
@@ -151,10 +153,14 @@ class ListContainer(Container, jx_base.Namespace, jx_base.Table):
         else:
             temp = where
 
-        return ListContainer("from "+self.name, filter(temp, self.data), self.schema)
+        return ListContainer("from " + self.name, filter(temp, self.data), self.schema)
 
     def sort(self, sort):
-        return ListContainer("from "+self.name, jx.sort(self.data, sort, already_normalized=True), self.schema)
+        return ListContainer(
+            "from " + self.name,
+            jx.sort(self.data, sort, already_normalized=True),
+            self.schema,
+        )
 
     def get(self, select):
         """
@@ -169,7 +175,11 @@ class ListContainer(Container, jx_base.Namespace, jx_base.Table):
     def select(self, select):
         selects = listwrap(select)
 
-        if len(selects) == 1 and isinstance(selects[0].value, Variable) and selects[0].value.var == ".":
+        if (
+            len(selects) == 1
+            and isinstance(selects[0].value, Variable)
+            and selects[0].value.var == "."
+        ):
             new_schema = self.schema
             if selects[0].name == ".":
                 return self
@@ -178,13 +188,17 @@ class ListContainer(Container, jx_base.Namespace, jx_base.Table):
 
         if isinstance(select, list):
             if all(
-                isinstance(s.value, Variable) and s.name == s.value.var
-                for s in select
+                isinstance(s.value, Variable) and s.name == s.value.var for s in select
             ):
                 names = set(s.value.var for s in select)
-                new_schema = Schema(".", [c for c in self.schema.columns if c.names['.'] in names])
+                new_schema = Schema(
+                    ".", [c for c in self.schema.columns if c.names["."] in names]
+                )
 
-            push_and_pull = [(s.name, jx_expression_to_function(s.value)) for s in selects]
+            push_and_pull = [
+                (s.name, jx_expression_to_function(s.value)) for s in selects
+            ]
+
             def selector(d):
                 output = Data()
                 for n, p in push_and_pull:
@@ -196,7 +210,7 @@ class ListContainer(Container, jx_base.Namespace, jx_base.Table):
             select_value = jx_expression_to_function(select.value)
             new_data = map(select_value, self.data)
 
-        return ListContainer("from "+self.name, data=new_data, schema=new_schema)
+        return ListContainer("from " + self.name, data=new_data, schema=new_schema)
 
     def window(self, window):
         _ = window
@@ -242,10 +256,14 @@ class ListContainer(Container, jx_base.Namespace, jx_base.Table):
         self.data.extend(documents)
 
     def __data__(self):
-        return wrap({
-            "meta": {"format": "list"},
-            "data": [{k: unwraplist(v) for k, v in row.items()} for row in self.data]
-        })
+        return wrap(
+            {
+                "meta": {"format": "list"},
+                "data": [
+                    {k: unwraplist(v) for k, v in row.items()} for row in self.data
+                ],
+            }
+        )
 
     def get_columns(self, table_name=None):
         return self.schema.values()
@@ -291,8 +309,6 @@ def _exec(code):
         Log.error("Could not execute {{code|quote}}", code=code, cause=e)
 
 
-
-
 from jx_base.schema import Schema
 from jx_python import jx
 
@@ -300,6 +316,5 @@ from jx_python import jx
 DUAL = ListContainer(
     name="dual",
     data=[{}],
-    schema=Schema(table_name="dual", columns=UniqueIndex(keys=("names.\\.",)))
+    schema=Schema(table_name="dual", columns=UniqueIndex(keys=("names.\\.",))),
 )
-

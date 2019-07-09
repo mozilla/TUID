@@ -16,6 +16,7 @@ from jx_base.queries import is_variable_name
 from jx_elasticsearch import es09
 from jx_elasticsearch.es09.util import aggregates, fix_es_stats, build_es_query
 from jx_elasticsearch import post as es_post
+
 # from jx_elasticsearch.es52.expressions import Variable
 from jx_python.containers.cube import Cube
 from jx_python.expressions import jx_expression_to_function
@@ -38,36 +39,37 @@ def es_aggop(es, mvel, query):
     if isSimple:
         return es_countop(es, query)  # SIMPLE, USE TERMS FACET INSTEAD
 
-
     value2facet = dict()  # ONLY ONE FACET NEEDED PER
-    name2facet = dict()   # MAP name TO FACET WITH STATS
+    name2facet = dict()  # MAP name TO FACET WITH STATS
 
     for s in select:
         if s.value not in value2facet:
             if isinstance(s.value, Variable):
                 unwrap(FromES.facets)[s.name] = {
-                    "statistical": {
-                        "field": s.value.var
-                    },
-                    "facet_filter": query.where.to_esfilter()
+                    "statistical": {"field": s.value.var},
+                    "facet_filter": query.where.to_esfilter(),
                 }
             else:
                 unwrap(FromES.facets)[s.name] = {
-                    "statistical": {
-                        "script": jx_expression_to_function(s.value)
-                    },
-                    "facet_filter": query.where.to_es_filter()
+                    "statistical": {"script": jx_expression_to_function(s.value)},
+                    "facet_filter": query.where.to_es_filter(),
                 }
             value2facet[s.value] = s.name
         name2facet[s.name] = value2facet[s.value]
 
     data = es_post(es, FromES, query.limit)
 
-    matricies = {s.name: Matrix(value=fix_es_stats(data.facets[literal_field(s.name)])[aggregates[s.aggregate]]) for s in select}
+    matricies = {
+        s.name: Matrix(
+            value=fix_es_stats(data.facets[literal_field(s.name)])[
+                aggregates[s.aggregate]
+            ]
+        )
+        for s in select
+    }
     cube = Cube(query.select, [], matricies)
     cube.frum = query
     return cube
-
 
 
 def es_countop(es, mvel, query):
@@ -80,18 +82,15 @@ def es_countop(es, mvel, query):
 
         if is_variable_name(s.value):
             FromES.facets[s.name] = {
-                "terms": {
-                    "field": s.value,
-                    "size": query.limit,
-                },
-                "facet_filter":{"exists":{"field":s.value}}
+                "terms": {"field": s.value, "size": query.limit},
+                "facet_filter": {"exists": {"field": s.value}},
             }
         else:
             # COMPLICATED value IS PROBABLY A SCRIPT, USE IT
             FromES.facets[s.name] = {
                 "terms": {
                     "script_field": es09.expressions.compile_expression(s.value, query),
-                    "size": 200000
+                    "size": 200000,
                 }
             }
 

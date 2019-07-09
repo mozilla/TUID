@@ -30,15 +30,15 @@ else:
     STDOUT = sys.stdout
 
 
-
 class Log(object):
     """
     FOR STRUCTURED LOGGING AND EXCEPTION CHAINING
     """
+
     trace = False
     main_log = None
     logging_multi = None
-    profiler = None   # simple pypy-friendly profiler
+    profiler = None  # simple pypy-friendly profiler
     error_mode = False  # prevent error loops
 
     @classmethod
@@ -66,6 +66,7 @@ class Log(object):
         cls.trace = coalesce(settings.trace, False)
         if cls.trace:
             from mo_threads import Thread as _Thread
+
             _ = _Thread
 
         # ENABLE CPROFILE
@@ -76,9 +77,12 @@ class Log(object):
                 settings.cprofile = {"enabled": True, "filename": "cprofile.tab"}
         if settings.cprofile.enabled:
             from mo_threads import profiles
+
             profiles.enable_profilers(settings.cprofile.filename)
 
-        if settings.profile is True or (isinstance(settings.profile, Mapping) and settings.profile.enabled):
+        if settings.profile is True or (
+            isinstance(settings.profile, Mapping) and settings.profile.enabled
+        ):
             Log.error("REMOVED 2018-09-02, Activedata revision 3f30ff46f5971776f8ba18")
             # from mo_logs import profiles
             #
@@ -98,6 +102,7 @@ class Log(object):
                 Log.add_log(Log.new_instance(log))
 
             from mo_logs.log_usingThread import StructuredLogger_usingThread
+
             cls.main_log = StructuredLogger_usingThread(cls.logging_multi)
 
     @classmethod
@@ -124,35 +129,53 @@ class Log(object):
                     from mo_logs.log_usingLogger import make_log_from_settings
 
                     return make_log_from_settings(settings)
-                  # OH WELL :(
+                # OH WELL :(
 
         if settings.log_type == "file" or settings.file:
             return StructuredLogger_usingFile(settings.file)
         if settings.log_type == "file" or settings.filename:
             return StructuredLogger_usingFile(settings.filename)
         if settings.log_type == "console":
-            from mo_logs.log_usingThreadedStream import StructuredLogger_usingThreadedStream
+            from mo_logs.log_usingThreadedStream import (
+                StructuredLogger_usingThreadedStream,
+            )
+
             return StructuredLogger_usingThreadedStream(STDOUT)
         if settings.log_type == "mozlog":
             from mo_logs.log_usingMozLog import StructuredLogger_usingMozLog
-            return StructuredLogger_usingMozLog(STDOUT, coalesce(settings.app_name, settings.appname))
+
+            return StructuredLogger_usingMozLog(
+                STDOUT, coalesce(settings.app_name, settings.appname)
+            )
         if settings.log_type == "stream" or settings.stream:
-            from mo_logs.log_usingThreadedStream import StructuredLogger_usingThreadedStream
+            from mo_logs.log_usingThreadedStream import (
+                StructuredLogger_usingThreadedStream,
+            )
+
             return StructuredLogger_usingThreadedStream(settings.stream)
         if settings.log_type == "elasticsearch" or settings.stream:
-            from mo_logs.log_usingElasticSearch import StructuredLogger_usingElasticSearch
+            from mo_logs.log_usingElasticSearch import (
+                StructuredLogger_usingElasticSearch,
+            )
+
             return StructuredLogger_usingElasticSearch(settings)
         if settings.log_type == "email":
             from mo_logs.log_usingEmail import StructuredLogger_usingEmail
+
             return StructuredLogger_usingEmail(settings)
         if settings.log_type == "ses":
             from mo_logs.log_usingSES import StructuredLogger_usingSES
+
             return StructuredLogger_usingSES(settings)
         if settings.log_type.lower() in ["nothing", "none", "null"]:
             from mo_logs.log_usingNothing import StructuredLogger
+
             return StructuredLogger()
 
-        Log.error("Log type of {{log_type|quote}} is not recognized", log_type=settings.log_type)
+        Log.error(
+            "Log type of {{log_type|quote}} is not recognized",
+            log_type=settings.log_type,
+        )
 
     @classmethod
     def add_log(cls, log):
@@ -160,12 +183,7 @@ class Log(object):
 
     @classmethod
     def note(
-        cls,
-        template,
-        default_params={},
-        stack_depth=0,
-        log_context=None,
-        **more_params
+        cls, template, default_params={}, stack_depth=0, log_context=None, **more_params
     ):
         """
         :param template: *string* human readable string with placeholders for parameters
@@ -183,28 +201,37 @@ class Log(object):
 
         params = dict(unwrap(default_params), **more_params)
 
-        log_params = set_default({
-            "template": template,
-            "params": params,
-            "timestamp": datetime.utcnow(),
-            "machine": machine_metadata
-        }, log_context, {"context": exceptions.NOTE})
+        log_params = set_default(
+            {
+                "template": template,
+                "params": params,
+                "timestamp": datetime.utcnow(),
+                "machine": machine_metadata,
+            },
+            log_context,
+            {"context": exceptions.NOTE},
+        )
 
         if not template.startswith("\n") and template.find("\n") > -1:
             template = "\n" + template
 
         if cls.trace:
-            log_template = "{{machine.name}} (pid {{machine.pid}}) - {{timestamp|datetime}} - {{thread.name}} - \"{{location.file}}:{{location.line}}\" ({{location.method}}) - " + template.replace("{{", "{{params.")
+            log_template = (
+                '{{machine.name}} (pid {{machine.pid}}) - {{timestamp|datetime}} - {{thread.name}} - "{{location.file}}:{{location.line}}" ({{location.method}}) - '
+                + template.replace("{{", "{{params.")
+            )
             f = sys._getframe(stack_depth + 1)
             log_params.location = {
                 "line": f.f_lineno,
                 "file": text_type(f.f_code.co_filename.split(os.sep)[-1]),
-                "method": text_type(f.f_code.co_name)
+                "method": text_type(f.f_code.co_name),
             }
             thread = _Thread.current()
             log_params.thread = {"name": thread.name, "id": thread.id}
         else:
-            log_template = "{{timestamp|datetime}} - " + template.replace("{{", "{{params.")
+            log_template = "{{timestamp|datetime}} - " + template.replace(
+                "{{", "{{params."
+            )
 
         cls.main_log.write(log_template, log_params)
 
@@ -234,25 +261,30 @@ class Log(object):
         params = dict(unwrap(default_params), **more_params)
 
         if cause and not isinstance(cause, Except):
-            cause = Except(exceptions.UNEXPECTED, text_type(cause), trace=exceptions._extract_traceback(0))
+            cause = Except(
+                exceptions.UNEXPECTED,
+                text_type(cause),
+                trace=exceptions._extract_traceback(0),
+            )
 
         trace = exceptions.extract_stack(1)
-        e = Except(type=exceptions.UNEXPECTED, template=template, params=params, cause=cause, trace=trace)
+        e = Except(
+            type=exceptions.UNEXPECTED,
+            template=template,
+            params=params,
+            cause=cause,
+            trace=trace,
+        )
         Log.note(
             "{{error}}",
             error=e,
             log_context=set_default({"context": exceptions.WARNING}, log_context),
-            stack_depth=stack_depth + 1
+            stack_depth=stack_depth + 1,
         )
 
     @classmethod
     def alarm(
-        cls,
-        template,
-        default_params={},
-        stack_depth=0,
-        log_context=None,
-        **more_params
+        cls, template, default_params={}, stack_depth=0, log_context=None, **more_params
     ):
         """
         :param template: *string* human readable string with placeholders for parameters
@@ -264,7 +296,13 @@ class Log(object):
         """
         # USE replace() AS POOR MAN'S CHILD TEMPLATE
 
-        template = ("*" * 80) + "\n" + indent(template, prefix="** ").strip() + "\n" + ("*" * 80)
+        template = (
+            ("*" * 80)
+            + "\n"
+            + indent(template, prefix="** ").strip()
+            + "\n"
+            + ("*" * 80)
+        )
         Log.note(
             template,
             default_params=default_params,
@@ -275,12 +313,7 @@ class Log(object):
 
     @classmethod
     def alert(
-        cls,
-        template,
-        default_params={},
-        stack_depth=0,
-        log_context=None,
-        **more_params
+        cls, template, default_params={}, stack_depth=0, log_context=None, **more_params
     ):
         """
         :param template: *string* human readable string with placeholders for parameters
@@ -330,14 +363,19 @@ class Log(object):
         cause = unwraplist([Except.wrap(c) for c in listwrap(cause)])
         trace = exceptions.extract_stack(stack_depth + 1)
 
-        e = Except(type=exceptions.WARNING, template=template, params=params, cause=cause, trace=trace)
+        e = Except(
+            type=exceptions.WARNING,
+            template=template,
+            params=params,
+            cause=cause,
+            trace=trace,
+        )
         Log.note(
             "{{error|unicode}}",
             error=e,
             log_context=set_default({"context": exceptions.WARNING}, log_context),
-            stack_depth=stack_depth + 1
+            stack_depth=stack_depth + 1,
         )
-
 
     @classmethod
     def error(
@@ -374,7 +412,9 @@ class Log(object):
             causes = None
         elif isinstance(cause, list):
             causes = []
-            for c in listwrap(cause):  # CAN NOT USE LIST-COMPREHENSION IN PYTHON3 (EXTRA STACK DEPTH FROM THE IN-LINED GENERATOR)
+            for c in listwrap(
+                cause
+            ):  # CAN NOT USE LIST-COMPREHENSION IN PYTHON3 (EXTRA STACK DEPTH FROM THE IN-LINED GENERATOR)
                 causes.append(Except.wrap(c, stack_depth=1))
             causes = FlatList(causes)
         elif isinstance(cause, BaseException):
@@ -388,7 +428,13 @@ class Log(object):
         if add_to_trace:
             cause[0].trace.extend(trace[1:])
 
-        e = Except(type=exceptions.ERROR, template=template, params=params, cause=causes, trace=trace)
+        e = Except(
+            type=exceptions.ERROR,
+            template=template,
+            params=params,
+            cause=causes,
+            trace=trace,
+        )
         raise_from_none(e)
 
     @classmethod
@@ -421,7 +467,13 @@ class Log(object):
         cause = unwraplist([Except.wrap(c) for c in listwrap(cause)])
         trace = exceptions.extract_stack(stack_depth + 1)
 
-        e = Except(type=exceptions.ERROR, template=template, params=params, cause=cause, trace=trace)
+        e = Except(
+            type=exceptions.ERROR,
+            template=template,
+            params=params,
+            cause=cause,
+            trace=trace,
+        )
 
         error_mode = cls.error_mode
         with suppress_exception:
@@ -431,12 +483,11 @@ class Log(object):
                     "{{error|unicode}}",
                     error=e,
                     log_context=set_default({"context": exceptions.FATAL}, log_context),
-                    stack_depth=stack_depth + 1
+                    stack_depth=stack_depth + 1,
                 )
         cls.error_mode = error_mode
 
         sys.stderr.write(str(e))
-
 
     def write(self):
         raise NotImplementedError
@@ -447,16 +498,19 @@ def _same_frame(frameA, frameB):
 
 
 # GET THE MACHINE METADATA
-machine_metadata = wrap({
-    "pid":  os.getpid(),
-    "python": text_type(platform.python_implementation()),
-    "os": text_type(platform.system() + platform.release()).strip(),
-    "name": text_type(platform.node())
-})
+machine_metadata = wrap(
+    {
+        "pid": os.getpid(),
+        "python": text_type(platform.python_implementation()),
+        "os": text_type(platform.system() + platform.release()).strip(),
+        "name": text_type(platform.node()),
+    }
+)
 
 
 def raise_from_none(e):
     raise e
+
 
 if PY3:
     exec("def raise_from_none(e):\n    raise e from None\n", globals(), locals())
@@ -469,4 +523,3 @@ from mo_logs.log_usingStream import StructuredLogger_usingStream
 
 if not Log.main_log:
     Log.main_log = StructuredLogger_usingStream(STDOUT)
-

@@ -18,7 +18,10 @@ import logging
 from mo_logs import Log
 from mo_logs.exceptions import suppress_exception
 from mo_logs.log_usingNothing import StructuredLogger
-from mo_logs.log_usingThreadedStream import StructuredLogger_usingThreadedStream, time_delta_pusher
+from mo_logs.log_usingThreadedStream import (
+    StructuredLogger_usingThreadedStream,
+    time_delta_pusher,
+)
 from mo_dots import unwrap
 
 
@@ -57,9 +60,11 @@ class StructuredLogger_usingLogger(StructuredLogger):
             time_delta_pusher,
             appender=self.logger.info,
             queue=self.queue,
-            interval=0.3
+            interval=0.3,
         )
-        self.thread.parent.remove_child(self.thread)  # LOGGING WILL BE RESPONSIBLE FOR THREAD stop()
+        self.thread.parent.remove_child(
+            self.thread
+        )  # LOGGING WILL BE RESPONSIBLE FOR THREAD stop()
         self.thread.start()
 
     def write(self, template, params):
@@ -91,7 +96,7 @@ def make_log_from_settings(settings):
             # PROVIDE A DEFAULT STREAM HANLDER
             constructor = StructuredLogger_usingThreadedStream
         else:
-            Log.error("Can not find class {{class}}",  {"class": path}, cause=e)
+            Log.error("Can not find class {{class}}", {"class": path}, cause=e)
 
     # IF WE NEED A FILE, MAKE SURE DIRECTORY EXISTS
     if settings.filename != None:
@@ -101,8 +106,7 @@ def make_log_from_settings(settings):
         if not f.parent.exists:
             f.parent.create()
 
-    settings['class'] = None
+    settings["class"] = None
     params = unwrap(settings)
     log_instance = constructor(**params)
     return log_instance
-

@@ -26,7 +26,7 @@ def get_revision():
 
     try:
         while True:
-            line = proc.stdout.pop().strip().decode('utf8')
+            line = proc.stdout.pop().strip().decode("utf8")
             if not line:
                 continue
             if line.startswith("commit "):
@@ -41,12 +41,14 @@ def get_remote_revision(url, branch):
     """
     GET REVISION OF A REMOTE BRANCH
     """
-    proc = Process("git remote revision", ["git", "ls-remote", url, "refs/heads/" + branch])
+    proc = Process(
+        "git remote revision", ["git", "ls-remote", url, "refs/heads/" + branch]
+    )
 
     try:
         while True:
             raw_line = proc.stdout.pop()
-            line = raw_line.strip().decode('utf8')
+            line = raw_line.strip().decode("utf8")
             if not line:
                 continue
             return line.split("\t")[0]
@@ -67,7 +69,7 @@ def get_branch():
     try:
         while True:
             raw_line = proc.stdout.pop()
-            line = raw_line.decode('utf8').strip()
+            line = raw_line.decode("utf8").strip()
             if line.startswith("On branch "):
                 return line[10:]
     finally:

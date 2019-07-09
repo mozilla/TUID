@@ -226,6 +226,7 @@ SUPPORT FUNCTIONS:  writecc
 
 import math
 import copy
+
 # from types import *
 
 from mo_math.vendor.strangman import pstat
@@ -239,6 +240,7 @@ __version__ = 0.6
 ####################################
 #######  CENTRAL TENDENCY  #########
 ####################################
+
 
 def geometricmean(inlist):
     """
@@ -289,16 +291,20 @@ Heiman's Basic Stats (1st Edition), or CRC Probability & Statistics.
 
 Usage:   lmedian (inlist, numbins=1000)
 """
-    (hist, smallest, binsize, extras) = histogram(inlist, numbins, [min(inlist), max(inlist)]) # make histog
-    cumhist = cumsum(hist)              # make cumulative histogram
-    for i in range(len(cumhist)):        # get 1st(!) index holding 50%ile score
+    (hist, smallest, binsize, extras) = histogram(
+        inlist, numbins, [min(inlist), max(inlist)]
+    )  # make histog
+    cumhist = cumsum(hist)  # make cumulative histogram
+    for i in range(len(cumhist)):  # get 1st(!) index holding 50%ile score
         if cumhist[i] >= len(inlist) / 2.0:
             cfbin = i
             break
-    LRL = smallest + binsize * cfbin        # get lower read limit of that bin
+    LRL = smallest + binsize * cfbin  # get lower read limit of that bin
     cfbelow = cumhist[cfbin - 1]
-    freq = float(hist[cfbin])                # frequency IN the 50%ile bin
-    median = LRL + ((len(inlist) / 2.0 - cfbelow) / float(freq)) * binsize  # median formula
+    freq = float(hist[cfbin])  # frequency IN the 50%ile bin
+    median = (
+        LRL + ((len(inlist) / 2.0 - cfbelow) / float(freq)) * binsize
+    )  # median formula
     return median
 
 
@@ -312,7 +318,7 @@ Usage:   lmedianscore(inlist)
 
     newlist = copy.deepcopy(inlist)
     newlist.sort()
-    if len(newlist) % 2 == 0:   # if even number of scores, average middle 2
+    if len(newlist) % 2 == 0:  # if even number of scores, average middle 2
         index = len(newlist) / 2  # integer division correct
         median = float(newlist[index] + newlist[index - 1]) / 2
     else:
@@ -353,6 +359,7 @@ Returns: bin-count for mode(s), a list of modal value(s)
 ####################################
 ############  MOMENTS  #############
 ####################################
+
 
 def moment(inlist, moment=1):
     """
@@ -423,6 +430,7 @@ Returns: n, mean, standard deviation, skew, kurtosis
 #######  FREQUENCY STATS  ##########
 ####################################
 
+
 def itemfreq(inlist):
     """
 Returns a list of pairs.  Each pair consists of one of the scores in inlist
@@ -470,7 +478,11 @@ Usage:   lpercentileofscore(inlist,score,histbins=10,defaultlimits=None)
     h, lrl, binsize, extras = histogram(inlist, histbins, defaultlimits)
     cumhist = cumsum(copy.deepcopy(h))
     i = int((score - lrl) / float(binsize))
-    pct = (cumhist[i - 1] + ((score - (lrl + binsize * i)) / float(binsize)) * h[i]) / float(len(inlist)) * 100
+    pct = (
+        (cumhist[i - 1] + ((score - (lrl + binsize * i)) / float(binsize)) * h[i])
+        / float(len(inlist))
+        * 100
+    )
     return pct
 
 
@@ -485,18 +497,22 @@ spanning all the numbers in the inlist.
 Usage:   lhistogram (inlist, numbins=10, defaultreallimits=None,suppressoutput=0)
 Returns: list of bin values, lowerreallimit, binsize, extrapoints
 """
-    if (defaultreallimits != None):
-        if type(defaultreallimits) not in [list, tuple] or len(defaultreallimits) == 1: # only one limit given, assumed to be lower one & upper is calc'd
+    if defaultreallimits != None:
+        if (
+            type(defaultreallimits) not in [list, tuple] or len(defaultreallimits) == 1
+        ):  # only one limit given, assumed to be lower one & upper is calc'd
             lowerreallimit = defaultreallimits
             upperreallimit = 1.000001 * max(inlist)
-        else: # assume both limits given
+        else:  # assume both limits given
             lowerreallimit = defaultreallimits[0]
             upperreallimit = defaultreallimits[1]
         binsize = (upperreallimit - lowerreallimit) / float(numbins)
-    else:     # no limits given for histogram, both must be calc'd
-        estbinwidth = (max(inlist) - min(inlist)) / float(numbins) + 1e-6 # 1=>cover all
+    else:  # no limits given for histogram, both must be calc'd
+        estbinwidth = (max(inlist) - min(inlist)) / float(
+            numbins
+        ) + 1e-6  # 1=>cover all
         binsize = ((max(inlist) - min(inlist) + estbinwidth)) / float(numbins)
-        lowerreallimit = min(inlist) - binsize / 2 # lower real limit,1st bin
+        lowerreallimit = min(inlist) - binsize / 2  # lower real limit,1st bin
     bins = [0] * (numbins)
     extrapoints = 0
     for num in inlist:
@@ -508,8 +524,8 @@ Returns: list of bin values, lowerreallimit, binsize, extrapoints
                 bins[bintoincrement] = bins[bintoincrement] + 1
         except:
             extrapoints = extrapoints + 1
-    if (extrapoints > 0 and printextras == 1):
-        print('\nPoints outside given histogram range =', extrapoints)
+    if extrapoints > 0 and printextras == 1:
+        print("\nPoints outside given histogram range =", extrapoints)
     return (bins, lowerreallimit, binsize, extrapoints)
 
 
@@ -542,6 +558,7 @@ Returns: list of cumfreq bin values, lowerreallimit, binsize, extrapoints
 #####  VARIABILITY FUNCTIONS  ######
 ####################################
 
+
 def obrientransform(*args):
     """
 Computes a transform on input data (any number of columns).  Used to
@@ -573,7 +590,7 @@ Returns: transformed data for use in an ANOVA
         if v[j] - mean(nargs[j]) > TINY:
             check = 0
     if check != 1:
-        raise ValueError('Problem in obrientransform.')
+        raise ValueError("Problem in obrientransform.")
     else:
         return nargs
 
@@ -702,6 +719,7 @@ Usage:   lzs(inlist)
 #######  TRIMMING FUNCTIONS  #######
 ####################################
 
+
 def trimboth(l, proportiontocut):
     """
 Slices off the passed proportion of items from BOTH ends of the passed
@@ -718,7 +736,7 @@ Returns: trimmed version of list l
     return l[lowercut:uppercut]
 
 
-def trim1(l, proportiontocut, tail='right'):
+def trim1(l, proportiontocut, tail="right"):
     """
 Slices off the passed proportion of items from ONE end of the passed
 list (i.e., if proportiontocut=0.1, slices off 'leftmost' or 'rightmost'
@@ -728,10 +746,10 @@ slice index (i.e., conservatively slices off proportiontocut).
 Usage:   ltrim1 (l,proportiontocut,tail='right')  or set tail='left'
 Returns: trimmed version of list l
 """
-    if tail == 'right':
+    if tail == "right":
         lowercut = 0
         uppercut = len(l) - int(proportiontocut * len(l))
-    elif tail == 'left':
+    elif tail == "left":
         lowercut = int(proportiontocut * len(l))
         uppercut = len(l)
     return l[lowercut:uppercut]
@@ -741,6 +759,7 @@ Returns: trimmed version of list l
 #####  CORRELATION FUNCTIONS  ######
 ####################################
 
+
 def paired(x, y):
     """
 Interactively determines the type of data and then runs the
@@ -749,58 +768,69 @@ appropriated statistic for paired group data.
 Usage:   lpaired(x,y)
 Returns: appropriate statistic name, value, and probability
 """
-    samples = ''
-    while samples not in ['i', 'r', 'I', 'R', 'c', 'C']:
-        print('\nIndependent or related samples, or correlation (i,r,c): ',)
+    samples = ""
+    while samples not in ["i", "r", "I", "R", "c", "C"]:
+        print("\nIndependent or related samples, or correlation (i,r,c): ")
         samples = raw_input()
 
-    if samples in ['i', 'I', 'r', 'R']:
-        print('\nComparing variances ...',)
+    if samples in ["i", "I", "r", "R"]:
+        print("\nComparing variances ...")
         # USE O'BRIEN'S TEST FOR HOMOGENEITY OF VARIANCE, Maxwell & delaney, p.112
         r = obrientransform(x, y)
         f, p = F_oneway(pstat.colex(r, 0), pstat.colex(r, 1))
         if p < 0.05:
-            vartype = 'unequal, p=' + str(round(p, 4))
+            vartype = "unequal, p=" + str(round(p, 4))
         else:
-            vartype = 'equal'
+            vartype = "equal"
         print(vartype)
-        if samples in ['i', 'I']:
-            if vartype[0] == 'e':
+        if samples in ["i", "I"]:
+            if vartype[0] == "e":
                 t, p = ttest_ind(x, y, 0)
-                print('\nIndependent samples t-test:  ', round(t, 4), round(p, 4))
+                print("\nIndependent samples t-test:  ", round(t, 4), round(p, 4))
             else:
                 if len(x) > 20 or len(y) > 20:
                     z, p = ranksums(x, y)
-                    print('\nRank Sums test (NONparametric, n>20):  ', round(z, 4), round(p, 4))
+                    print(
+                        "\nRank Sums test (NONparametric, n>20):  ",
+                        round(z, 4),
+                        round(p, 4),
+                    )
                 else:
                     u, p = mannwhitneyu(x, y)
-                    print('\nMann-Whitney U-test (NONparametric, ns<20):  ', round(u, 4), round(p, 4))
+                    print(
+                        "\nMann-Whitney U-test (NONparametric, ns<20):  ",
+                        round(u, 4),
+                        round(p, 4),
+                    )
         else:  # RELATED SAMPLES
-            if vartype[0] == 'e':
+            if vartype[0] == "e":
                 t, p = ttest_rel(x, y, 0)
-                print('\nRelated samples t-test:  ', round(t, 4), round(p, 4))
+                print("\nRelated samples t-test:  ", round(t, 4), round(p, 4))
             else:
                 t, p = ranksums(x, y)
-                print('\nWilcoxon T-test (NONparametric):  ', round(t, 4), round(p, 4))
+                print("\nWilcoxon T-test (NONparametric):  ", round(t, 4), round(p, 4))
     else:  # CORRELATION ANALYSIS
-        corrtype = ''
-        while corrtype not in ['c', 'C', 'r', 'R', 'd', 'D']:
-            print('\nIs the data Continuous, Ranked, or Dichotomous (c,r,d): ',)
+        corrtype = ""
+        while corrtype not in ["c", "C", "r", "R", "d", "D"]:
+            print("\nIs the data Continuous, Ranked, or Dichotomous (c,r,d): ")
             corrtype = raw_input()
-        if corrtype in ['c', 'C']:
+        if corrtype in ["c", "C"]:
             m, b, r, p, see = linregress(x, y)
-            print('\nLinear regression for continuous variables ...')
-            lol = [['Slope', 'Intercept', 'r', 'Prob', 'SEestimate'], [round(m, 4), round(b, 4), round(r, 4), round(p, 4), round(see, 4)]]
+            print("\nLinear regression for continuous variables ...")
+            lol = [
+                ["Slope", "Intercept", "r", "Prob", "SEestimate"],
+                [round(m, 4), round(b, 4), round(r, 4), round(p, 4), round(see, 4)],
+            ]
             pstat.printcc(lol)
-        elif corrtype in ['r', 'R']:
+        elif corrtype in ["r", "R"]:
             r, p = spearmanr(x, y)
-            print('\nCorrelation for ranked variables ...')
+            print("\nCorrelation for ranked variables ...")
             print("Spearman's r: ", round(r, 4), round(p, 4))
-        else: # DICHOTOMOUS
+        else:  # DICHOTOMOUS
             r, p = pointbiserialr(x, y)
-            print('\nAssuming x contains a dichotomous variable ...')
-            print('Point Biserial r: ', round(r, 4), round(p, 4))
-    print('\n\n')
+            print("\nAssuming x contains a dichotomous variable ...")
+            print("Point Biserial r: ", round(r, 4), round(p, 4))
+    print("\n\n")
     return None
 
 
@@ -815,7 +845,7 @@ Returns: Pearson's r value, two-tailed p-value
 """
     TINY = 1.0e-30
     if len(x) != len(y):
-        raise ValueError('Input values not paired in pearsonr.  Aborting.')
+        raise ValueError("Input values not paired in pearsonr.  Aborting.")
     n = len(x)
     x = map(float, x)
     y = map(float, y)
@@ -823,7 +853,7 @@ Returns: Pearson's r value, two-tailed p-value
     ymean = mean(y)
     r_num = n * (summult(x, y)) - sum(x) * sum(y)
     r_den = math.sqrt((n * ss(x) - square_of_sums(x)) * (n * ss(y) - square_of_sums(y)))
-    r = (r_num / r_den)  # denominator already a float
+    r = r_num / r_den  # denominator already a float
     df = n - 2
     t = r * math.sqrt(df / ((1.0 - r + TINY) * (1.0 + r + TINY)))
     prob = betai(0.5 * df, 0.5, df / float(df + t * t))
@@ -854,7 +884,7 @@ Returns: Spearman's r, two-tailed p-value
 """
     TINY = 1e-30
     if len(x) != len(y):
-        raise ValueError('Input values not paired in spearmanr.  Aborting.')
+        raise ValueError("Input values not paired in spearmanr.  Aborting.")
     n = len(x)
     rankx = rankdata(x)
     ranky = rankdata(y)
@@ -879,12 +909,12 @@ Returns: Point-biserial r, two-tailed p-value
 """
     TINY = 1e-30
     if len(cats) != len(vals):
-        raise ValueError('INPUT VALUES NOT PAIRED IN pointbiserialr.  ABORTING.')
+        raise ValueError("INPUT VALUES NOT PAIRED IN pointbiserialr.  ABORTING.")
     data = zip(cats, vals)
     categories = pstat.unique(cats)
     if len(categories) != 2:
         raise ValueError("Exactly 2 categories required for pointbiserialr().")
-    else:   # there are 2 categories, continue
+    else:  # there are 2 categories, continue
         c1 = [v for i, v in enumerate(vals) if cats[i] == categories[0]]
         c2 = [v for i, v in enumerate(vals) if cats[i] == categories[1]]
         xmean = mean(c1)
@@ -914,7 +944,7 @@ Returns: Kendall's tau, two-tailed p-value
             a1 = x[j] - x[k]
             a2 = y[j] - y[k]
             aa = a1 * a2
-            if (aa):             # neither list has a tie
+            if aa:  # neither list has a tie
                 n1 = n1 + 1
                 n2 = n2 + 1
                 if aa > 0:
@@ -922,7 +952,7 @@ Returns: Kendall's tau, two-tailed p-value
                 else:
                     iss = iss - 1
             else:
-                if (a1):
+                if a1:
                     n1 = n1 + 1
                 else:
                     n2 = n2 + 1
@@ -942,7 +972,7 @@ Returns: slope, intercept, r, two-tailed prob, sterr-of-estimate
 """
     TINY = 1.0e-20
     if len(x) != len(y):
-        raise ValueError('Input values not paired in linregress.  Aborting.')
+        raise ValueError("Input values not paired in linregress.  Aborting.")
     n = len(x)
     x = map(float, x)
     y = map(float, y)
@@ -964,6 +994,7 @@ Returns: slope, intercept, r, two-tailed prob, sterr-of-estimate
 ####################################
 #####  INFERENTIAL STATISTICS  #####
 ####################################
+
 
 def ttest_1samp(a, popmean):
     """
@@ -1017,7 +1048,7 @@ Usage:   lttest_rel(a,b)
 Returns: t-value, two-tailed prob
 """
     if len(a) != len(b):
-        raise ValueError('Unequal length lists in ttest_rel.')
+        raise ValueError("Unequal length lists in ttest_rel.")
     x1 = mean(a)
     x2 = mean(b)
     v1 = var(a)
@@ -1044,9 +1075,9 @@ be equally distributed across all groups.
 Usage:   lchisquare(f_obs, f_exp=None)   f_obs = list of observed cell freq.
 Returns: chisquare-statistic, associated p-value
 """
-    k = len(f_obs)                 # number of groups
+    k = len(f_obs)  # number of groups
     if f_exp == None:
-        f_exp = [sum(f_obs) / float(k)] * len(f_obs) # create k bins with = freq.
+        f_exp = [sum(f_obs) / float(k)] * len(f_obs)  # create k bins with = freq.
     chisq = 0
     for i in range(len(f_obs)):
         o = f_obs[i]
@@ -1083,7 +1114,7 @@ Returns: KS D-value, associated p-value
         if d2 <= d1:
             fn2 = (j2) / float(en2)
             j2 = j2 + 1
-        dt = (fn2 - fn1)
+        dt = fn2 - fn1
         if math.fabs(dt) > math.fabs(d):
             d = dt
     try:
@@ -1109,19 +1140,19 @@ Returns: u-statistic, one-tailed p-value (i.e., p(z(U)))
     n1 = len(x)
     n2 = len(y)
     ranked = rankdata(x + y)
-    rankx = ranked[0:n1]       # get the x-ranks
-    ranky = ranked[n1:]        # the rest are y-ranks
+    rankx = ranked[0:n1]  # get the x-ranks
+    ranky = ranked[n1:]  # the rest are y-ranks
     u1 = n1 * n2 + (n1 * (n1 + 1)) / 2.0 - sum(rankx)  # calc U for x
-    u2 = n1 * n2 - u1                            # remainder is U for y
+    u2 = n1 * n2 - u1  # remainder is U for y
     bigu = max(u1, u2)
     smallu = min(u1, u2)
     proportion = bigu / float(n1 * n2)
     T = math.sqrt(tiecorrect(ranked))  # correction factor for tied scores
     if T == 0:
-        raise ValueError('All numbers are identical in lmannwhitneyu')
+        raise ValueError("All numbers are identical in lmannwhitneyu")
     sd = math.sqrt(T * n1 * n2 * (n1 + n2 + 1) / 12.0)
     z = abs((bigu - n1 * n2 / 2.0) / sd)  # normal approximation for prob calc
-    return smallu, 1.0 - zprob(z) #, proportion
+    return smallu, 1.0 - zprob(z)  # , proportion
 
 
 def tiecorrect(rankvals):
@@ -1137,7 +1168,7 @@ Returns: T correction factor for U or H
     n = len(sorted)
     T = 0.0
     i = 0
-    while (i < n - 1):
+    while i < n - 1:
         if sorted[i] == sorted[i + 1]:
             nties = 1
             while (i < n - 1) and (sorted[i] == sorted[i + 1]):
@@ -1180,7 +1211,7 @@ Usage:   lwilcoxont(x,y)
 Returns: a t-statistic, two-tail probability estimate
 """
     if len(x) != len(y):
-        raise ValueError('Unequal N in wilcoxont.  Aborting.')
+        raise ValueError("Unequal N in wilcoxont.  Aborting.")
     d = []
     for i in range(len(x)):
         diff = x[i] - y[i]
@@ -1223,8 +1254,8 @@ Returns: H-statistic (corrected for ties), associated p-value
     ranked = rankdata(all)
     T = tiecorrect(ranked)
     for i in range(len(args)):
-        args[i] = ranked[0:n[i]]
-        del ranked[0:n[i]]
+        args[i] = ranked[0 : n[i]]
+        del ranked[0 : n[i]]
     rsums = []
     for i in range(len(args)):
         rsums.append(sum(args[i]) ** 2)
@@ -1234,7 +1265,7 @@ Returns: H-statistic (corrected for ties), associated p-value
     h = 12.0 / (totaln * (totaln + 1)) * ssbn - 3 * (totaln + 1)
     df = len(args) - 1
     if T == 0:
-        raise ValueError('All numbers are identical in lkruskalwallish')
+        raise ValueError("All numbers are identical in lkruskalwallish")
     h = h / float(T)
     return h, chisqprob(h, df)
 
@@ -1253,7 +1284,7 @@ Returns: chi-square statistic, associated p-value
 """
     k = len(args)
     if k < 3:
-        raise ValueError('Less than 3 levels.  Friedman test not appropriate.')
+        raise ValueError("Less than 3 levels.  Friedman test not appropriate.")
     n = len(args[0])
     data = map(zip, tuple(args))
     for i in range(len(data)):
@@ -1268,6 +1299,7 @@ Returns: chi-square statistic, associated p-value
 ####################################
 ####  PROBABILITY CALCULATIONS  ####
 ####################################
+
 
 def chisqprob(chisq, df):
     """
@@ -1298,7 +1330,7 @@ Usage:   lchisqprob(chisq,df)
         s = y
     else:
         s = 2.0 * zprob(-math.sqrt(chisq))
-    if (df > 2):
+    if df > 2:
         chisq = 0.5 * (df - 1.0)
         if even:
             z = 1.0
@@ -1310,7 +1342,7 @@ Usage:   lchisqprob(chisq,df)
             else:
                 e = math.log(math.sqrt(math.pi))
             c = math.log(a)
-            while (z <= chisq):
+            while z <= chisq:
                 e = math.log(z) + e
                 s = s + ex(c * z - a - e)
                 z = z + 1.0
@@ -1321,11 +1353,11 @@ Usage:   lchisqprob(chisq,df)
             else:
                 e = 1.0 / math.sqrt(math.pi) / math.sqrt(a)
             c = 0.0
-            while (z <= chisq):
+            while z <= chisq:
                 e = e * (a / float(z))
                 c = c + e
                 z = z + 1.0
-            return (c * y + s)
+            return c * y + s
     else:
         return s
 
@@ -1340,7 +1372,34 @@ Usage:   lerfcc(x)
     z = abs(x)
     t = 1.0 / (1.0 + 0.5 * z)
     ans = t * math.exp(
-        -z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))))
+        -z * z
+        - 1.26551223
+        + t
+        * (
+            1.00002368
+            + t
+            * (
+                0.37409196
+                + t
+                * (
+                    0.09678418
+                    + t
+                    * (
+                        -0.18628806
+                        + t
+                        * (
+                            0.27886807
+                            + t
+                            * (
+                                -1.13520398
+                                + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277))
+                            )
+                        )
+                    )
+                )
+            )
+        )
+    )
     if x >= 0:
         return ans
     else:
@@ -1358,34 +1417,105 @@ Adapted from z.c in Gary Perlman's |Stat.
 
 Usage:   lzprob(z)
 """
-    Z_MAX = 6.0    # maximum meaningful z-value
+    Z_MAX = 6.0  # maximum meaningful z-value
     if z == 0.0:
         x = 0.0
     else:
         y = 0.5 * math.fabs(z)
         if y >= (Z_MAX * 0.5):
             x = 1.0
-        elif (y < 1.0):
+        elif y < 1.0:
             w = y * y
-            x = ((((((((0.000124818987 * w
-                        - 0.001075204047) * w + 0.005198775019) * w
-                      - 0.019198292004) * w + 0.059054035642) * w
-                    - 0.151968751364) * w + 0.319152932694) * w
-                  - 0.531923007300) * w + 0.797884560593) * y * 2.0
+            x = (
+                (
+                    (
+                        (
+                            (
+                                (
+                                    (
+                                        (
+                                            (0.000124818987 * w - 0.001075204047) * w
+                                            + 0.005198775019
+                                        )
+                                        * w
+                                        - 0.019198292004
+                                    )
+                                    * w
+                                    + 0.059054035642
+                                )
+                                * w
+                                - 0.151968751364
+                            )
+                            * w
+                            + 0.319152932694
+                        )
+                        * w
+                        - 0.531923007300
+                    )
+                    * w
+                    + 0.797884560593
+                )
+                * y
+                * 2.0
+            )
         else:
             y = y - 2.0
-            x = (((((((((((((-0.000045255659 * y
-                             + 0.000152529290) * y - 0.000019538132) * y
-                           - 0.000676904986) * y + 0.001390604284) * y
-                         - 0.000794620820) * y - 0.002034254874) * y
-                       + 0.006549791214) * y - 0.010557625006) * y
-                     + 0.011630447319) * y - 0.009279453341) * y
-                   + 0.005353579108) * y - 0.002141268741) * y
-                 + 0.000535310849) * y + 0.999936657524
+            x = (
+                (
+                    (
+                        (
+                            (
+                                (
+                                    (
+                                        (
+                                            (
+                                                (
+                                                    (
+                                                        (
+                                                            (
+                                                                -0.000045255659 * y
+                                                                + 0.000152529290
+                                                            )
+                                                            * y
+                                                            - 0.000019538132
+                                                        )
+                                                        * y
+                                                        - 0.000676904986
+                                                    )
+                                                    * y
+                                                    + 0.001390604284
+                                                )
+                                                * y
+                                                - 0.000794620820
+                                            )
+                                            * y
+                                            - 0.002034254874
+                                        )
+                                        * y
+                                        + 0.006549791214
+                                    )
+                                    * y
+                                    - 0.010557625006
+                                )
+                                * y
+                                + 0.011630447319
+                            )
+                            * y
+                            - 0.009279453341
+                        )
+                        * y
+                        + 0.005353579108
+                    )
+                    * y
+                    - 0.002141268741
+                )
+                * y
+                + 0.000535310849
+            ) * y + 0.999936657524
     if z > 0.0:
-        prob = ((x + 1.0) * 0.5)
+        prob = (x + 1.0) * 0.5
     else:
-        prob = ((1.0 - x) * 0.5)
+        prob = (1.0 - x) * 0.5
     return prob
 
 
@@ -1407,7 +1537,7 @@ Usage:   lksprob(alam)
             return sum
         fac = -fac
         termbf = math.fabs(term)
-    return 1.0             # Get here only if fails to converge; was 0.0!!
+    return 1.0  # Get here only if fails to converge; was 0.0!!
 
 
 def fprob(dfnum, dfden, F):
@@ -1451,9 +1581,10 @@ def betacf(a, b, x):
         bm = bp / bpp
         az = app / bpp
         bz = 1.0
-        if (abs(az - aold) < (EPS * abs(az))):
+        if abs(az - aold) < (EPS * abs(az)):
             return az
-    print('a or b too big, or ITMAX too small in Betacf.')
+    print("a or b too big, or ITMAX too small in Betacf.")
+
 
 def gammln(xx):
     """
@@ -1464,7 +1595,14 @@ def gammln(xx):
     Usage:   lgammln(xx)
     """
 
-    coeff = [76.18009173, -86.50532033, 24.01409822, -1.231739516, 0.120858003e-2, -0.536382e-5]
+    coeff = [
+        76.18009173,
+        -86.50532033,
+        24.01409822,
+        -1.231739516,
+        0.120858003e-2,
+        -0.536382e-5,
+    ]
     x = xx - 1.0
     tmp = x + 5.5
     tmp = tmp - (x + 0.5) * math.log(tmp)
@@ -1487,15 +1625,21 @@ using the betacf function.  (Adapted from: Numerical Recipies in C.)
 
 Usage:   lbetai(a,b,x)
 """
-    if (x < 0.0 or x > 1.0):
-        raise ValueError('Bad x in lbetai')
+    if x < 0.0 or x > 1.0:
+        raise ValueError("Bad x in lbetai")
 
-    if (x == 0.0 or x == 1.0):
+    if x == 0.0 or x == 1.0:
         bt = 0.0
     else:
-        bt = math.exp(gammln(a + b) - gammln(a) - gammln(b) + a * math.log(x) + b * math.log(1.0 - x))
+        bt = math.exp(
+            gammln(a + b)
+            - gammln(a)
+            - gammln(b)
+            + a * math.log(x)
+            + b * math.log(1.0 - x)
+        )
 
-    if (x < (a + 1.0) / (a + b + 2.0)):
+    if x < (a + 1.0) / (a + b + 2.0):
         return bt * betacf(a, b, x) / float(a)
     else:
         return 1.0 - bt * betacf(b, a, 1.0 - x) / float(b)
@@ -1504,6 +1648,7 @@ Usage:   lbetai(a,b,x)
 ####################################
 #######  ANOVA CALCULATIONS  #######
 ####################################
+
 
 def F_oneway(*lists):
     """
@@ -1514,7 +1659,7 @@ Usage:   F_oneway(*lists)    where *lists is any number of lists, one per
                                   treatment group
 Returns: F value, one-tailed p-value
 """
-    a = len(lists)           # ANOVA on 'a' groups, each in it's own list
+    a = len(lists)  # ANOVA on 'a' groups, each in it's own list
     means = [0] * a
     vars = [0] * a
     ns = [0] * a
@@ -1551,23 +1696,24 @@ Returns an F-statistic given the following:
 
 Usage:   lF_value(ER,EF,dfnum,dfden)
 """
-    return ((ER - EF) / float(dfnum) / (EF / float(dfden)))
+    return (ER - EF) / float(dfnum) / (EF / float(dfden))
 
 
-
-def incr(l, cap):        # to increment a list up to a max-list of 'cap'
+def incr(l, cap):  # to increment a list up to a max-list of 'cap'
     """
 Simulate a counting system from an n-dimensional list.
 
 Usage:   lincr(l,cap)   l=list to increment, cap=max values for each list pos'n
 Returns: next set of values for list l, OR -1 (if overflow)
 """
-    l[0] = l[0] + 1     # e.g., [0,0,0] --> [2,4,3] (=cap)
+    l[0] = l[0] + 1  # e.g., [0,0,0] --> [2,4,3] (=cap)
     for i in range(len(l)):
-        if l[i] > cap[i] and i < len(l) - 1: # if carryover AND not done
+        if l[i] > cap[i] and i < len(l) - 1:  # if carryover AND not done
             l[i] = 0
             l[i + 1] = l[i + 1] + 1
-        elif l[i] > cap[i] and i == len(l) - 1: # overflow past last column, must be finished
+        elif (
+            l[i] > cap[i] and i == len(l) - 1
+        ):  # overflow past last column, must be finished
             l = -1
     return l
 
@@ -1650,7 +1796,7 @@ Returns: sorted-inlist, sorting-index-vector (for original list)
     n = len(inlist)
     svec = copy.deepcopy(inlist)
     ivec = range(n)
-    gap = n / 2   # integer division needed
+    gap = n / 2  # integer division needed
     while gap > 0:
         for i in range(gap, n):
             for j in range(i - gap, -1, -gap):
@@ -1714,5 +1860,3 @@ Usage:   lfindwithin(data)     data in |Stat format
         if len(factsubjs) == len(allsubjs):  # fewer Ss than scores on this factor?
             withinvec = withinvec + (1 << col)
     return withinvec
-
-

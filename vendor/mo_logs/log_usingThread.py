@@ -21,12 +21,16 @@ DEBUG = False
 
 
 class StructuredLogger_usingThread(StructuredLogger):
-
     def __init__(self, logger):
         if not isinstance(logger, StructuredLogger):
             Log.error("Expecting a StructuredLogger")
 
-        self.queue = Queue("Queue for " + self.__class__.__name__, max=10000, silent=True, allow_add_after_close=True)
+        self.queue = Queue(
+            "Queue for " + self.__class__.__name__,
+            max=10000,
+            silent=True,
+            allow_add_after_close=True,
+        )
         self.logger = logger
 
         def worker(logger, please_stop):
@@ -40,13 +44,20 @@ class StructuredLogger_usingThread(StructuredLogger):
                         else:
                             logger.write(**log)
             except Exception as e:
-                print("problem in " + StructuredLogger_usingThread.__name__ + ": " + str(e))
+                print(
+                    "problem in "
+                    + StructuredLogger_usingThread.__name__
+                    + ": "
+                    + str(e)
+                )
             finally:
                 Log.note("stop the child")
                 logger.stop()
 
         self.thread = Thread("Thread for " + self.__class__.__name__, worker, logger)
-        self.thread.parent.remove_child(self.thread)  # LOGGING WILL BE RESPONSIBLE FOR THREAD stop()
+        self.thread.parent.remove_child(
+            self.thread
+        )  # LOGGING WILL BE RESPONSIBLE FOR THREAD stop()
         self.thread.start()
 
     def write(self, template, params):
@@ -68,4 +79,3 @@ class StructuredLogger_usingThread(StructuredLogger):
 
         with suppress_exception:
             self.queue.close()
-

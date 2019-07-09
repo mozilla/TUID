@@ -47,7 +47,9 @@ FILE_SIZE_LIMIT = 100 * 1024 * 1024
 MIN_READ_SIZE = 8 * 1024
 ZIP_REQUEST = False
 
-default_headers = Data()  # TODO: MAKE THIS VARIABLE A SPECIAL TYPE OF EXPECTED MODULE PARAMETER SO IT COMPLAINS IF NOT SET
+default_headers = (
+    Data()
+)  # TODO: MAKE THIS VARIABLE A SPECIAL TYPE OF EXPECTED MODULE PARAMETER SO IT COMPLAINS IF NOT SET
 default_timeout = 600
 DEFAULTS = {
     "allow_redirects": True,
@@ -55,7 +57,7 @@ DEFAULTS = {
     "verify": True,
     "timeout": 600,
     "zip": False,
-    "retry": {"times": 1, "sleep": 0, "http": False}
+    "retry": {"times": 1, "sleep": 0, "http": False},
 }
 _warning_sent = False
 request_count = 0
@@ -82,12 +84,14 @@ def request(method, url, headers=None, zip=None, retry=None, **kwargs):
     global request_count
 
     if not _warning_sent and not default_headers:
-        Log.warning(text_type(
-            "The pyLibrary.env.http module was meant to add extra " +
-            "default headers to all requests, specifically the 'Referer' " +
-            "header with a URL to the project. Use the `pyLibrary.debug.constants.set()` " +
-            "function to set `pyLibrary.env.http.default_headers`"
-        ))
+        Log.warning(
+            text_type(
+                "The pyLibrary.env.http module was meant to add extra "
+                + "default headers to all requests, specifically the 'Referer' "
+                + "header with a URL to the project. Use the `pyLibrary.debug.constants.set()` "
+                + "function to set `pyLibrary.env.http.default_headers`"
+            )
+        )
     _warning_sent = True
 
     if isinstance(url, list):
@@ -105,9 +109,9 @@ def request(method, url, headers=None, zip=None, retry=None, **kwargs):
                 failures.append(e)
         Log.error(u"Tried {{num}} urls", num=len(url), cause=failures)
 
-    if 'session' in kwargs:
-        session = kwargs['session']
-        del kwargs['session']
+    if "session" in kwargs:
+        session = kwargs["session"]
+        del kwargs["session"]
         sess = Null
     else:
         sess = session = sessions.Session()
@@ -115,38 +119,40 @@ def request(method, url, headers=None, zip=None, retry=None, **kwargs):
     with closing(sess):
         if PY2 and isinstance(url, text_type):
             # httplib.py WILL **FREAK OUT** IF IT SEES ANY UNICODE
-            url = url.encode('ascii')
+            url = url.encode("ascii")
 
         try:
-            set_default(kwargs, {"zip":zip, "retry": retry}, DEFAULTS)
+            set_default(kwargs, {"zip": zip, "retry": retry}, DEFAULTS)
             _to_ascii_dict(kwargs)
 
             # HEADERS
-            headers = kwargs['headers'] = unwrap(set_default(headers, session.headers, default_headers))
+            headers = kwargs["headers"] = unwrap(
+                set_default(headers, session.headers, default_headers)
+            )
             _to_ascii_dict(headers)
-            del kwargs['headers']
+            del kwargs["headers"]
 
             # RETRY
-            retry = wrap(kwargs['retry'])
+            retry = wrap(kwargs["retry"])
             if isinstance(retry, Number):
-                retry = set_default({"times":retry}, DEFAULTS['retry'])
+                retry = set_default({"times": retry}, DEFAULTS["retry"])
             if isinstance(retry.sleep, Duration):
                 retry.sleep = retry.sleep.seconds
-            del kwargs['retry']
+            del kwargs["retry"]
 
             # JSON
-            if 'json' in kwargs:
-                kwargs['data'] = value2json(kwargs['json']).encode('utf8')
-                del kwargs['json']
+            if "json" in kwargs:
+                kwargs["data"] = value2json(kwargs["json"]).encode("utf8")
+                del kwargs["json"]
 
             # ZIP
-            set_default(headers, {'Accept-Encoding': 'compress, gzip'})
+            set_default(headers, {"Accept-Encoding": "compress, gzip"})
 
-            if kwargs['zip'] and len(coalesce(kwargs.get('data'))) > 1000:
-                compressed = convert.bytes2zip(kwargs['data'])
-                headers['content-encoding'] = 'gzip'
-                kwargs['data'] = compressed
-            del kwargs['zip']
+            if kwargs["zip"] and len(coalesce(kwargs.get("data"))) > 1000:
+                compressed = convert.bytes2zip(kwargs["data"])
+                headers["content-encoding"] = "gzip"
+                kwargs["data"] = compressed
+            del kwargs["zip"]
         except Exception as e:
             Log.error(u"Request setup failure on {{url}}", url=url, cause=e)
 
@@ -156,23 +162,47 @@ def request(method, url, headers=None, zip=None, retry=None, **kwargs):
                 Till(seconds=retry.sleep).wait()
 
             try:
-                DEBUG and Log.note(u"http {{method|upper}} to {{url}}", method=method, url=text_type(url))
+                DEBUG and Log.note(
+                    u"http {{method|upper}} to {{url}}",
+                    method=method,
+                    url=text_type(url),
+                )
                 request_count += 1
-                return session.request(method=method, headers=headers, url=str(url), **kwargs)
+                return session.request(
+                    method=method, headers=headers, url=str(url), **kwargs
+                )
             except Exception as e:
                 e = Except.wrap(e)
-                if retry['http'] and str(url).startswith("https://") and "EOF occurred in violation of protocol" in e:
+                if (
+                    retry["http"]
+                    and str(url).startswith("https://")
+                    and "EOF occurred in violation of protocol" in e
+                ):
                     url = URL("http://" + str(url)[8:])
-                    Log.note("Changed {{url}} to http due to SSL EOF violation.", url=str(url))
+                    Log.note(
+                        "Changed {{url}} to http due to SSL EOF violation.",
+                        url=str(url),
+                    )
                 errors.append(e)
 
         if " Read timed out." in errors[0]:
-            Log.error(u"Tried {{times}} times: Timeout failure (timeout was {{timeout}}", timeout=kwargs['timeout'], times=retry.times, cause=errors[0])
+            Log.error(
+                u"Tried {{times}} times: Timeout failure (timeout was {{timeout}}",
+                timeout=kwargs["timeout"],
+                times=retry.times,
+                cause=errors[0],
+            )
         else:
-            Log.error(u"Tried {{times}} times: Request failure of {{url}}", url=url, times=retry.times, cause=errors[0])
+            Log.error(
+                u"Tried {{times}} times: Request failure of {{url}}",
+                url=url,
+                times=retry.times,
+                cause=errors[0],
+            )
 
 
 if PY2:
+
     def _to_ascii_dict(headers):
         if headers is None:
             return
@@ -180,18 +210,21 @@ if PY2:
             if isinstance(k, text_type):
                 del headers[k]
                 if isinstance(v, text_type):
-                    headers[k.encode('ascii')] = v.encode('ascii')
+                    headers[k.encode("ascii")] = v.encode("ascii")
                 else:
-                    headers[k.encode('ascii')] = v
+                    headers[k.encode("ascii")] = v
             elif isinstance(v, text_type):
-                headers[k] = v.encode('ascii')
+                headers[k] = v.encode("ascii")
+
+
 else:
+
     def _to_ascii_dict(headers):
         pass
 
 
 def get(url, **kwargs):
-    return HttpResponse(request('get', url, **kwargs))
+    return HttpResponse(request("get", url, **kwargs))
 
 
 def get_json(url, **kwargs):
@@ -210,26 +243,26 @@ def get_json(url, **kwargs):
 
 
 def options(url, **kwargs):
-    return HttpResponse(request('options', url, **kwargs))
+    return HttpResponse(request("options", url, **kwargs))
 
 
 def head(url, **kwargs):
-    return HttpResponse(request('head', url, **kwargs))
+    return HttpResponse(request("head", url, **kwargs))
 
 
 def post(url, **kwargs):
-    return HttpResponse(request('post', url, **kwargs))
+    return HttpResponse(request("post", url, **kwargs))
 
 
 def post_json(url, **kwargs):
     """
     ASSUME RESPONSE IN IN JSON
     """
-    if 'json' in kwargs:
-        kwargs['data'] = unicode2utf8(value2json(kwargs['json']))
-        del kwargs['json']
-    elif 'data' in kwargs:
-        kwargs['data'] = unicode2utf8(value2json(kwargs['data']))
+    if "json" in kwargs:
+        kwargs["data"] = unicode2utf8(value2json(kwargs["json"]))
+        del kwargs["json"]
+    elif "data" in kwargs:
+        kwargs["data"] = unicode2utf8(value2json(kwargs["data"]))
     else:
         Log.error(u"Expecting `json` parameter")
     response = post(url, **kwargs)
@@ -237,23 +270,32 @@ def post_json(url, **kwargs):
     if response.status_code not in [200, 201, 202]:
 
         if "template" in details:
-            Log.error(u"Bad response code {{code}}", code=response.status_code, cause=Except.wrap(details))
+            Log.error(
+                u"Bad response code {{code}}",
+                code=response.status_code,
+                cause=Except.wrap(details),
+            )
         else:
-            Log.error(u"Bad response code {{code}}\n{{details}}", code=response.status_code, details=details)
+            Log.error(
+                u"Bad response code {{code}}\n{{details}}",
+                code=response.status_code,
+                details=details,
+            )
     else:
         return details
 
+
 def put(url, **kwargs):
-    return HttpResponse(request('put', url, **kwargs))
+    return HttpResponse(request("put", url, **kwargs))
 
 
 def patch(url, **kwargs):
-    return HttpResponse(request('patch', url, **kwargs))
+    return HttpResponse(request("patch", url, **kwargs))
 
 
 def delete(url, **kwargs):
-    kwargs.setdefault('stream', False)
-    return HttpResponse(request('delete', url, **kwargs))
+    kwargs.setdefault("stream", False)
+    return HttpResponse(request("delete", url, **kwargs))
 
 
 class HttpResponse(Response):
@@ -272,6 +314,7 @@ class HttpResponse(Response):
         if self._content is not False:
             self._cached_content = self._content
         elif self._cached_content is None:
+
             def read(size):
                 if self.raw._fp.fp is not None:
                     return self.raw.read(amt=size, decode_content=True)
@@ -290,18 +333,26 @@ class HttpResponse(Response):
     def all_lines(self):
         return self.get_all_lines()
 
-    def get_all_lines(self, encoding='utf8', flexible=False):
+    def get_all_lines(self, encoding="utf8", flexible=False):
         try:
             iterator = self.raw.stream(4096, decode_content=False)
 
-            if self.headers.get('content-encoding') == 'gzip':
-                return ibytes2ilines(icompressed2ibytes(iterator), encoding=encoding, flexible=flexible)
-            elif self.headers.get('content-type') == 'application/zip':
-                return ibytes2ilines(icompressed2ibytes(iterator), encoding=encoding, flexible=flexible)
-            elif self.url.endswith('.gz'):
-                return ibytes2ilines(icompressed2ibytes(iterator), encoding=encoding, flexible=flexible)
+            if self.headers.get("content-encoding") == "gzip":
+                return ibytes2ilines(
+                    icompressed2ibytes(iterator), encoding=encoding, flexible=flexible
+                )
+            elif self.headers.get("content-type") == "application/zip":
+                return ibytes2ilines(
+                    icompressed2ibytes(iterator), encoding=encoding, flexible=flexible
+                )
+            elif self.url.endswith(".gz"):
+                return ibytes2ilines(
+                    icompressed2ibytes(iterator), encoding=encoding, flexible=flexible
+                )
             else:
-                return ibytes2ilines(iterator, encoding=encoding, flexible=flexible, closer=self.close)
+                return ibytes2ilines(
+                    iterator, encoding=encoding, flexible=flexible, closer=self.close
+                )
         except Exception as e:
             Log.error(u"Can not read content", cause=e)
 
@@ -327,7 +378,7 @@ class Generator_usingStream(object):
                 stream=stream,
                 done_read=0,
                 file=file_,
-                buffer=mmap(file_.fileno(), length)
+                buffer=mmap(file_.fileno(), length),
             )
         else:
             self.shared = _shared
@@ -358,7 +409,7 @@ class Generator_usingStream(object):
                     s.done_read = s.length
                     s.stream.close()
         try:
-            return s.buffer[self.position:end]
+            return s.buffer[self.position : end]
         finally:
             self.position = end
 
@@ -368,7 +419,7 @@ class Generator_usingStream(object):
                 s, self.shared = self.shared, None
                 s.ref_count -= 1
 
-                if s.ref_count==0:
+                if s.ref_count == 0:
                     try:
                         s.stream.close()
                     except Exception:

@@ -41,7 +41,7 @@ def test_transactionqueries():
             assert DOUBLE_TRANSACTION_ERROR in e
         result2 = t.query("SELECT * FROM my_table")
 
-    assert result2.data[0][0] == 'a'
+    assert result2.data[0][0] == "a"
 
 
 def test_two_commands():
@@ -67,7 +67,7 @@ def test_nested_transaction1():
 
         result = t.query("SELECT * FROM my_table")
         assert len(result.data) == 1
-        assert result.data[0][0] == 'a'
+        assert result.data[0][0] == "a"
 
         with db.transaction() as t2:
             t2.execute("INSERT INTO my_table VALUES ('b')")
@@ -85,7 +85,7 @@ def test_nested_transaction2():
 
             result = t2.query("SELECT * FROM my_table")
             assert len(result.data) == 1
-            assert result.data[0][0] == 'b'
+            assert result.data[0][0] == "b"
 
         t.execute("INSERT INTO my_table VALUES ('a')")
 
@@ -146,13 +146,14 @@ def _teardown(db, threads):
 
     result = db.query("SELECT * FROM my_table ORDER BY value")
     assert len(result.data) == 2
-    assert result.data[0][0] == 'a'
-    assert result.data[1][0] == 'b'
+    assert result.data[0][0] == "a"
+    assert result.data[1][0] == "b"
 
 
 def _perform(c, i):
     c[i].begin.go()
     c[i].done.wait()
+
 
 #
 # SEQUENCE_COMBOS = [
@@ -164,5 +165,3 @@ def _perform(c, i):
 #     "01011100", "01100011", "01100101", "01100110", "01101001", "01101010",
 #     "01101100", "01110001", "01110010", "01110100", "01111000"
 # ]
-
-

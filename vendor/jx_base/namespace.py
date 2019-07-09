@@ -58,11 +58,9 @@ class Namespace(object):
 
 
 def convert_list(operator, operand):
-    if operand==None:
+    if operand == None:
         return None
     elif isinstance(operand, Mapping):
         return operator(operand)
     else:
         return map(operator, operand)
-
-

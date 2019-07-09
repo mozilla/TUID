@@ -92,7 +92,7 @@ def _binary_op(op):
 g = globals()
 MATH = g["math"].__dict__.copy()
 for k, f in MATH.items():
-    if hasattr(f, '__call__'):
+    if hasattr(f, "__call__"):
         g[k] = _apply(f)
 
 MORE_MATH = {
@@ -102,7 +102,7 @@ MORE_MATH = {
     "multiply": lambda a, b: a * b,
     "mult": lambda a, b: a * b,
     "divide": lambda a, b: a / b,
-    "div": lambda a, b: a / b
+    "div": lambda a, b: a / b,
 }
 for k, f in MORE_MATH.items():
     g[k] = _apply(f)
@@ -114,17 +114,12 @@ AGGS = {
     "argmax": max,
     "argmin": min,
     "mean": lambda v: sum(v) / float(len(v)) if v else None,
-    "var": lambda vs: sum([v ** 2 for v in vs]) - (sum(vs) / float(len(vs))) ** 2
+    "var": lambda vs: sum([v ** 2 for v in vs]) - (sum(vs) / float(len(vs))) ** 2,
 }
 for k, f in AGGS.items():  # AGGREGATION
     g[k] = _reduce(f)
 
-IGNORE = [
-    "__array__",
-    "__array_interface__",
-    "__array_struct__",
-    "__coerce__"
-]
+IGNORE = ["__array__", "__array_interface__", "__array_struct__", "__coerce__"]
 
 
 def dot(a, b):
@@ -224,6 +219,9 @@ for k, f in AGGS.items():
 
 # DEFINE THE OPERATORS ON CLASS
 for k, op in MORE_MATH.items():
-    _array.__dict__["__" + k + "__"] = lambda self, other: _binary_op(op, self._value, other)
-    _array.__dict__["__r" + k + "__"] = lambda self, other: _binary_op(op, self._value, other)
-
+    _array.__dict__["__" + k + "__"] = lambda self, other: _binary_op(
+        op, self._value, other
+    )
+    _array.__dict__["__r" + k + "__"] = lambda self, other: _binary_op(
+        op, self._value, other
+    )

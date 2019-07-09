@@ -19,14 +19,18 @@ from mo_threads.lock import Lock
 from mo_threads.multiprocess import Process
 from mo_threads.queues import Queue, ThreadedQueue
 from mo_threads.signal import Signal
-from mo_threads.threads import Thread, THREAD_STOP, THREAD_TIMEOUT, MainThread, stop_main_thread, MAIN_THREAD
+from mo_threads.threads import (
+    Thread,
+    THREAD_STOP,
+    THREAD_TIMEOUT,
+    MainThread,
+    stop_main_thread,
+    MAIN_THREAD,
+)
 from mo_threads.till import Till
 
 MAIN_THREAD.timers = Thread.run("timers daemon", till.daemon)
 MAIN_THREAD.children.remove(threads.MAIN_THREAD.timers)
-
-
-
 
 
 # from threading import Thread as _threading_Thread
@@ -81,4 +85,3 @@ MAIN_THREAD.children.remove(threads.MAIN_THREAD.timers)
 # _threading_Thread.setDaemon = _setDaemon
 #
 #
-

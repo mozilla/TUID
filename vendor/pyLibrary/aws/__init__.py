@@ -41,13 +41,17 @@ class Queue(object):
         aws_access_key_id=None,
         aws_secret_access_key=None,
         debug=False,
-        kwargs=None
+        kwargs=None,
     ):
         self.settings = kwargs
         self.pending = []
 
         if kwargs.region not in [r.name for r in sqs.regions()]:
-            Log.error("Can not find region {{region}} in {{regions}}", region=kwargs.region, regions=[r.name for r in sqs.regions()])
+            Log.error(
+                "Can not find region {{region}} in {{regions}}",
+                region=kwargs.region,
+                regions=[r.name for r in sqs.regions()],
+            )
 
         conn = sqs.connect_to_region(
             region_name=unwrap(kwargs.region),
@@ -56,7 +60,11 @@ class Queue(object):
         )
         self.queue = conn.get_queue(kwargs.name)
         if self.queue == None:
-            Log.error("Can not find queue with name {{queue}} in region {{region}}", queue=kwargs.name, region=kwargs.region)
+            Log.error(
+                "Can not find queue with name {{queue}} in region {{region}}",
+                queue=kwargs.name,
+                region=kwargs.region,
+            )
 
     def __enter__(self):
         return self
@@ -66,7 +74,7 @@ class Queue(object):
 
     def __len__(self):
         attrib = self.queue.get_attributes("ApproximateNumberOfMessages")
-        return int(attrib['ApproximateNumberOfMessages'])
+        return int(attrib["ApproximateNumberOfMessages"])
 
     def add(self, message):
         message = wrap(message)
@@ -138,24 +146,40 @@ def capture_termination_signal(please_stop):
     """
     WILL SIGNAL please_stop WHEN THIS AWS INSTANCE IS DUE FOR SHUTDOWN
     """
+
     def worker(please_stop):
         seen_problem = False
         while not please_stop:
-            request_time = (time.time() - timer.START)/60  # MINUTES
+            request_time = (time.time() - timer.START) / 60  # MINUTES
             try:
-                response = requests.get("http://169.254.169.254/latest/meta-data/spot/termination-time")
+                response = requests.get(
+                    "http://169.254.169.254/latest/meta-data/spot/termination-time"
+                )
                 seen_problem = False
                 if response.status_code not in [400, 404]:
-                    Log.alert("Shutdown AWS Spot Node {{name}} {{type}}", name=machine_metadata.name, type=machine_metadata.aws_instance_type)
+                    Log.alert(
+                        "Shutdown AWS Spot Node {{name}} {{type}}",
+                        name=machine_metadata.name,
+                        type=machine_metadata.aws_instance_type,
+                    )
                     please_stop.go()
             except Exception as e:
                 e = Except.wrap(e)
-                if "Failed to establish a new connection: [Errno 10060]" in e or "A socket operation was attempted to an unreachable network" in e:
-                    Log.note("AWS Spot Detection has shutdown, probably not a spot node, (http://169.254.169.254 is unreachable)")
+                if (
+                    "Failed to establish a new connection: [Errno 10060]" in e
+                    or "A socket operation was attempted to an unreachable network" in e
+                ):
+                    Log.note(
+                        "AWS Spot Detection has shutdown, probably not a spot node, (http://169.254.169.254 is unreachable)"
+                    )
                     return
                 elif seen_problem:
                     # IGNORE THE FIRST PROBLEM
-                    Log.warning("AWS shutdown detection has more than one consecutive problem: (last request {{time|round(1)}} minutes since startup)", time=request_time, cause=e)
+                    Log.warning(
+                        "AWS shutdown detection has more than one consecutive problem: (last request {{time|round(1)}} minutes since startup)",
+                        time=request_time,
+                        cause=e,
+                    )
                 seen_problem = True
 
                 (Till(seconds=61) | please_stop).wait()
@@ -168,7 +192,14 @@ def get_instance_metadata(timeout=None):
     if not isinstance(timeout, (int, float)):
         timeout = Duration(timeout).seconds
 
-    output = wrap({k.replace("-", "_"): v for k, v in boto_utils.get_instance_metadata(timeout=coalesce(timeout, 5), num_retries=2).items()})
+    output = wrap(
+        {
+            k.replace("-", "_"): v
+            for k, v in boto_utils.get_instance_metadata(
+                timeout=coalesce(timeout, 5), num_retries=2
+            ).items()
+        }
+    )
     return output
 
 
@@ -184,6 +215,7 @@ def aws_retry(func):
                     continue
                 else:
                     Log.error("Problem with call to AWS", cause=e)
+
     return output
 
 
@@ -194,6 +226,7 @@ def _get_metadata_from_from_aws(please_stop):
         if ec2:
             machine_metadata.aws_instance_type = ec2.instance_type
             machine_metadata.name = ec2.instance_id
+
 
 Thread.run("get aws machine metadata", _get_metadata_from_from_aws)
 

@@ -1,4 +1,3 @@
-
 # encoding: utf-8
 #
 #
@@ -29,6 +28,7 @@ class Queue(object):
     |     No     |   No    | Multiset |
     +------------+---------+----------+
     """
+
     def __init__(self):
         self.set = set()
         self.list = deque()
