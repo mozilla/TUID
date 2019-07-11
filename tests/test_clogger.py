@@ -75,10 +75,7 @@ def test_tipfilling(clogger):
     new_tip = None
     while num_trys > 0:
         result = clogger.csetlog.search(query)
-        new_tip = (
-            result.hits.hits[0]._source.revnum,
-            result.hits.hits[0]._source.revision,
-        )
+        new_tip = (result.hits.hits[0]._source.revnum, result.hits.hits[0]._source.revision)
         if new_tip:
             if current_tip == new_tip[1]:
                 new_tip = new_tip[1]

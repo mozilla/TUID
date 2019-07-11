@@ -98,11 +98,11 @@ def apply_diff(file, diff):
     # Ignore merges, they have duplicate entries.
     # Variable chnaged is True when this revision has changed the file
     changed = False
-    if diff['merge']:
+    if diff["merge"]:
         return file, changed
-    if file.filename.lstrip('/') == 'dev/null':
+    if file.filename.lstrip("/") == "dev/null":
         file.lines = []
-        return file
+        return file, changed
 
     for f_proc in diff["diffs"]:
         new_fname = f_proc["new"].name.lstrip("/")
@@ -121,9 +121,7 @@ def apply_diff(file, diff):
         f_diff = f_proc["changes"]
         for change in f_diff:
             if change.action == "+":
-                file.add_one(
-                    Line(change.line + 1, is_new_line=True, filename=file.filename)
-                )
+                file.add_one(Line(change.line + 1, is_new_line=True, filename=file.filename))
             elif change.action == "-":
                 file.remove_one(change.line + 1)
         break
