@@ -12,13 +12,13 @@ from mo_logs import Log
 
 
 class Line:
-    '''
+    """
     Extend from this class to use apply_diff
     in other contexts so that other data can
     be moved around alongside the line.
-    '''
+    """
 
-    def __init__(self, linenum, is_new_line=False, filename=''):
+    def __init__(self, linenum, is_new_line=False, filename=""):
         self.line = linenum
         self.is_new_line = is_new_line
         self.filename = filename
@@ -36,16 +36,15 @@ class Line:
 
 
 class SourceFile:
-
     def __init__(self, filename, lines):
-        '''
+        """
         Expects a filename and a list of objects
         that can have an attribute added to them
         if it doesn't already exist.
         :param filename: name of the file
         :param lines: list of data objects extending `Line`
-        '''
-        self.filename = filename.lstrip('/')
+        """
+        self.filename = filename.lstrip("/")
         self.lines = self._format_line_objects(lines) if lines else []
 
     def _format_line_objects(self, lines):
@@ -53,7 +52,7 @@ class SourceFile:
         for lineind, line_obj in enumerate(lines):
             linenum = lineind + 1
 
-            if not hasattr(line_obj, 'line') or not hasattr(line_obj, 'filename'):
+            if not hasattr(line_obj, "line") or not hasattr(line_obj, "filename"):
                 Log.error("Line objects in SourceFile must extend Line class.")
 
             line_obj.line = line_obj.line if line_obj.line else linenum
@@ -73,17 +72,20 @@ class SourceFile:
 
     def add_one(self, new_line_obj):
         start = new_line_obj.line
-        self.lines = self.lines[:start - 1] +\
-                     [new_line_obj] +\
-                     [line_obj.move_down() for line_obj in self.lines[start - 1:]]
+        self.lines = (
+            self.lines[: start - 1]
+            + [new_line_obj]
+            + [line_obj.move_down() for line_obj in self.lines[start - 1 :]]
+        )
 
     def remove_one(self, linenum_to_remove):
-        self.lines = self.lines[:linenum_to_remove - 1] + \
-                     [line_obj.move_up() for line_obj in self.lines[linenum_to_remove:]]
+        self.lines = self.lines[: linenum_to_remove - 1] + [
+            line_obj.move_up() for line_obj in self.lines[linenum_to_remove:]
+        ]
 
 
 def apply_diff(file, diff):
-    '''
+    """
     Using a list of line numbers (`file`), we change the line
     numbers to reflect a given diff and return them. diff must
     be a diff object returned from get_diff(cset, file). Added
@@ -92,7 +94,7 @@ def apply_diff(file, diff):
     :param file: A SourceFile object
     :param diff: unified diff from get_diff
     :return: file, lines_inserted
-    '''
+    """
     # Ignore merges, they have duplicate entries.
     # Variable chnaged is True when this revision has changed the file
     changed = False
@@ -102,60 +104,62 @@ def apply_diff(file, diff):
         file.lines = []
         return file
 
-    for f_proc in diff['diffs']:
-        new_fname = f_proc['new'].name.lstrip('/')
-        old_fname = f_proc['old'].name.lstrip('/')
+    for f_proc in diff["diffs"]:
+        new_fname = f_proc["new"].name.lstrip("/")
+        old_fname = f_proc["old"].name.lstrip("/")
         if new_fname != file.filename and old_fname != file.filename:
             continue
         changed = True
         if old_fname != new_fname:
-            if new_fname == 'dev/null':
+            if new_fname == "dev/null":
                 file.lines = []
                 return file, changed
             # Change the file name so that new lines
             # are correctly created.
             file.filename = new_fname
 
-        f_diff = f_proc['changes']
+        f_diff = f_proc["changes"]
         for change in f_diff:
-            if change.action == '+':
+            if change.action == "+":
                 file.add_one(
                     Line(change.line + 1, is_new_line=True, filename=file.filename)
                 )
-            elif change.action == '-':
+            elif change.action == "-":
                 file.remove_one(change.line + 1)
         break
     return file, changed
 
 
 def apply_diff_backwards(file, diff):
-    '''
+    """
     Reverses the diff and applies it using `apply_diff`.
     :param file: A SourceFile object.
     :param diff: a unified diff from get_diff to be reversed, then applied
     :return:
-    '''
+    """
     new_diffs = []
-    for f_proc in diff['diffs']:
-        new_f_proc = wrap({
-            'old': {'name': f_proc['new'].name},
-            'new': {'name': f_proc['old'].name},
-            'changes': []
-        })
+    for f_proc in diff["diffs"]:
+        new_f_proc = wrap(
+            {
+                "old": {"name": f_proc["new"].name},
+                "new": {"name": f_proc["old"].name},
+                "changes": [],
+            }
+        )
 
         new_changes = []
-        f_diff =  f_proc['changes'].copy()
+        f_diff = f_proc["changes"].copy()
         for change in f_diff:
-            if change.action == '+':
-                change.action = '-'
+            if change.action == "+":
+                change.action = "-"
                 new_changes.append(change)
-            elif change.action == '-':
-                change.action = '+'
+            elif change.action == "-":
+                change.action = "+"
                 new_changes.append(change)
 
         # Reverse it because final changes need to
         # be done first when applied.
-        new_f_proc['changes'] = new_changes[::-1]
+        new_f_proc["changes"] = new_changes[::-1]
         new_diffs.append(new_f_proc)
 
-    return apply_diff(file, {'diffs': new_diffs, 'merge': diff['merge']})
+    return apply_diff(file, {"diffs": new_diffs, "merge": diff["merge"]})

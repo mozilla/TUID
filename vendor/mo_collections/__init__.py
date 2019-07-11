@@ -14,6 +14,7 @@ from __future__ import unicode_literals
 
 from mo_collections.unique_index import UniqueIndex
 
+
 def reverse(values):
     """
     REVERSE - WITH NO SIDE EFFECTS!
@@ -21,5 +22,3 @@ def reverse(values):
     output = list(values)
     output.reverse()
     return output
-
-

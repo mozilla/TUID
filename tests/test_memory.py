@@ -25,17 +25,19 @@ from tuid.util import map_to_array
 _service = None
 GC_DEBUG = False
 
+
 @pytest.fixture
 def service(config, new_db):
     global _service
-    if new_db == 'yes':
+    if new_db == "yes":
         return TUIDService(database=Null, start_workers=False, kwargs=config.tuid)
-    elif new_db == 'no':
+    elif new_db == "no":
         if _service is None:
             _service = TUIDService(kwargs=config.tuid, start_workers=False)
         return _service
     else:
         Log.error("expecting 'yes' or 'no'")
+
 
 @pytest.mark.skip("Used for local memory use testing.")
 def test_annotation_memory(service):
@@ -45,7 +47,7 @@ def test_annotation_memory(service):
 
     gc.set_debug(gc.DEBUG_SAVEALL)
 
-    with open('resources/stressfiles.json', 'r') as f:
+    with open("resources/stressfiles.json", "r") as f:
         files = json.load(f)
 
     total_trials = 1000
@@ -60,7 +62,7 @@ def test_annotation_memory(service):
     for i in range(total_trials):
 
         # Randomize files
-        #files_to_get = [random.choice(files) for _ in range(total_files)]
+        # files_to_get = [random.choice(files) for _ in range(total_files)]
 
         with service.conn.transaction() as t:
             filter = {"terms": {"file": files_to_get}}
@@ -72,8 +74,12 @@ def test_annotation_memory(service):
                 Till(seconds=0.001).wait()
                 result = service.temporal.search(query)
             service.temporal.delete_record(filter)
-            t.execute("DELETE FROM annotations WHERE file IN " + quote_set(files_to_get))
-            t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(files_to_get))
+            t.execute(
+                "DELETE FROM annotations WHERE file IN " + quote_set(files_to_get)
+            )
+            t.execute(
+                "DELETE FROM latestFileMod WHERE file IN " + quote_set(files_to_get)
+            )
 
         if start_mem == -1:
             start_mem = round(process.memory_info().rss / (1000 * 1000), 2)
@@ -88,15 +94,18 @@ def test_annotation_memory(service):
             "Started with {{mem}}, finished with {{endmem}}. Percent currently used is {{pc}}",
             mem=start_mem,
             endmem=end_mem,
-            pc=pc_used
+            pc=pc_used,
         )
-        Log.note("Used {{mem}} Mb since first get_tuids call.", mem=str(end_mem - start_mem))
+        Log.note(
+            "Used {{mem}} Mb since first get_tuids call.", mem=str(end_mem - start_mem)
+        )
 
         if GC_DEBUG:
             Log.note("Uncollected garbage: ")
             pprint.pprint(gc.garbage)
 
             import time
+
             time.sleep(10)
 
         all_end_mems[i] = end_mem

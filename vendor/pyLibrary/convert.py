@@ -65,7 +65,12 @@ def datetime2string(value, format="%Y-%m-%d %H:%M:%S"):
     except Exception as e:
         from mo_logs import Log
 
-        Log.error("Can not format {{value}} with {{format}}", value=value, format=format, cause=e)
+        Log.error(
+            "Can not format {{value}} with {{format}}",
+            value=value,
+            format=format,
+            cause=e,
+        )
 
 
 def datetime2str(value, format="%Y-%m-%d %H:%M:%S"):
@@ -81,7 +86,9 @@ def datetime2unix(d):
         elif isinstance(d, datetime.date):
             epoch = datetime.date(1970, 1, 1)
         else:
-            Log.error("Can not convert {{value}} of type {{type}}",  value= d,  type= d.__class__)
+            Log.error(
+                "Can not convert {{value}} of type {{type}}", value=d, type=d.__class__
+            )
 
         diff = d - epoch
         return Decimal(long(diff.total_seconds() * 1000000)) / 1000000
@@ -101,11 +108,11 @@ def unix2datetime(u):
     try:
         if u == None:
             return None
-        if u == 9999999999: # PYPY BUG https://bugs.pypy.org/issue1697
+        if u == 9999999999:  # PYPY BUG https://bugs.pypy.org/issue1697
             return datetime.datetime(2286, 11, 20, 17, 46, 39)
         return datetime.datetime.utcfromtimestamp(u)
     except Exception as e:
-        Log.error("Can not convert {{value}} to datetime",  value= u, cause=e)
+        Log.error("Can not convert {{value}} to datetime", value=u, cause=e)
 
 
 def milli2datetime(u):
@@ -118,6 +125,7 @@ def dict2Multiset(dic):
     if dic == None:
         return None
     from mo_collections.multiset import Multiset
+
     output = Multiset()
     output.dic = unwrap(dic).copy()
     return output
@@ -132,21 +140,15 @@ def multiset2dict(value):
     return dict(value.dic)
 
 
-def table2list(
-    column_names, # tuple of columns names
-    rows          # list of tuples
-):
+def table2list(column_names, rows):  # tuple of columns names  # list of tuples
     return wrap([dict(zip(column_names, r)) for r in rows])
 
-def table2tab(
-    column_names, # tuple of columns names
-    rows          # list of tuples
-):
+
+def table2tab(column_names, rows):  # tuple of columns names  # list of tuples
     def row(r):
         return "\t".join(map(value2json, r))
 
-    return row(column_names)+"\n"+("\n".join(row(r) for r in rows))
-
+    return row(column_names) + "\n" + ("\n".join(row(r) for r in rows))
 
 
 def list2tab(rows):
@@ -173,11 +175,7 @@ def list2table(rows, column_names=None):
 
     output = [[unwraplist(r.get(k)) for k in keys] for r in rows]
 
-    return wrap({
-        "meta": {"format": "table"},
-        "header": keys,
-        "data": output
-    })
+    return wrap({"meta": {"format": "table"}, "header": keys, "data": output})
 
 
 def list2cube(rows, column_names=None):
@@ -190,16 +188,23 @@ def list2cube(rows, column_names=None):
         keys = list(columns)
 
     data = {k: [] for k in keys}
-    output = wrap({
-        "meta": {"format": "cube"},
-        "edges": [
-            {
-                "name": "rownum",
-                "domain": {"type": "rownum", "min": 0, "max": len(rows), "interval": 1}
-            }
-        ],
-        "data": data
-    })
+    output = wrap(
+        {
+            "meta": {"format": "cube"},
+            "edges": [
+                {
+                    "name": "rownum",
+                    "domain": {
+                        "type": "rownum",
+                        "min": 0,
+                        "max": len(rows),
+                        "interval": 1,
+                    },
+                }
+            ],
+            "data": data,
+        }
+    )
 
     for r in rows:
         for k in keys:
@@ -312,6 +317,7 @@ def quote2string(value):
 
 # RETURN PYTHON CODE FOR THE SAME
 
+
 def value2code(value):
     return text_type(repr(value))
 
@@ -319,7 +325,7 @@ def value2code(value):
 def DataFrame2string(df, columns=None):
     output = StringIO.StringIO()
     try:
-        df.to_csv(output, sep="\t", header=True, cols=columns, engine='python')
+        df.to_csv(output, sep="\t", header=True, cols=columns, engine="python")
         return output.getvalue()
     finally:
         output.close()
@@ -346,9 +352,13 @@ def int2hex(value, size):
 
 
 if PY3:
+
     def hex2bytes(value):
         return bytearray.fromhex(value)
+
+
 else:
+
     def hex2bytes(value):
         return value.decode("hex")
 
@@ -370,7 +380,7 @@ def base642bytes(value):
 
 def bytes2base64(value):
     if isinstance(value, bytearray):
-        value=str(value)
+        value = str(value)
     return base64.b64encode(value).decode("utf8")
 
 
@@ -384,7 +394,7 @@ def bytes2sha1(value):
 def value2intlist(value):
     if value == None:
         return []
-    elif hasattr(value, '__iter__'):
+    elif hasattr(value, "__iter__"):
         output = [int(d) for d in value if d != "" and d != None]
         return output
     elif isinstance(value, int):
@@ -393,6 +403,7 @@ def value2intlist(value):
         return []
     else:
         return [int(value)]
+
 
 def value2int(value):
     if value == None:
@@ -411,31 +422,31 @@ def value2number(v):
         try:
             return float(v)
         except Exception as e:
-            Log.error("Not a number ({{value}})",  value= v, cause=e)
+            Log.error("Not a number ({{value}})", value=v, cause=e)
 
 
 def latin12unicode(value):
     if isinstance(value, text_type):
         Log.error("can not convert unicode from latin1")
     try:
-        return text_type(value.decode('latin1'))
+        return text_type(value.decode("latin1"))
     except Exception as e:
         Log.error("Can not convert {{value|quote}} to unicode", value=value)
 
 
 def pipe2value(value):
     type = value[0]
-    if type == '0':
+    if type == "0":
         return None
-    if type == 'n':
+    if type == "n":
         return value2number(value[1::])
 
-    if type != 's' and type != 'a':
-        Log.error("unknown pipe type ({{type}}) in {{value}}",  type= type,  value= value)
+    if type != "s" and type != "a":
+        Log.error("unknown pipe type ({{type}}) in {{value}}", type=type, value=value)
 
     # EXPECTING MOST STRINGS TO NOT HAVE ESCAPED CHARS
     output = _unPipe(value)
-    if type == 's':
+    if type == "s":
         return output
 
     return [pipe2value(v) for v in output.split("|")]
@@ -446,11 +457,12 @@ def zip2bytes(compressed):
     UNZIP DATA
     """
     if hasattr(compressed, "read"):
-        return gzip.GzipFile(fileobj=compressed, mode='r')
+        return gzip.GzipFile(fileobj=compressed, mode="r")
 
     buff = BytesIO(compressed)
-    archive = gzip.GzipFile(fileobj=buff, mode='r')
+    archive = gzip.GzipFile(fileobj=buff, mode="r")
     from pyLibrary.env.big_data import safe_size
+
     return safe_size(archive)
 
 
@@ -460,16 +472,17 @@ def bytes2zip(bytes):
     """
     if hasattr(bytes, "read"):
         buff = TemporaryFile()
-        archive = gzip.GzipFile(fileobj=buff, mode='w')
+        archive = gzip.GzipFile(fileobj=buff, mode="w")
         for b in bytes:
             archive.write(b)
         archive.close()
         buff.seek(0)
         from pyLibrary.env.big_data import FileString, safe_size
+
         return FileString(buff)
 
     buff = BytesIO()
-    archive = gzip.GzipFile(fileobj=buff, mode='w')
+    archive = gzip.GzipFile(fileobj=buff, mode="w")
     archive.write(bytes)
     archive.close()
     return buff.getvalue()
@@ -487,21 +500,20 @@ def ini2value(ini_content):
 
     output = {}
     for section in config.sections():
-        output[section]=s = {}
+        output[section] = s = {}
         for k, v in config.items(section):
-            s[k]=v
+            s[k] = v
     return wrap(output)
 
 
 if PY3:
-    _map2url = {chr(i).encode('latin1'): chr(i) for i in range(32, 256)}
+    _map2url = {chr(i).encode("latin1"): chr(i) for i in range(32, 256)}
     for c in " {}<>;/?:@&=+$,":
         _map2url[c] = "%" + int2hex(ord(c), 2)
 else:
-    _map2url = {chr(i): chr(i).decode('latin1') for i in range(32, 256)}
+    _map2url = {chr(i): chr(i).decode("latin1") for i in range(32, 256)}
     for c in " {}<>;/?:@&=+$,":
         _map2url[c] = "%" + int2hex(ord(c), 2)
-
 
 
 def _unPipe(value):
@@ -513,12 +525,12 @@ def _unPipe(value):
     e = 1
     while True:
         c = value[s + 1]
-        if c == 'p':
-            result = result + value[e:s] + '|'
+        if c == "p":
+            result = result + value[e:s] + "|"
             s += 2
             e = s
-        elif c == '\\':
-            result = result + value[e:s] + '\\'
+        elif c == "\\":
+            result = result + value[e:s] + "\\"
             s += 2
             e = s
         else:
@@ -529,6 +541,7 @@ def _unPipe(value):
             break
     return result + value[e::]
 
+
 json_decoder = json.JSONDecoder().decode
 
 
@@ -536,18 +549,18 @@ def json_schema_to_markdown(schema):
     from jx_python import jx
 
     def _md_code(code):
-        return "`"+code+"`"
+        return "`" + code + "`"
 
     def _md_italic(value):
-        return "*"+value+"*"
+        return "*" + value + "*"
 
     def _inner(schema, parent_name, indent):
         more_lines = []
-        for k,v in schema.items():
+        for k, v in schema.items():
             full_name = concat_field(parent_name, k)
-            details = indent+"* "+_md_code(full_name)
+            details = indent + "* " + _md_code(full_name)
             if v.type:
-                details += " - "+_md_italic(v.type)
+                details += " - " + _md_italic(v.type)
             else:
                 Log.error("{{full_name}} is missing type", full_name=full_name)
             if v.description:
@@ -555,12 +568,12 @@ def json_schema_to_markdown(schema):
             more_lines.append(details)
 
             if v.type in ["object", "array", "nested"]:
-                more_lines.extend(_inner(v.properties, full_name, indent+"  "))
+                more_lines.extend(_inner(v.properties, full_name, indent + "  "))
         return more_lines
 
     lines = []
     if schema.title:
-        lines.append("#"+schema.title)
+        lines.append("#" + schema.title)
 
     lines.append(schema.description)
     lines.append("")
@@ -568,7 +581,7 @@ def json_schema_to_markdown(schema):
     for k, v in jx.sort(schema.properties.items(), 0):
         full_name = k
         if v.type in ["object", "array", "nested"]:
-            lines.append("##"+_md_code(full_name)+" Property")
+            lines.append("##" + _md_code(full_name) + " Property")
             if v.description:
                 lines.append(v.description)
             lines.append("")
@@ -576,7 +589,7 @@ def json_schema_to_markdown(schema):
             if v.type in ["object", "array", "nested"]:
                 lines.extend(_inner(v.properties, full_name, "  "))
         else:
-            lines.append("##"+_md_code(full_name)+" ("+v.type+")")
+            lines.append("##" + _md_code(full_name) + " (" + v.type + ")")
             if v.description:
                 lines.append(v.description)
 
@@ -588,7 +601,9 @@ def table2csv(table_data):
     :param table_data: expecting a list of tuples
     :return: text in nice formatted csv
     """
-    text_data = [tuple(value2json(vals, pretty=True) for vals in rows) for rows in table_data]
+    text_data = [
+        tuple(value2json(vals, pretty=True) for vals in rows) for rows in table_data
+    ]
 
     col_widths = [max(len(text) for text in cols) for cols in zip(*text_data)]
     template = ", ".join(
@@ -598,7 +613,5 @@ def table2csv(table_data):
     text = "\n".join(expand_template(template, d) for d in text_data)
     return text
 
+
 ZeroMoment2dict = mo_math.stats.ZeroMoment2dict
-
-
-

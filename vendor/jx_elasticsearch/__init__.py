@@ -33,7 +33,7 @@ def new_instance(
     timeout=None,  # NUMBER OF SECONDS TO WAIT FOR RESPONSE, OR SECONDS TO WAIT FOR DOWNLOAD (PASSED TO requests)
     wait_for_active_shards=1,  # ES WRITE CONSISTENCY (https://www.elastic.co/guide/en/elasticsearch/reference/1.7/docs-index_.html#index-consistency)
     typed=None,
-    kwargs=None
+    kwargs=None,
 ):
     try:
         known = known_hosts.get((host, port))
@@ -46,18 +46,22 @@ def new_instance(
         version = status.version.number
         if version.startswith("1."):
             from jx_elasticsearch.es14 import ES14
+
             type2container.setdefault("elasticsearch", ES14)
             known_hosts[(host, port)] = ES14
             output = ES14(kwargs=kwargs)
             return output
         elif version.startswith(("5.", "6.")):
             from jx_elasticsearch.es52 import ES52
+
             type2container.setdefault("elasticsearch", ES52)
             known_hosts[(host, port)] = ES52
             output = ES52(kwargs=kwargs)
             return output
         else:
-            Log.error("No jx interpreter for Elasticsearch {{version}}", version=version)
+            Log.error(
+                "No jx interpreter for Elasticsearch {{version}}", version=version
+            )
     except Exception as e:
         Log.error("Can not make an interpreter for Elasticsearch", cause=e)
 
@@ -78,9 +82,14 @@ def post(es, es_query, limit):
                 continue
 
             if not DEBUG and not limit and len(f.terms) == limit:
-                Log.error("Not all data delivered (" + str(len(f.terms)) + "/" + str(f.total) + ") try smaller range")
+                Log.error(
+                    "Not all data delivered ("
+                    + str(len(f.terms))
+                    + "/"
+                    + str(f.total)
+                    + ") try smaller range"
+                )
     except Exception as e:
         Log.error("Error with FromES", e)
 
     return post_result
-

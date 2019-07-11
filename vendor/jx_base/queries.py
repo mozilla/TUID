@@ -33,6 +33,7 @@ def is_variable_name(value):
         return False
     return match.group(0) == value
 
+
 def dequote(s):
     """
     If a string has single or double quotes around it, remove them.
@@ -43,6 +44,7 @@ def dequote(s):
         return s[1:-1]
     return s
 
+
 def is_column_name(col):
     if re.match(r"(\$|\w|\\\.)+(?:\.(\$|\w|\\\.)+)*\.\$\w{6}$", col):
         return True
@@ -51,7 +53,7 @@ def is_column_name(col):
 
 
 def get_property_name(s):
-    if s==".":
+    if s == ".":
         return s
     else:
         return s.lstrip(".")

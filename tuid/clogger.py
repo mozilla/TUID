@@ -26,8 +26,7 @@ from mo_times.durations import DAY
 from pyLibrary.env import http, elasticsearch
 from pyLibrary.sql import sql_list, quote_set
 from tuid import sql
-from tuid.util import HG_URL
-from tuid import insert, delete
+from tuid.util import HG_URL, insert, delete
 
 RETRY = {"times": 3, "sleep": 5}
 SQL_CSET_BATCH_SIZE = 500
@@ -364,10 +363,12 @@ class Clogger:
                 fmt_insert_list.append(cset_entry)
 
         # for _, tmp_insert_list in jx.groupby(fmt_insert_list, size=SQL_CSET_BATCH_SIZE):
-        records = wrap([
-            self._make_record_csetlog(revnum, revision, timestamp)
-            for revnum, revision, timestamp in fmt_insert_list
-        ])
+        records = wrap(
+            [
+                self._make_record_csetlog(revnum, revision, timestamp)
+                for revnum, revision, timestamp in fmt_insert_list
+            ]
+        )
         insert(self.csetlog, records)
 
     def _fill_in_range(
@@ -631,6 +632,7 @@ class Clogger:
                 (please_stop | Till(seconds=CSET_TIP_WAIT_TIME)).wait()
             except Exception as e:
                 Log.warning("Unknown error occurred during tip filling:", cause=e)
+
 
     def get_old_cset_revnum(self, revision):
         self.csets_todo_backwards.add((revision, True))

@@ -56,12 +56,8 @@ class Graph(BaseGraph):
         return self.node_parents[node]
 
     def get_edges(self, node):
-        return [
-            (node, child)
-            for child in self.get_children(node)
-        ] + [
-            (parent, node)
-            for parent in self.get_parents(node)
+        return [(node, child) for child in self.get_children(node)] + [
+            (parent, node) for parent in self.get_parents(node)
         ]
 
     def get_family(self, node):
@@ -69,4 +65,3 @@ class Graph(BaseGraph):
         RETURN ALL ADJACENT NODES
         """
         return self.get_children(node) | self.get_parents(node)
-

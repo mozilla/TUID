@@ -66,7 +66,6 @@ class Relation_usingList(object):
         return [v for k, v in self.all if k == key]
 
 
-
 class Relation(object):
     def __init__(self):
         self.map = dict()

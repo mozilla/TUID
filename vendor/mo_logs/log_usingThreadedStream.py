@@ -36,7 +36,7 @@ class StructuredLogger_usingThreadedStream(StructuredLogger):
             name = stream
             stream = self.stream = eval(stream)
             if name.startswith("sys.") and PY3:
-                self.stream = Data(write=lambda d: stream.write(d.decode('utf8')))
+                self.stream = Data(write=lambda d: stream.write(d.decode("utf8")))
         else:
             name = "stream"
             self.stream = stream
@@ -46,14 +46,26 @@ class StructuredLogger_usingThreadedStream(StructuredLogger):
 
         def utf8_appender(value):
             if isinstance(value, text_type):
-                value = value.encode('utf8')
+                value = value.encode("utf8")
             self.stream.write(value)
 
         appender = utf8_appender
 
-        self.queue = Queue("queue for " + self.__class__.__name__ + "(" + name + ")", max=10000, silent=True)
-        self.thread = Thread("log to " + self.__class__.__name__ + "(" + name + ")", time_delta_pusher, appender=appender, queue=self.queue, interval=0.3)
-        self.thread.parent.remove_child(self.thread)  # LOGGING WILL BE RESPONSIBLE FOR THREAD stop()
+        self.queue = Queue(
+            "queue for " + self.__class__.__name__ + "(" + name + ")",
+            max=10000,
+            silent=True,
+        )
+        self.thread = Thread(
+            "log to " + self.__class__.__name__ + "(" + name + ")",
+            time_delta_pusher,
+            appender=appender,
+            queue=self.queue,
+            interval=0.3,
+        )
+        self.thread.parent.remove_child(
+            self.thread
+        )  # LOGGING WILL BE RESPONSIBLE FOR THREAD stop()
         self.thread.start()
 
     def write(self, template, params):
@@ -109,14 +121,18 @@ def time_delta_pusher(please_stop, appender, queue, interval):
                     expanded = expand_template(log.get("template"), log.get("params"))
                     lines.append(expanded)
             except Exception as e:
-                location = log.get('params', {}).get('location', {})
-                Log.warning("Trouble formatting log from {{location}}", location=location, cause=e)
+                location = log.get("params", {}).get("location", {})
+                Log.warning(
+                    "Trouble formatting log from {{location}}",
+                    location=location,
+                    cause=e,
+                )
                 # SWALLOW ERROR, GOT TO KEEP RUNNING
         try:
-            appender(u"\n".join(lines) + u"\n")
+            appender("\n".join(lines) + "\n")
         except Exception as e:
 
-            sys.stderr.write(str("Trouble with appender: ") + str(e.__class__.__name__) + str("\n"))
+            sys.stderr.write(
+                str("Trouble with appender: ") + str(e.__class__.__name__) + str("\n")
+            )
             # SWALLOW ERROR, MUST KEEP RUNNING
-
-

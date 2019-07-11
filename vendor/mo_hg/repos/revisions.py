@@ -21,39 +21,30 @@ class Revision(Data):
     def __eq__(self, other):
         if other == None:
             return False
-        return (self.branch.name.lower(), self.changeset.id[:12]) == (other.branch.name.lower(), other.changeset.id[:12])
+        return (self.branch.name.lower(), self.changeset.id[:12]) == (
+            other.branch.name.lower(),
+            other.changeset.id[:12],
+        )
 
 
 revision_schema = {
-
-
     "settings": {
         "index.number_of_replicas": 1,
         "index.number_of_shards": 6,
         "analysis": {
-            "tokenizer": {
-                "left250": {
-                    "type": "pattern",
-                    "pattern": "^.{1,250}"
-                }
-            },
+            "tokenizer": {"left250": {"type": "pattern", "pattern": "^.{1,250}"}},
             "analyzer": {
                 "description_limit": {
                     "type": "custom",
                     "tokenizer": "left250",
-                    "filter": [
-                        "lowercase",
-                        "asciifolding"
-                    ]
+                    "filter": ["lowercase", "asciifolding"],
                 }
-            }
-        }
+            },
+        },
     },
     "mappings": {
         "revision": {
-            "_all": {
-                "enabled": False
-            },
+            "_all": {"enabled": False},
             "properties": {
                 "changeset": {
                     "type": "object",
@@ -63,11 +54,8 @@ revision_schema = {
                             "index": True,
                             "type": "text",
                             "fields": {
-                                "raw": {
-                                    "type": "text",
-                                    "analyzer": "description_limit"
-                                }
-                            }
+                                "raw": {"type": "text", "analyzer": "description_limit"}
+                            },
                         },
                         "diff": {
                             "type": "nested",
@@ -83,9 +71,9 @@ revision_schema = {
                                             "properties": {
                                                 "content": {
                                                     "store": True,
-                                                    "type": "keyword"
+                                                    "type": "keyword",
                                                 }
-                                            }
+                                            },
                                         },
                                         "old": {
                                             "type": "object",
@@ -93,18 +81,17 @@ revision_schema = {
                                             "properties": {
                                                 "content": {
                                                     "store": True,
-                                                    "type": "keyword"
+                                                    "type": "keyword",
                                                 }
-                                            }
-                                        }
-                                    }
+                                            },
+                                        },
+                                    },
                                 }
-
-                            }
-                        }
-                    }
+                            },
+                        },
+                    },
                 }
-            }
+            },
         }
-    }
+    },
 }

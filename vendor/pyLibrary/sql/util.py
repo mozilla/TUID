@@ -15,6 +15,7 @@ from __future__ import unicode_literals
 from mo_dots import wrap
 from jx_mysql import esfilter2sqlwhere
 
+
 def find_holes(db_module, db, table_name, column_name, _range, filter=None):
     """
     FIND HOLES IN A DENSE COLUMN OF INTEGERS
@@ -29,10 +30,11 @@ def find_holes(db_module, db, table_name, column_name, _range, filter=None):
         "max": _range.max - 1,
         "column_name": db_module.quote_column(column_name),
         "table_name": db_module.quote_column(table_name),
-        "filter": esfilter2sqlwhere(filter)
+        "filter": esfilter2sqlwhere(filter),
     }
 
-    min_max = db.query("""
+    min_max = db.query(
+        """
         SELECT
             min({{column_name}}) `min`,
             max({{column_name}})+1 `max`
@@ -41,10 +43,13 @@ def find_holes(db_module, db, table_name, column_name, _range, filter=None):
         WHERE
             a.{{column_name}} BETWEEN {{min}} AND {{max}} AND
             {{filter}}
-    """, params)[0]
+    """,
+        params,
+    )[0]
 
     db.execute("SET @last={{min}}-1", {"min": _range.min})
-    ranges = db.query("""
+    ranges = db.query(
+        """
         SELECT
             prev_rev+1 `min`,
             curr_rev `max`
@@ -63,7 +68,9 @@ def find_holes(db_module, db, table_name, column_name, _range, filter=None):
         ) a
         WHERE
             diff>1
-    """, params)
+    """,
+        params,
+    )
 
     if ranges:
         ranges.append({"min": min_max.max, "max": _range.max})
@@ -96,13 +103,3 @@ def values2rows(values, column_names):
                 row[index] = v
         output.append(row)
     return output
-
-
-
-
-
-
-
-
-
-

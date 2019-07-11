@@ -19,11 +19,10 @@ from mo_threads import Queue
 
 
 class StructuredLogger_usingQueue(StructuredLogger):
-
     def __init__(self, name=None):
         queue_name = "log messages to queue"
         if name:
-            queue_name += " "+name
+            queue_name += " " + name
         self.queue = Queue(queue_name)
 
     def write(self, template, params):

@@ -17,9 +17,11 @@ __all__ = ["setcachesize", "gettz", "rebuild"]
 CACHE = []
 CACHESIZE = 10
 
+
 class tzfile(tzfile):
     def __reduce__(self):
         return (gettz, (self._filename,))
+
 
 def getzoneinfofile():
     filenames = sorted(os.listdir(os.path.join(os.path.dirname(__file__))))
@@ -29,14 +31,17 @@ def getzoneinfofile():
             return os.path.join(os.path.dirname(__file__), entry)
     return None
 
+
 ZONEINFOFILE = getzoneinfofile()
 
 del getzoneinfofile
+
 
 def setcachesize(size):
     global CACHESIZE, CACHE
     CACHESIZE = size
     del CACHE[size:]
+
 
 def gettz(name):
     tzinfo = None
@@ -57,22 +62,24 @@ def gettz(name):
             del CACHE[CACHESIZE:]
     return tzinfo
 
+
 def rebuild(filename, tag=None, format="gz"):
     import tempfile, shutil
+
     tmpdir = tempfile.mkdtemp()
     zonedir = os.path.join(tmpdir, "zoneinfo")
     moduledir = os.path.dirname(__file__)
-    if tag: tag = "-"+tag
+    if tag:
+        tag = "-" + tag
     targetname = "zoneinfo%s.tar.%s" % (tag, format)
     try:
         tf = TarFile.open(filename)
         # The "backwards" zone file contains links to other files, so must be
         # processed as last
-        for name in sorted(tf.getnames(),
-                           key=lambda k: k != "backward" and k or "z"):
-            if not (name.endswith(".sh") or
-                    name.endswith(".tab") or
-                    name == "leapseconds"):
+        for name in sorted(tf.getnames(), key=lambda k: k != "backward" and k or "z"):
+            if not (
+                name.endswith(".sh") or name.endswith(".tab") or name == "leapseconds"
+            ):
                 tf.extract(name, tmpdir)
                 filepath = os.path.join(tmpdir, name)
                 os.system("zic -d %s %s" % (zonedir, filepath))

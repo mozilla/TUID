@@ -30,6 +30,7 @@ def _late_import():
     global Log
 
     from mo_dots.objects import datawrap as _datawrap
+
     try:
         from mo_logs import Log
     except Exception:
@@ -44,6 +45,7 @@ class FlatList(list):
     ENCAPSULATES FLAT SLICES ([::]) FOR USE IN WINDOW FUNCTIONS
     https://github.com/klahnakoski/mo-dots/tree/dev/docs#flatlist-is-flat
     """
+
     EMPTY = None
 
     def __init__(self, vals=None):
@@ -62,7 +64,9 @@ class FlatList(list):
             if index.step is not None:
                 if not Log:
                     _late_import()
-                Log.error("slice step must be None, do not know how to deal with values")
+                Log.error(
+                    "slice step must be None, do not know how to deal with values"
+                )
             length = len(_get_list(self))
 
             i = index.start
@@ -110,7 +114,9 @@ class FlatList(list):
         if not Log:
             _late_import()
 
-        return FlatList(vals=[unwrap(coalesce(_datawrap(v), Null)[key]) for v in _get_list(self)])
+        return FlatList(
+            vals=[unwrap(coalesce(_datawrap(v), Null)[key]) for v in _get_list(self)]
+        )
 
     def select(self, key):
         if not Log:
@@ -118,12 +124,16 @@ class FlatList(list):
         Log.error("Not supported.  Use `get()`")
 
     def filter(self, _filter):
-        return FlatList(vals=[unwrap(u) for u in (wrap(v) for v in _get_list(self)) if _filter(u)])
+        return FlatList(
+            vals=[unwrap(u) for u in (wrap(v) for v in _get_list(self)) if _filter(u)]
+        )
 
     def __delslice__(self, i, j):
         if not Log:
             _late_import()
-        Log.error("Can not perform del on slice: modulo arithmetic was performed on the parameters.  You can try using clear()")
+        Log.error(
+            "Can not perform del on slice: modulo arithmetic was performed on the parameters.  You can try using clear()"
+        )
 
     def __clear__(self):
         self.list = []
@@ -152,7 +162,9 @@ class FlatList(list):
             _emit_slice_warning = False
             if not Log:
                 _late_import()
-            Log.warning("slicing is broken in Python 2.7: a[i:j] == a[i+len(a), j] sometimes.  Use [start:stop:step] (see https://github.com/klahnakoski/pyLibrary/blob/master/pyLibrary/dot/README.md#the-slice-operator-in-python27-is-inconsistent)")
+            Log.warning(
+                "slicing is broken in Python 2.7: a[i:j] == a[i+len(a), j] sometimes.  Use [start:stop:step] (see https://github.com/klahnakoski/pyLibrary/blob/master/pyLibrary/dot/README.md#the-slice-operator-in-python27-is-inconsistent)"
+            )
         return self[i:j:]
 
     def __list__(self):
@@ -195,7 +207,6 @@ class FlatList(list):
         if len(lst) != len(other):
             return False
         return all([s == o for s, o in zip(lst, other)])
-
 
     def __add__(self, value):
         if value == None:

@@ -17,14 +17,8 @@ from jx_python.containers.Table_usingDataset import Table_usingDataset
 
 
 class Dataset(object):
-
-
     def __init__(self):
-        self.db = dataset.connect('sqlite:///:memory:')
-
+        self.db = dataset.connect("sqlite:///:memory:")
 
     def get_or_create_table(self, name, uid):
         return Table_usingDataset(name, self.db, primary_id=uid)
-
-
-

@@ -27,4 +27,3 @@ class Snowflake(object):
     @property
     def columns(self):
         raise NotImplemented()
-

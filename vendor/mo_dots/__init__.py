@@ -92,13 +92,15 @@ def split_field(field):
     """
     RETURN field AS ARRAY OF DOT-SEPARATED FIELDS
     """
-    if field == "." or field==None:
+    if field == "." or field == None:
         return []
     elif isinstance(field, text_type) and "." in field:
         if field.startswith(".."):
             remainder = field.lstrip(".")
             back = len(field) - len(remainder) - 1
-            return [-1]*back + [k.replace("\a", ".") for k in remainder.replace("\\.", "\a").split(".")]
+            return [-1] * back + [
+                k.replace("\a", ".") for k in remainder.replace("\\.", "\a").split(".")
+            ]
         else:
             return [k.replace("\a", ".") for k in field.replace("\\.", "\a").split(".")]
     else:
@@ -119,9 +121,9 @@ def concat_field(prefix, suffix):
     if suffix.startswith(".."):
         remainder = suffix.lstrip(".")
         back = len(suffix) - len(remainder) - 1
-        prefix_path=split_field(prefix)
-        if len(prefix_path)>=back:
-            return join_field(split_field(prefix)[:-back]+split_field(remainder))
+        prefix_path = split_field(prefix)
+        if len(prefix_path) >= back:
+            return join_field(split_field(prefix)[:-back] + split_field(remainder))
         else:
             return "." * (back - len(prefix_path)) + "." + remainder
     else:
@@ -145,7 +147,7 @@ def relative_field(field, parent):
     """
     RETURN field PATH WITH RESPECT TO parent
     """
-    if parent==".":
+    if parent == ".":
         return field
 
     field_path = split_field(field)
@@ -170,7 +172,6 @@ def hash_value(v):
         return hash(v)
     else:
         return hash(tuple(sorted(hash_value(vv) for vv in v.values())))
-
 
 
 def _setdefault(obj, key, value):
@@ -213,7 +214,9 @@ def _all_default(d, default, seen=None):
         # Log.error("strictly dict (or object) allowed: got {{type}}", type=default.__class__.__name__)
 
     for k, default_value in default.items():
-        default_value = unwrap(default_value)  # TWO DIFFERENT Dicts CAN SHARE id() BECAUSE THEY ARE SHORT LIVED
+        default_value = unwrap(
+            default_value
+        )  # TWO DIFFERENT Dicts CAN SHARE id() BECAUSE THEY ARE SHORT LIVED
         existing_value = _get_attr(d, [k])
 
         if existing_value == None:
@@ -233,11 +236,16 @@ def _all_default(d, default, seen=None):
                         _set_attr(d, [k], default_value)
                     except Exception as e:
                         if PATH_NOT_FOUND not in e:
-                            get_logger().error("Can not set attribute {{name}}", name=k, cause=e)
+                            get_logger().error(
+                                "Can not set attribute {{name}}", name=k, cause=e
+                            )
         elif isinstance(existing_value, list) or isinstance(default_value, list):
             _set_attr(d, [k], None)
             _set_attr(d, [k], listwrap(existing_value) + listwrap(default_value))
-        elif (hasattr(existing_value, "__setattr__") or isinstance(existing_value, Mapping)) and isinstance(default_value, Mapping):
+        elif (
+            hasattr(existing_value, "__setattr__")
+            or isinstance(existing_value, Mapping)
+        ) and isinstance(default_value, Mapping):
             df = seen.get(id(default_value))
             if df is not None:
                 _set_attr(d, [k], df)
@@ -262,13 +270,11 @@ def _getdefault(obj, key):
     except Exception as f:
         pass
 
-
     try:
         if float(key) == round(float(key), 0):
             return obj[int(key)]
     except Exception as f:
         pass
-
 
     # TODO: FIGURE OUT WHY THIS WAS EVER HERE (AND MAKE A TEST)
     # try:
@@ -306,7 +312,7 @@ def get_attr(obj, path):
     except Exception as e:
         Log = get_logger()
         if PATH_NOT_FOUND in e:
-            Log.error(PATH_NOT_FOUND+": {{path}}",  path=path, cause=e)
+            Log.error(PATH_NOT_FOUND + ": {{path}}", path=path, cause=e)
         else:
             Log.error("Problem setting value", e)
 
@@ -327,18 +333,30 @@ def _get_attr(obj, path):
         File = get_module("mo_files").File
         possible_error = None
         python_file = (File(obj.__file__).parent / attr_name).set_extension("py")
-        python_module = (File(obj.__file__).parent / attr_name / "__init__.py")
+        python_module = File(obj.__file__).parent / attr_name / "__init__.py"
         if python_file.exists or python_module.exists:
             try:
                 # THIS CASE IS WHEN THE __init__.py DOES NOT IMPORT THE SUBDIR FILE
                 # WE CAN STILL PUT THE PATH TO THE FILE IN THE from CLAUSE
                 if len(path) == 1:
                     # GET MODULE OBJECT
-                    output = __import__(obj.__name__ + str(".") + str(attr_name), globals(), locals(), [str(attr_name)], 0)
+                    output = __import__(
+                        obj.__name__ + str(".") + str(attr_name),
+                        globals(),
+                        locals(),
+                        [str(attr_name)],
+                        0,
+                    )
                     return output
                 else:
                     # GET VARIABLE IN MODULE
-                    output = __import__(obj.__name__ + str(".") + str(attr_name), globals(), locals(), [str(path[1])], 0)
+                    output = __import__(
+                        obj.__name__ + str(".") + str(attr_name),
+                        globals(),
+                        locals(),
+                        [str(path[1])],
+                        0,
+                    )
                     return _get_attr(output, path[1:])
             except Exception as e:
                 Except = get_module("mo_logs.exceptions.Except")
@@ -347,7 +365,11 @@ def _get_attr(obj, path):
         # TRY A CASE-INSENSITIVE MATCH
         matched_attr_name = lower_match(attr_name, dir(obj))
         if not matched_attr_name:
-            get_logger().warning(PATH_NOT_FOUND + "({{name|quote}}) Returning None.", name=attr_name, cause=possible_error)
+            get_logger().warning(
+                PATH_NOT_FOUND + "({{name|quote}}) Returning None.",
+                name=attr_name,
+                cause=possible_error,
+            )
         elif len(matched_attr_name) > 1:
             get_logger().error(AMBIGUOUS_PATH_FOUND + " {{paths}}", paths=attr_name)
         else:
@@ -374,10 +396,12 @@ def _get_attr(obj, path):
 
 def _set_attr(obj_, path, value):
     obj = _get_attr(obj_, path[:-1])
-    if obj is None:  # DELIBERATE USE OF `is`: WE DO NOT WHAT TO CATCH Null HERE (THEY CAN BE SET)
+    if (
+        obj is None
+    ):  # DELIBERATE USE OF `is`: WE DO NOT WHAT TO CATCH Null HERE (THEY CAN BE SET)
         obj = _get_attr(obj_, path[:-1])
         if obj is None:
-            get_logger().error(PATH_NOT_FOUND+" tried to get attribute of None")
+            get_logger().error(PATH_NOT_FOUND + " tried to get attribute of None")
 
     attr_name = path[-1]
 
@@ -407,7 +431,7 @@ def _set_attr(obj_, path, value):
 
 
 def lower_match(value, candidates):
-    return [v for v in candidates if v.lower()==value.lower()]
+    return [v for v in candidates if v.lower() == value.lower()]
 
 
 def wrap(v):
@@ -477,7 +501,7 @@ def _wrap_leaves(value):
                 else:
                     d[seq[-1]] = value
         return output
-    if hasattr(value, '__iter__'):
+    if hasattr(value, "__iter__"):
         output = []
         for v in value:
             v = wrap_leaves(v)
@@ -544,6 +568,7 @@ def listwrap(value):
     else:
         return wrap([unwrap(value)])
 
+
 def unwraplist(v):
     """
     LISTS WITH ZERO AND ONE element MAP TO None AND element RESPECTIVELY
@@ -565,7 +590,7 @@ def tuplewrap(value):
     """
     if isinstance(value, (list, set, tuple) + generator_types):
         return tuple(tuplewrap(v) if isinstance(v, (list, tuple)) else v for v in value)
-    return unwrap(value),
+    return (unwrap(value),)
 
 
 from mo_dots.nones import Null, NullType

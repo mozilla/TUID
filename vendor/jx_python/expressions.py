@@ -21,11 +21,58 @@ from mo_logs import Log
 from mo_logs.strings import quote
 from pyLibrary import convert
 
-from jx_base.expressions import Variable, DateOp, TupleOp, LeavesOp, BinaryOp, OrOp, ScriptOp, \
-    InequalityOp, extend, RowsOp, OffsetOp, GetOp, Literal, NullOp, TrueOp, FalseOp, DivOp, FloorOp, \
-    EqOp, NeOp, NotOp, LengthOp, NumberOp, StringOp, CountOp, MultiOp, RegExpOp, CoalesceOp, MissingOp, ExistsOp, \
-    PrefixOp, NotLeftOp, RightOp, NotRightOp, FindOp, BetweenOp, RangeOp, CaseOp, AndOp, \
-    ConcatOp, InOp, jx_expression, Expression, WhenOp, MaxOp, SplitOp, NULL, SelectOp, SuffixOp, LastOp
+from jx_base.expressions import (
+    Variable,
+    DateOp,
+    TupleOp,
+    LeavesOp,
+    BinaryOp,
+    OrOp,
+    ScriptOp,
+    InequalityOp,
+    extend,
+    RowsOp,
+    OffsetOp,
+    GetOp,
+    Literal,
+    NullOp,
+    TrueOp,
+    FalseOp,
+    DivOp,
+    FloorOp,
+    EqOp,
+    NeOp,
+    NotOp,
+    LengthOp,
+    NumberOp,
+    StringOp,
+    CountOp,
+    MultiOp,
+    RegExpOp,
+    CoalesceOp,
+    MissingOp,
+    ExistsOp,
+    PrefixOp,
+    NotLeftOp,
+    RightOp,
+    NotRightOp,
+    FindOp,
+    BetweenOp,
+    RangeOp,
+    CaseOp,
+    AndOp,
+    ConcatOp,
+    InOp,
+    jx_expression,
+    Expression,
+    WhenOp,
+    MaxOp,
+    SplitOp,
+    NULL,
+    SelectOp,
+    SuffixOp,
+    LastOp,
+)
 from jx_python.expression_compiler import compile_expression
 from mo_times.dates import Date
 
@@ -39,7 +86,11 @@ def jx_expression_to_function(expr):
             return expr.script
         else:
             return compile_expression(expr.to_python())
-    if expr != None and not isinstance(expr, (Mapping, list)) and hasattr(expr, "__call__"):
+    if (
+        expr != None
+        and not isinstance(expr, (Mapping, list))
+        and hasattr(expr, "__call__")
+    ):
         return expr
     return compile_expression(jx_expression(expr).to_python())
 
@@ -78,7 +129,13 @@ def to_python(self, not_null=False, boolean=False, many=False):
 
 @extend(OffsetOp)
 def to_python(self, not_null=False, boolean=False, many=False):
-    return "row[" + text_type(self.var) + "] if 0<=" + text_type(self.var) + "<len(row) else None"
+    return (
+        "row["
+        + text_type(self.var)
+        + "] if 0<="
+        + text_type(self.var)
+        + "<len(row) else None"
+    )
 
 
 @extend(RowsOp)
@@ -97,7 +154,7 @@ def to_python(self, not_null=False, boolean=False, many=False):
 def to_python(self, not_null=False, boolean=False, many=False):
     obj = self.var.to_python()
     code = self.offset.to_python()
-    return "listwrap("+obj+")[" + code + "]"
+    return "listwrap(" + obj + ")[" + code + "]"
 
 
 @extend(LastOp)
@@ -109,11 +166,9 @@ def to_python(self, not_null=False, boolean=False, many=False):
 @extend(SelectOp)
 def to_python(self, not_null=False, boolean=False, many=False):
     return (
-        "wrap_leaves({" +
-        ','.join(
-            quote(t['name']) + ":" + t['value'].to_python() for t in self.terms
-        ) +
-        "})"
+        "wrap_leaves({"
+        + ",".join(quote(t["name"]) + ":" + t["value"].to_python() for t in self.terms)
+        + "})"
     )
 
 
@@ -154,7 +209,7 @@ def to_python(self, not_null=False, boolean=False, many=False):
     elif len(self.terms) == 1:
         return "(" + self.terms[0].to_python() + ",)"
     else:
-        return "(" + (','.join(t.to_python() for t in self.terms)) + ")"
+        return "(" + (",".join(t.to_python() for t in self.terms)) + ")"
 
 
 @extend(LeavesOp)
@@ -164,12 +219,28 @@ def to_python(self, not_null=False, boolean=False, many=False):
 
 @extend(BinaryOp)
 def to_python(self, not_null=False, boolean=False, many=False):
-    return "(" + self.lhs.to_python() + ") " + BinaryOp.operators[self.op] + " (" + self.rhs.to_python() + ")"
+    return (
+        "("
+        + self.lhs.to_python()
+        + ") "
+        + BinaryOp.operators[self.op]
+        + " ("
+        + self.rhs.to_python()
+        + ")"
+    )
 
 
 @extend(InequalityOp)
 def to_python(self, not_null=False, boolean=False, many=False):
-    return "(" + self.lhs.to_python() + ") " + InequalityOp.operators[self.op] + " (" + self.rhs.to_python() + ")"
+    return (
+        "("
+        + self.lhs.to_python()
+        + ") "
+        + InequalityOp.operators[self.op]
+        + " ("
+        + self.rhs.to_python()
+        + ")"
+    )
 
 
 @extend(InOp)
@@ -179,8 +250,15 @@ def to_python(self, not_null=False, boolean=False, many=False):
 
 @extend(DivOp)
 def to_python(self, not_null=False, boolean=False, many=False):
-    return "None if (" + self.missing().to_python() + ") else (" + self.lhs.to_python(
-        not_null=True) + ") / (" + self.rhs.to_python(not_null=True) + ")"
+    return (
+        "None if ("
+        + self.missing().to_python()
+        + ") else ("
+        + self.lhs.to_python(not_null=True)
+        + ") / ("
+        + self.rhs.to_python(not_null=True)
+        + ")"
+    )
 
 
 @extend(FloorOp)
@@ -197,7 +275,17 @@ def to_python(self, not_null=False, boolean=False, many=False):
 def to_python(self, not_null=False, boolean=False, many=False):
     lhs = self.lhs.to_python()
     rhs = self.rhs.to_python()
-    return "((" + lhs + ") != None and (" + rhs + ") != None and (" + lhs + ") != (" + rhs + "))"
+    return (
+        "(("
+        + lhs
+        + ") != None and ("
+        + rhs
+        + ") != None and ("
+        + lhs
+        + ") != ("
+        + rhs
+        + "))"
+    )
 
 
 @extend(NotOp)
@@ -240,13 +328,15 @@ def to_python(self, not_null=False, boolean=False, many=False):
 
 @extend(CountOp)
 def to_python(self, not_null=False, boolean=False, many=False):
-    return "+".join("(0 if (" + t.missing().to_python(boolean=True) + ") else 1)" for t in self.terms)
+    return "+".join(
+        "(0 if (" + t.missing().to_python(boolean=True) + ") else 1)"
+        for t in self.terms
+    )
 
 
 @extend(MaxOp)
 def to_python(self, not_null=False, boolean=False, many=False):
-    return "max(["+(','.join(t.to_python() for t in self.terms))+"])"
-
+    return "max([" + (",".join(t.to_python() for t in self.terms)) + "])"
 
 
 _python_operators = {
@@ -254,9 +344,8 @@ _python_operators = {
     "sum": (" + ", "0"),
     "mul": (" * ", "1"),
     "mult": (" * ", "1"),
-    "multiply": (" * ", "1")
+    "multiply": (" * ", "1"),
 }
-
 
 
 @extend(MultiOp)
@@ -264,18 +353,35 @@ def to_python(self, not_null=False, boolean=False, many=False):
     if len(self.terms) == 0:
         return self.default.to_python()
     elif self.default is NULL:
-        return _python_operators[self.op][0].join("(" + t.to_python() + ")" for t in self.terms)
+        return _python_operators[self.op][0].join(
+            "(" + t.to_python() + ")" for t in self.terms
+        )
     else:
-        return "coalesce(" + _python_operators[self.op][0].join("(" + t.to_python() + ")" for t in self.terms) + ", " + self.default.to_python() + ")"
+        return (
+            "coalesce("
+            + _python_operators[self.op][0].join(
+                "(" + t.to_python() + ")" for t in self.terms
+            )
+            + ", "
+            + self.default.to_python()
+            + ")"
+        )
+
 
 @extend(RegExpOp)
 def to_python(self, not_null=False, boolean=False, many=False):
-    return "re.match(" + quote(json2value(self.pattern.json) + "$") + ", " + self.var.to_python() + ")"
+    return (
+        "re.match("
+        + quote(json2value(self.pattern.json) + "$")
+        + ", "
+        + self.var.to_python()
+        + ")"
+    )
 
 
 @extend(CoalesceOp)
 def to_python(self, not_null=False, boolean=False, many=False):
-    return "coalesce(" + (', '.join(t.to_python() for t in self.terms)) + ")"
+    return "coalesce(" + (", ".join(t.to_python() for t in self.terms)) + ")"
 
 
 @extend(MissingOp)
@@ -302,37 +408,90 @@ def to_python(self, not_null=False, boolean=False, many=False):
 def to_python(self, not_null=False, boolean=False, many=False):
     v = self.value.to_python()
     l = self.length.to_python()
-    return "None if " + v + " == None or " + l + " == None else " + v + "[0:max(0, " + l + ")]"
+    return (
+        "None if "
+        + v
+        + " == None or "
+        + l
+        + " == None else "
+        + v
+        + "[0:max(0, "
+        + l
+        + ")]"
+    )
 
 
 @extend(NotLeftOp)
 def to_python(self, not_null=False, boolean=False, many=False):
     v = self.value.to_python()
     l = self.length.to_python()
-    return "None if " + v + " == None or " + l + " == None else " + v + "[max(0, " + l + "):]"
+    return (
+        "None if "
+        + v
+        + " == None or "
+        + l
+        + " == None else "
+        + v
+        + "[max(0, "
+        + l
+        + "):]"
+    )
 
 
 @extend(RightOp)
 def to_python(self, not_null=False, boolean=False, many=False):
     v = self.value.to_python()
     l = self.length.to_python()
-    return "None if " + v + " == None or " + l + " == None else " + v + "[max(0, len(" + v + ")-(" + l + ")):]"
+    return (
+        "None if "
+        + v
+        + " == None or "
+        + l
+        + " == None else "
+        + v
+        + "[max(0, len("
+        + v
+        + ")-("
+        + l
+        + ")):]"
+    )
 
 
 @extend(NotRightOp)
 def to_python(self, not_null=False, boolean=False, many=False):
     v = self.value.to_python()
     l = self.length.to_python()
-    return "None if " + v + " == None or " + l + " == None else " + v + "[0:max(0, len(" + v + ")-(" + l + "))]"
+    return (
+        "None if "
+        + v
+        + " == None or "
+        + l
+        + " == None else "
+        + v
+        + "[0:max(0, len("
+        + v
+        + ")-("
+        + l
+        + "))]"
+    )
 
 
 @extend(SplitOp)
 def to_python(self, not_null=False, boolean=False, many=False):
     return "(" + self.value.to_python() + ").split(" + self.find.to_python() + ")"
 
+
 @extend(FindOp)
 def to_python(self, not_null=False, boolean=False, many=False):
-    return "((" + quote(self.substring) + " in " + self.var.to_python() + ") if " + self.var.to_python() + "!=None else False)"
+    return (
+        "(("
+        + quote(self.substring)
+        + " in "
+        + self.var.to_python()
+        + ") if "
+        + self.var.to_python()
+        + "!=None else False)"
+    )
 
 
 @extend(BetweenOp)
@@ -342,17 +501,41 @@ def to_python(self, not_null=False, boolean=False, many=False):
 
 @extend(RangeOp)
 def to_python(self, not_null=False, boolean=False, many=False):
-    return "(" + self.then.to_python(not_null=not_null) + ") if (" + self.when.to_python(
-        boolean=True) + ") else (" + self.els_.to_python(not_null=not_null) + ")"
+    return (
+        "("
+        + self.then.to_python(not_null=not_null)
+        + ") if ("
+        + self.when.to_python(boolean=True)
+        + ") else ("
+        + self.els_.to_python(not_null=not_null)
+        + ")"
+    )
 
 
 @extend(CaseOp)
 def to_python(self, not_null=False, boolean=False, many=False):
     acc = self.whens[-1].to_python()
     for w in reversed(self.whens[0:-1]):
-        acc = "(" + w.then.to_python() + ") if (" + w.when.to_python(boolean=True) + ") else (" + acc + ")"
+        acc = (
+            "("
+            + w.then.to_python()
+            + ") if ("
+            + w.when.to_python(boolean=True)
+            + ") else ("
+            + acc
+            + ")"
+        )
     return acc
+
 
 @extend(WhenOp)
 def to_python(self, not_null=False, boolean=False, many=False):
-    return "(" + self.then.to_python() + ") if (" + self.when.to_python(boolean=True) + ") else (" + self.els_.to_python() + ")"
+    return (
+        "("
+        + self.then.to_python()
+        + ") if ("
+        + self.when.to_python(boolean=True)
+        + ") else ("
+        + self.els_.to_python()
+        + ")"
+    )

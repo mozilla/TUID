@@ -30,9 +30,8 @@ from pyLibrary.sql.sqlite import quote_value, quote_list
 from tuid import sql
 from tuid.statslogger import StatsLogger
 from tuid.counter import Counter
-from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL
+from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL, insert
 from mo_json import json2value, value2json
-from tuid import insert
 
 import tuid.clogger
 
@@ -261,10 +260,12 @@ class TUIDService:
             for _, _, tuids_string in data:
                 self.destringify_tuids(tuids_string)
 
-        records = wrap([
-            self._make_record_annotations(revision, file, annotation)
-            for revision, file, annotation in data
-        ])
+        records = wrap(
+            [
+                self._make_record_annotations(revision, file, annotation)
+                for revision, file, annotation in data
+            ]
+        )
         insert(self.annotations, records)
 
     def _annotation_record_exists(self, rev, file):
@@ -328,7 +329,7 @@ class TUIDService:
         # Turns the TuidMap list to a sorted list
         tuid_list.sort(key=lambda x: x.line)
         ordered_tuid = [-1] * len(tuid_list)
-        #checks any line number is missing
+        # checks any line number is missing
         for tuid, line in tuid_list:
             ordered_tuid[line - 1] = tuid
 
@@ -338,10 +339,7 @@ class TUIDService:
         # Builds up TuidMap list from annotation cache entry.
         try:
             line_origins = [
-                TuidMap(tuid, line + 1)
-                for line, tuid in enumerate(
-                    tuids_list
-                )
+                TuidMap(tuid, line + 1) for line, tuid in enumerate(tuids_list)
             ]
 
             return line_origins
@@ -881,9 +879,7 @@ class TUIDService:
             f_diff = f_proc["changes"]
             for change in f_diff:
                 if change.action == "+":
-                    tuid_tmp = self._get_one_tuid(
-                        cset, file, change.line + 1
-                    )
+                    tuid_tmp = self._get_one_tuid(cset, file, change.line + 1)
                     if tuid_tmp == None:
                         new_tuid = self.tuid()
                         list_to_insert.append((new_tuid, cset, file, change.line + 1))
@@ -895,10 +891,12 @@ class TUIDService:
             break  # Found the file, exit searching
 
         if len(list_to_insert) > 0:
-            records = wrap([
-                self._make_record_temporal(tuid, revision, file, line)
-                for tuid, file, revision, line in list_to_insert
-            ])
+            records = wrap(
+                [
+                    self._make_record_temporal(tuid, revision, file, line)
+                    for tuid, file, revision, line in list_to_insert
+                ]
+            )
             insert(self.temporal, records)
 
         return new_ann, file
@@ -1097,9 +1095,8 @@ class TUIDService:
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
                     for rev, filename, tuids in tmp_inserts:
-                        tmp_ann, _ = self._get_annotation(
-                            rev, filename
-                        )
+
+                        tmp_ann = self._get_annotation(rev, filename)
                         if not tmp_ann and tmp_ann != "":
                             recomputed_inserts.append((rev, filename, tuids))
                         else:
@@ -1527,10 +1524,7 @@ class TUIDService:
 
             results.extend(
                 self._get_tuids(
-                    annotations_to_get,
-                    revision,
-                    annotated_files,
-                    repo=repo,
+                    annotations_to_get, revision, annotated_files, repo=repo
                 )
             )
 
@@ -1541,9 +1535,7 @@ class TUIDService:
         gc.collect()
         return results
 
-    def insert_tuids_with_duplicates(
-        self, file, revision, new_lines, line_origins
-    ):
+    def insert_tuids_with_duplicates(self, file, revision, new_lines, line_origins):
         """
         Inserts new lines while creating tuids and handles duplicate entries.
         :param new_lines: A list of new line numbers.
@@ -1585,10 +1577,12 @@ class TUIDService:
         else:
             lines_to_insert = new_line_origins.values()
 
-        records = wrap([
-            self._make_record_temporal(tuid, revision, file, line)
-            for tuid, file, revision, line in lines_to_insert
-        ])
+        records = wrap(
+            [
+                self._make_record_temporal(tuid, revision, file, line)
+                for tuid, file, revision, line in lines_to_insert
+            ]
+        )
         insert(self.temporal, records)
 
         return new_line_origins
@@ -1641,9 +1635,7 @@ class TUIDService:
         ) - set(existing_tuids.keys())
         return new_lines, existing_tuids
 
-    def _get_tuids(
-        self, files, revision, annotated_files, repo=None
-    ):
+    def _get_tuids(self, files, revision, annotated_files, repo=None):
         """
         Returns (TUID, line) tuples for a given file at a given revision.
 

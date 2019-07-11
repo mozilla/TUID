@@ -26,7 +26,6 @@ from pyLibrary.env.emailer import Emailer
 
 
 class StructuredLogger_usingEmail(StructuredLogger):
-
     @override
     def __init__(
         self,
@@ -41,7 +40,7 @@ class StructuredLogger_usingEmail(StructuredLogger):
         cc=None,
         log_type="email",
         average_interval=HOUR,
-        kwargs=None
+        kwargs=None,
     ):
         """
         SEND WARNINGS AND ERRORS VIA EMAIL
@@ -101,12 +100,13 @@ class StructuredLogger_usingEmail(StructuredLogger):
                         from_address=self.settings.from_address,
                         to_address=listwrap(to_address),
                         subject=self.settings.subject,
-                        text_data="\n\n".join(content)
+                        text_data="\n\n".join(content),
                     )
 
             self.accumulation = []
         except Exception as e:
             Log.warning("Could not send", e)
         finally:
-            self.next_send = Date.now() + self.settings.average_interval * (2 * Random.float())
-
+            self.next_send = Date.now() + self.settings.average_interval * (
+                2 * Random.float()
+            )

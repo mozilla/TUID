@@ -15,12 +15,10 @@ from mo_dots import Data
 
 
 class Changeset(Data):
-
     def __hash__(self):
         return hash(self.id)
 
     def __eq__(self, other):
-        if other==None:
+        if other == None:
             return False
         return self.id == other.id
-

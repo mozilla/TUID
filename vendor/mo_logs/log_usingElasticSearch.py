@@ -33,7 +33,16 @@ LOG_STRING_LENGTH = 2000
 
 class StructuredLogger_usingElasticSearch(StructuredLogger):
     @override
-    def __init__(self, host, index, port=9200, type="log", queue_size=1000, batch_size=100, kwargs=None):
+    def __init__(
+        self,
+        host,
+        index,
+        port=9200,
+        type="log",
+        queue_size=1000,
+        batch_size=100,
+        kwargs=None,
+    ):
         """
         settings ARE FOR THE ELASTICSEARCH INDEX
         """
@@ -45,7 +54,7 @@ class StructuredLogger_usingElasticSearch(StructuredLogger):
             schema=mo_json.json2value(value2json(SCHEMA), leaves=True),
             limit_replicas=True,
             typed=True,
-            kwargs=kwargs
+            kwargs=kwargs,
         )
         self.batch_size = batch_size
         self.es.add_alias(coalesce(kwargs.alias, kwargs.index))
@@ -59,7 +68,9 @@ class StructuredLogger_usingElasticSearch(StructuredLogger):
             self.queue.add({"value": params})
         else:
             template = strings.limit(template, 2000)
-            self.queue.add({"value": {"template": template, "params": params}}, timeout=3 * MINUTE)
+            self.queue.add(
+                {"value": {"template": template, "params": params}}, timeout=3 * MINUTE
+            )
         return self
 
     def _insert_loop(self, please_stop=None):
@@ -88,7 +99,10 @@ class StructuredLogger_usingElasticSearch(StructuredLogger):
                 Log.warning("Problem inserting logs into ES", cause=f)
                 bad_count += 1
                 if bad_count > MAX_BAD_COUNT:
-                    Log.warning("Given up trying to write debug logs to ES index {{index}}", index=self.es.settings.index)
+                    Log.warning(
+                        "Given up trying to write debug logs to ES index {{index}}",
+                        index=self.es.settings.index,
+                    )
                 Till(seconds=30).wait()
 
         # CONTINUE TO DRAIN THIS QUEUE
@@ -132,12 +146,11 @@ def _deep_json_to_string(value, depth):
 
 SCHEMA = {
     "settings": {"index.number_of_shards": 2, "index.number_of_replicas": 2},
-    "mappings": {"_default_": {
-        "dynamic_templates": [
-            {"everything_else": {
-                "match": "*",
-                "mapping": {"index": False}
-            }}
-        ]
-    }}
+    "mappings": {
+        "_default_": {
+            "dynamic_templates": [
+                {"everything_else": {"match": "*", "mapping": {"index": False}}}
+            ]
+        }
+    },
 }

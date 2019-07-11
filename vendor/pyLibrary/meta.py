@@ -27,14 +27,14 @@ from mo_times.durations import DAY
 
 def get_class(path):
     try:
-        #ASSUME DIRECT FROM MODULE
+        # ASSUME DIRECT FROM MODULE
         output = __import__(".".join(path[0:-1]), globals(), locals(), [path[-1]], 0)
         return _get_attr(output, path[-1:])
         # return output
     except Exception as e:
         from mo_logs import Log
 
-        Log.error("Could not find module {{module|quote}}",  module= ".".join(path))
+        Log.error("Could not find module {{module|quote}}", module=".".join(path))
 
 
 def new_instance(settings):
@@ -58,7 +58,7 @@ def new_instance(settings):
     except Exception as e:
         Log.error("Can not find class {{class}}", {"class": path}, cause=e)
 
-    settings['class'] = None
+    settings["class"] = None
     try:
         return constructor(kwargs=settings)  # MAYBE IT TAKES A KWARGS OBJECT
     except Exception as e:
@@ -85,10 +85,7 @@ def get_function_by_name(full_name):
         output = object.__getattribute__(temp, function_name)
         return output
     except Exception as e:
-        Log.error("Can not find function {{name}}",  name= full_name, cause=e)
-
-
-
+        Log.error("Can not find function {{name}}", name=full_name, cause=e)
 
 
 class cache(object):
@@ -119,7 +116,6 @@ class cache(object):
 
 
 class _SimpleCache(object):
-
     def __init__(self):
         self.timeout = Null
         self.locker = _FakeLock()
@@ -138,7 +134,9 @@ def wrap_function(cache_store, func_):
 
     def output(*args, **kwargs):
         if kwargs:
-            Log.error("Sorry, caching only works with ordered parameter, not keyword arguments")
+            Log.error(
+                "Sorry, caching only works with ordered parameter, not keyword arguments"
+            )
 
         with cache_store.locker:
             if using_self:
@@ -156,7 +154,11 @@ def wrap_function(cache_store, func_):
 
             if Random.int(100) == 0:
                 # REMOVE OLD CACHE
-                _cache = {k: v for k, v in _cache.items() if v.timeout == None or v.timeout > now}
+                _cache = {
+                    k: v
+                    for k, v in _cache.items()
+                    if v.timeout == None or v.timeout > now
+                }
                 setattr(self, attr_name, _cache)
 
             timeout, key, value, exception = _cache.get(args, (Null, Null, Null, Null))
@@ -164,7 +166,9 @@ def wrap_function(cache_store, func_):
         if now >= timeout:
             value = func(self, *args)
             with cache_store.locker:
-                _cache[args] = CacheElement(now + cache_store.timeout, args, value, None)
+                _cache[args] = CacheElement(
+                    now + cache_store.timeout, args, value, None
+                )
             return value
 
         if value == None:
@@ -172,12 +176,16 @@ def wrap_function(cache_store, func_):
                 try:
                     value = func(self, *args)
                     with cache_store.locker:
-                        _cache[args] = CacheElement(now + cache_store.timeout, args, value, None)
+                        _cache[args] = CacheElement(
+                            now + cache_store.timeout, args, value, None
+                        )
                     return value
                 except Exception as e:
                     e = Except.wrap(e)
                     with cache_store.locker:
-                        _cache[args] = CacheElement(now + cache_store.timeout, args, None, e)
+                        _cache[args] = CacheElement(
+                            now + cache_store.timeout, args, None, e
+                        )
                     raise e
             else:
                 raise exception
@@ -190,7 +198,7 @@ def wrap_function(cache_store, func_):
 CacheElement = namedtuple("CacheElement", ("timeout", "key", "value", "exception"))
 
 
-class _FakeLock():
+class _FakeLock:
     def __enter__(self):
         pass
 
@@ -221,7 +229,6 @@ class extenstion_method(object):
 
 
 class MemorySample(object):
-
     def __init__(self, description, debug=False, **parameters):
         self.debug = debug
         if debug:
@@ -251,28 +258,36 @@ class MemorySample(object):
             try:
                 gc.collect()
                 end_memory = self.process.memory_info().rss
-                net_memory = end_memory-self.start_memory
+                net_memory = end_memory - self.start_memory
                 if net_memory > 100 * 1000 * 1000:
                     Log.warning(
-                        "MEMORY WARNING (additional {{net_memory|comma}}bytes): "+self.description,
+                        "MEMORY WARNING (additional {{net_memory|comma}}bytes): "
+                        + self.description,
                         default_params=self.params,
-                        net_memory=net_memory
+                        net_memory=net_memory,
                     )
 
                     from pympler import summary
                     from pympler import muppy
-                    sum1 = sorted(summary.summarize(muppy.get_objects()), key=lambda r: -r[2])[:30]
+
+                    sum1 = sorted(
+                        summary.summarize(muppy.get_objects()), key=lambda r: -r[2]
+                    )[:30]
                     Log.warning("{{data}}", data=sum1)
-                elif end_memory > 1000*1000*1000:
+                elif end_memory > 1000 * 1000 * 1000:
                     Log.warning(
-                        "MEMORY WARNING (over {{end_memory|comma}}bytes): "+self.description,
+                        "MEMORY WARNING (over {{end_memory|comma}}bytes): "
+                        + self.description,
                         default_params=self.params,
-                        end_memory=end_memory
+                        end_memory=end_memory,
                     )
 
                     from pympler import summary
                     from pympler import muppy
-                    sum1 = sorted(summary.summarize(muppy.get_objects()), key=lambda r: -r[2])[:30]
+
+                    sum1 = sorted(
+                        summary.summarize(muppy.get_objects()), key=lambda r: -r[2]
+                    )[:30]
                     Log.warning("{{data}}", data=sum1)
 
             except Exception as e:

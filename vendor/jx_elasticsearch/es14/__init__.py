@@ -25,7 +25,19 @@ from jx_elasticsearch.es14.setop import is_setop, es_setop
 from jx_elasticsearch.es14.util import aggregates
 from jx_elasticsearch.meta import ElasticsearchMetadata, Table
 from jx_python import jx
-from mo_dots import Data, Null, unwrap, coalesce, split_field, literal_field, unwraplist, join_field, wrap, listwrap, FlatList
+from mo_dots import (
+    Data,
+    Null,
+    unwrap,
+    coalesce,
+    split_field,
+    literal_field,
+    unwraplist,
+    join_field,
+    wrap,
+    listwrap,
+    FlatList,
+)
 from mo_json import scrub, value2json
 from mo_json.typed_encoder import TYPE_PREFIX, EXISTS_TYPE
 from mo_kwargs import override
@@ -39,8 +51,12 @@ class ES14(Container):
     """
 
     def __new__(cls, *args, **kwargs):
-        if (len(args) == 1 and args[0].get("index") == "meta") or kwargs.get("index") == "meta":
-            output = ElasticsearchMetadata.__new__(ElasticsearchMetadata, *args, **kwargs)
+        if (len(args) == 1 and args[0].get("index") == "meta") or kwargs.get(
+            "index"
+        ) == "meta":
+            output = ElasticsearchMetadata.__new__(
+                ElasticsearchMetadata, *args, **kwargs
+            )
             output.__init__(*args, **kwargs)
             return output
         else:
@@ -58,27 +74,31 @@ class ES14(Container):
         timeout=None,  # NUMBER OF SECONDS TO WAIT FOR RESPONSE, OR SECONDS TO WAIT FOR DOWNLOAD (PASSED TO requests)
         wait_for_active_shards=1,  # ES WRITE CONSISTENCY (https://www.elastic.co/guide/en/elasticsearch/reference/1.7/docs-index_.html#index-consistency)
         typed=None,
-        kwargs=None
+        kwargs=None,
     ):
         Container.__init__(self)
         if not container.config.default:
             container.config.default = {
                 "type": "elasticsearch",
-                "settings": unwrap(kwargs)
+                "settings": unwrap(kwargs),
             }
         self.settings = kwargs
         self.name = name = coalesce(name, alias, index)
         if read_only:
             self.es = elasticsearch.Alias(alias=coalesce(alias, index), kwargs=kwargs)
         else:
-            self.es = elasticsearch.Cluster(kwargs=kwargs).get_index(read_only=read_only, kwargs=kwargs)
+            self.es = elasticsearch.Cluster(kwargs=kwargs).get_index(
+                read_only=read_only, kwargs=kwargs
+            )
 
         self._namespace = ElasticsearchMetadata(kwargs=kwargs)
         self.settings.type = self.es.settings.type
         self.edges = Data()
         self.worker = None
 
-        columns = self._namespace.get_snowflake(self.es.settings.alias).columns  # ABSOLUTE COLUMNS
+        columns = self._namespace.get_snowflake(
+            self.es.settings.alias
+        ).columns  # ABSOLUTE COLUMNS
         is_typed = any(c.es_column == EXISTS_TYPE for c in columns)
 
         if typed == None:
@@ -86,7 +106,11 @@ class ES14(Container):
             self.typed = is_typed
         else:
             if is_typed != typed:
-                Log.error("Expecting given typed {{typed}} to match {{is_typed}}", typed=typed, is_typed=is_typed)
+                Log.error(
+                    "Expecting given typed {{typed}} to match {{is_typed}}",
+                    typed=typed,
+                    is_typed=is_typed,
+                )
             self.typed = typed
 
     @property
@@ -96,7 +120,6 @@ class ES14(Container):
     @property
     def namespace(self):
         return self._namespace
-
 
     def get_table(self, full_name):
         return Table(full_name, self)
@@ -140,7 +163,7 @@ class ES14(Container):
                     Log.error(
                         "ES can not aggregate {{name}} because {{aggregate|quote}} is not a recognized aggregate",
                         name=s.name,
-                        aggregate=s.aggregate
+                        aggregate=s.aggregate,
                     )
 
             frum = query["from"]
@@ -166,7 +189,9 @@ class ES14(Container):
 
     def addDimension(self, dim):
         if isinstance(dim, list):
-            Log.error("Expecting dimension to be a object, not a list:\n{{dim}}",  dim= dim)
+            Log.error(
+                "Expecting dimension to be a object, not a list:\n{{dim}}", dim=dim
+            )
         self._addDimension(dim, [])
 
     def _addDimension(self, dim, path):
@@ -184,7 +209,11 @@ class ES14(Container):
 
         e = self.edges[item]
         if not c:
-            Log.warning("Column with name {{column|quote}} can not be found in {{table}}", column=item, table=self.name)
+            Log.warning(
+                "Column with name {{column|quote}} can not be found in {{table}}",
+                column=item,
+                table=self.name,
+            )
         return e
 
     def __getattr__(self, item):
@@ -200,13 +229,17 @@ class ES14(Container):
         schema = self.es.get_properties()
 
         # GET IDS OF DOCUMENTS
-        results = self.es.search({
-            "fields": listwrap(schema._routing.path),
-            "query": {"filtered": {
-                "filter": jx_expression(command.where).to_esfilter(Null)
-            }},
-            "size": 10000
-        })
+        results = self.es.search(
+            {
+                "fields": listwrap(schema._routing.path),
+                "query": {
+                    "filtered": {
+                        "filter": jx_expression(command.where).to_esfilter(Null)
+                    }
+                },
+                "size": 10000,
+            }
+        )
 
         # SCRIPT IS SAME FOR ALL (CAN ONLY HANDLE ASSIGNMENT TO CONSTANT)
         scripts = FlatList()
@@ -217,22 +250,45 @@ class ES14(Container):
                 scripts.append({"doc": v.doc})
             else:
                 v = scrub(v)
-                scripts.append({"script": "ctx._source." + k + " = " + jx_expression(v).to_es_script(schema).script(schema)})
+                scripts.append(
+                    {
+                        "script": "ctx._source."
+                        + k
+                        + " = "
+                        + jx_expression(v).to_es_script(schema).script(schema)
+                    }
+                )
 
         if results.hits.hits:
             updates = []
             for h in results.hits.hits:
                 for s in scripts:
-                    updates.append({"update": {"_id": h._id, "_routing": unwraplist(h.fields[literal_field(schema._routing.path)])}})
+                    updates.append(
+                        {
+                            "update": {
+                                "_id": h._id,
+                                "_routing": unwraplist(
+                                    h.fields[literal_field(schema._routing.path)]
+                                ),
+                            }
+                        }
+                    )
                     updates.append(s)
-            content = ("\n".join(value2json(c) for c in updates) + "\n")
+            content = "\n".join(value2json(c) for c in updates) + "\n"
             response = self.es.cluster.post(
                 self.es.path + "/_bulk",
                 data=content,
                 headers={"Content-Type": "application/json"},
                 timeout=self.settings.timeout,
-                params={"wait_for_active_shards": self.settings.wait_for_active_shards}
+                params={"wait_for_active_shards": self.settings.wait_for_active_shards},
             )
             if response.errors:
-                Log.error("could not update: {{error}}", error=[e.error for i in response["items"] for e in i.values() if e.status not in (200, 201)])
-
+                Log.error(
+                    "could not update: {{error}}",
+                    error=[
+                        e.error
+                        for i in response["items"]
+                        for e in i.values()
+                        if e.status not in (200, 201)
+                    ],
+                )

@@ -7,7 +7,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
-from tests import delete
 
 import json
 
@@ -21,7 +20,7 @@ from pyLibrary.env import http
 from pyLibrary.sql import sql_list, quote_set
 from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR, quote_list
 from tuid.service import TUIDService
-from tuid.util import map_to_array
+from tuid.util import map_to_array, delete
 
 _service = None
 
@@ -41,12 +40,8 @@ def service(config, new_db):
 
 def test_transactions(service):
     # This should pass
-    old = service.get_tuids(
-        "/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838"
-    )
-    new = service.get_tuids(
-        "/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62"
-    )
+    old = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838")
+    new = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62")
 
     assert len(old) == len(new)
 
@@ -165,7 +160,7 @@ def test_multithread_tuid_uniqueness(service):
         ["/layout/generic/nsIFrame.h"],
         ["/layout/generic/nsImageFrame.cpp"],
         ["/layout/painting/FrameLayerBuilder.cpp"],
-        ["/widget/cocoa/nsNativeThemeCocoa.mm"]
+        ["/widget/cocoa/nsNativeThemeCocoa.mm"],
     ]
 
     num_tests = len(test_files)
@@ -179,21 +174,18 @@ def test_multithread_tuid_uniqueness(service):
             old_revision,
             tuided_files,
             i,
-            going_forward=True
+            going_forward=True,
         )
         for i, a in enumerate(tuided_files)
     ]
-    too_long = Till(seconds=timeout_seconds*4)
+    too_long = Till(seconds=timeout_seconds * 4)
     for t in threads:
         t.join(till=too_long)
     assert not too_long
 
     # Checks for uniqueness of tuids in different files
     tuidlist = [
-        tm.tuid
-        for ft in tuided_files
-        for path, tuidmaps in ft
-        for tm in tuidmaps
+        tm.tuid for ft in tuided_files for path, tuidmaps in ft for tm in tuidmaps
     ]
     # Ensures no duplicates
     assert len(tuidlist) == len(set(tuidlist))
@@ -208,21 +200,18 @@ def test_multithread_tuid_uniqueness(service):
             new_revision,
             tuided_files,
             i,
-            going_forward=True
+            going_forward=True,
         )
         for i, a in enumerate(tuided_files)
     ]
-    too_long = Till(seconds=timeout_seconds*4)
+    too_long = Till(seconds=timeout_seconds * 4)
     for t in threads:
         t.join(till=too_long)
     assert not too_long
 
     # Makes one list with all the TUIDs from all the files
     tuidlist = [
-        tm.tuid
-        for ft in tuided_files
-        for path, tuidmaps in ft
-        for tm in tuidmaps
+        tm.tuid for ft in tuided_files for path, tuidmaps in ft for tm in tuidmaps
     ]
     # Ensures no duplicates
     assert len(tuidlist) == len(set(tuidlist))
@@ -462,10 +451,7 @@ def test_many_files_one_revision(service):
     service.clogger.start_backfilling()
 
     with service.conn.transaction() as t:
-        t.execute(
-            "DELETE FROM latestFileMod WHERE file IN " +
-            quote_set(test_file)
-        )
+        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(test_file))
         filter = {"terms": {"file": test_file}}
         delete(service.annotations, filter)
 
@@ -501,10 +487,7 @@ def test_one_addition_many_files(service):
     service.clogger.start_backfilling()
 
     with service.conn.transaction() as t:
-        t.execute(
-            "DELETE FROM latestFileMod WHERE file IN " +
-            quote_set(test_file)
-        )
+        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(test_file))
         filter = {"terms": {"file": test_file}}
         delete(service.annotations, filter)
 
@@ -694,10 +677,7 @@ def test_one_http_call_required(service):
     )  # Useful in testing
 
     with service.conn.transaction() as t:
-        t.execute(
-            "DELETE FROM latestFileMod WHERE file IN " +
-            quote_set(proc_files)
-        )
+        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(proc_files))
         filter = {"terms": {"file": proc_files}}
         delete(service.annotations, filter)
 

@@ -60,24 +60,28 @@ try:
     service = TUIDService(conn=sql.Sql("resources/tuid_app.db"), kwargs=config.tuid)
 
     # Get a list of 1000 files from stressfiles
-    with open('resources/stressfiles.json', 'r') as f:
+    with open("resources/stressfiles.json", "r") as f:
         files = json.load(f)
 
     # Get rev_count revisions from changelogs
     csets = []
-    final_rev = ''
+    final_rev = ""
     while len(csets) < rev_count:
         # Get a changelog
-        clog_url = HG_URL /'mozilla-central' / 'json-log' / final_rev
+        clog_url = HG_URL / "mozilla-central" / "json-log" / final_rev
         try:
             Log.note("Searching through changelog {{url}}", url=clog_url)
             clog_obj = http.get_json(clog_url, retry=RETRY)
         except Exception as e:
-            Log.error("Unexpected error getting changset-log for {{url}}", url=clog_url, error=e)
+            Log.error(
+                "Unexpected error getting changset-log for {{url}}",
+                url=clog_url,
+                error=e,
+            )
 
-        cset = ''
-        for clog_cset in clog_obj['changesets']:
-            cset = clog_cset['node'][:12]
+        cset = ""
+        for clog_cset in clog_obj["changesets"]:
+            cset = clog_cset["node"][:12]
             if len(csets) < rev_count:
                 csets.append(cset)
 
@@ -91,7 +95,7 @@ try:
         resp = service.get_tuids_from_files(files, csets[0])
 
     # Backup the database now
-    shutil.copy('resources/tuid_app.db', 'resources/tuid_app_tmp.db')
+    shutil.copy("resources/tuid_app.db", "resources/tuid_app_tmp.db")
 
     # While we haven't hit the breaking point perform
     # the stress test
@@ -101,37 +105,44 @@ try:
 
         for rev in csets[1:]:
             # Request each revision in order
-            request = wrap({
-                "from": "files",
-                "where": {"and": [
-                    {"eq": {"revision": rev}},
-                    {"in": {"path": files}}
-                ]},
-                "meta": {
-                    "format": "list",
-                    "request_time": Date.now()
+            request = wrap(
+                {
+                    "from": "files",
+                    "where": {
+                        "and": [{"eq": {"revision": rev}}, {"in": {"path": files}}]
+                    },
+                    "meta": {"format": "list", "request_time": Date.now()},
                 }
-            })
+            )
             if client.push_queue is not None:
-                Log.note("record tuid request to SQS: {{timestamp}}", timestamp=request.meta.request_time)
+                Log.note(
+                    "record tuid request to SQS: {{timestamp}}",
+                    timestamp=request.meta.request_time,
+                )
                 client.push_queue.add(request)
 
             # Wait before sending the next request
-            (Till(seconds=init_req_pause+10)).wait()
+            (Till(seconds=init_req_pause + 10)).wait()
 
-        check_state = {'rate': req_rate, 'qlength': len(queue)}
+        check_state = {"rate": req_rate, "qlength": len(queue)}
         queue_length_at_rate.append(check_state)
         req_rate += step
         init_req_pause = 1 / req_rate
         # Check and save length after all the requests
-        if check_state['qlength'] > 1:
+        if check_state["qlength"] > 1:
             tries_after_wait -= 1
             # Wait while there are still some requests left
             while len(queue) > 0:
-                Log.note("Waiting 10 seconds...queue has items left to process: {{qlength}}", qlength=len(queue))
+                Log.note(
+                    "Waiting 10 seconds...queue has items left to process: {{qlength}}",
+                    qlength=len(queue),
+                )
                 (Till(seconds=10)).wait()
 
-    Log.note("Checked states: {{rates}}", rates=[(r['rate'], r['qlength']) for r in queue_length_at_rate])
+    Log.note(
+        "Checked states: {{rates}}",
+        rates=[(r["rate"], r["qlength"]) for r in queue_length_at_rate],
+    )
 
 except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
     try:

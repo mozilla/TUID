@@ -36,8 +36,12 @@ class ES52(Container):
     """
 
     def __new__(cls, *args, **kwargs):
-        if (len(args) == 1 and args[0].get("index") == "meta") or kwargs.get("index") == "meta":
-            output = ElasticsearchMetadata.__new__(ElasticsearchMetadata, *args, **kwargs)
+        if (len(args) == 1 and args[0].get("index") == "meta") or kwargs.get(
+            "index"
+        ) == "meta":
+            output = ElasticsearchMetadata.__new__(
+                ElasticsearchMetadata, *args, **kwargs
+            )
             output.__init__(*args, **kwargs)
             return output
         else:
@@ -55,20 +59,22 @@ class ES52(Container):
         timeout=None,  # NUMBER OF SECONDS TO WAIT FOR RESPONSE, OR SECONDS TO WAIT FOR DOWNLOAD (PASSED TO requests)
         wait_for_active_shards=1,  # ES WRITE CONSISTENCY (https://www.elastic.co/guide/en/elasticsearch/reference/1.7/docs-index_.html#index-consistency)
         typed=None,
-        kwargs=None
+        kwargs=None,
     ):
         Container.__init__(self)
         if not container.config.default:
             container.config.default = {
                 "type": "elasticsearch",
-                "settings": unwrap(kwargs)
+                "settings": unwrap(kwargs),
             }
         self.settings = kwargs
         self.name = name = coalesce(name, index)
         if read_only:
             self.es = elasticsearch.Alias(alias=index, kwargs=kwargs)
         else:
-            self.es = elasticsearch.Cluster(kwargs=kwargs).get_index(read_only=read_only, kwargs=kwargs)
+            self.es = elasticsearch.Cluster(kwargs=kwargs).get_index(
+                read_only=read_only, kwargs=kwargs
+            )
 
         self._namespace = ElasticsearchMetadata(kwargs=kwargs)
         self.settings.type = self.es.settings.type
@@ -83,7 +89,11 @@ class ES52(Container):
             self.typed = is_typed
         else:
             if is_typed != typed:
-                Log.error("Expecting given typed {{typed}} to match {{is_typed}}", typed=typed, is_typed=is_typed)
+                Log.error(
+                    "Expecting given typed {{typed}} to match {{is_typed}}",
+                    typed=typed,
+                    is_typed=is_typed,
+                )
             self.typed = typed
 
     @property
@@ -136,7 +146,7 @@ class ES52(Container):
                     Log.error(
                         "ES can not aggregate {{name}} because {{aggregate|quote}} is not a recognized aggregate",
                         name=s.name,
-                        aggregate=s.aggregate
+                        aggregate=s.aggregate,
                     )
 
             frum = query["from"]
@@ -162,7 +172,9 @@ class ES52(Container):
 
     def addDimension(self, dim):
         if isinstance(dim, list):
-            Log.error("Expecting dimension to be a object, not a list:\n{{dim}}",  dim= dim)
+            Log.error(
+                "Expecting dimension to be a object, not a list:\n{{dim}}", dim=dim
+            )
         self._addDimension(dim, [])
 
     def _addDimension(self, dim, path):
@@ -180,7 +192,11 @@ class ES52(Container):
 
         e = self.edges[item]
         if not c:
-            Log.warning("Column with name {{column|quote}} can not be found in {{table}}", column=item, table=self.name)
+            Log.warning(
+                "Column with name {{column|quote}} can not be found in {{table}}",
+                column=item,
+                table=self.name,
+            )
         return e
 
     def __getattr__(self, item):
@@ -193,23 +209,23 @@ class ES52(Container):
         THE where CLAUSE IS AN ES FILTER
         """
         command = wrap(command)
-        table = self.get_table(command['update'])
+        table = self.get_table(command["update"])
 
-        es_index = self.es.cluster.get_index(read_only=False, alias=None, kwargs=self.es.settings)
+        es_index = self.es.cluster.get_index(
+            read_only=False, alias=None, kwargs=self.es.settings
+        )
 
         schema = table.schema
         es_filter = jx_expression(command.where).to_esfilter(schema)
 
         # GET IDS OF DOCUMENTS
         query = {
-            "from": command['update'],
-            "select": ["_id"] + [
-                {"name": k, "value": v}
-                for k, v in command.set.items()
-            ],
+            "from": command["update"],
+            "select": ["_id"]
+            + [{"name": k, "value": v} for k, v in command.set.items()],
             "where": command.where,
             "format": "list",
-            "limit": 10000
+            "limit": 10000,
         }
 
         results = self.query(query)
@@ -219,7 +235,7 @@ class ES52(Container):
                 t
                 for r in results.data
                 for _id, row in [(r._id, r)]
-                for _ in [row.__setitem__('_id', None)]  # WARNING! DESTRUCTIVE TO row
+                for _ in [row.__setitem__("_id", None)]  # WARNING! DESTRUCTIVE TO row
                 for update in map(value2json, ({"update": {"_id": _id}}, {"doc": row}))
                 for t in (update, "\n")
             )
@@ -228,16 +244,22 @@ class ES52(Container):
                 data=content,
                 headers={"Content-Type": "application/json"},
                 timeout=self.settings.timeout,
-                params={"wait_for_active_shards": self.settings.wait_for_active_shards}
+                params={"wait_for_active_shards": self.settings.wait_for_active_shards},
             )
             if response.errors:
-                Log.error("could not update: {{error}}", error=[e.error for i in response["items"] for e in i.values() if e.status not in (200, 201)])
+                Log.error(
+                    "could not update: {{error}}",
+                    error=[
+                        e.error
+                        for i in response["items"]
+                        for e in i.values()
+                        if e.status not in (200, 201)
+                    ],
+                )
 
         # DELETE BY QUERY, IF NEEDED
-        if '.' in listwrap(command.clear):
+        if "." in listwrap(command.clear):
             self.es.delete_record(es_filter)
             return
 
         es_index.flush()
-
-

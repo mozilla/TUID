@@ -181,6 +181,7 @@ class NullType(object):
             return wrap(v.get(key))
         except Exception as e:
             from mo_logs import Log
+
             Log.error("not expected", cause=e)
 
     def __setattr__(self, key, value):
@@ -228,7 +229,7 @@ class NullType(object):
         return hash(None)
 
 
-Null = NullType()   # INSTEAD OF None!!!
+Null = NullType()  # INSTEAD OF None!!!
 
 
 def _assign_to_null(obj, path, value, force=True):
@@ -244,7 +245,7 @@ def _assign_to_null(obj, path, value, force=True):
             d = _get(obj, "__dict__")
             o = d["_obj"]
             p = d["__key__"]
-            s = [p]+path
+            s = [p] + path
             return _assign_to_null(o, s, value)
 
         path0 = path[0]
