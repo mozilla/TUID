@@ -93,25 +93,27 @@ def apply_diff(file, diff):
 
     :param file: A SourceFile object
     :param diff: unified diff from get_diff
-    :param filename: name of file that the diff is applied to
     :return: file, lines_inserted
     """
     # Ignore merges, they have duplicate entries.
+    # Variable chnaged is True when this revision has changed the file
+    changed = False
     if diff["merge"]:
-        return file
+        return file, changed
     if file.filename.lstrip("/") == "dev/null":
         file.lines = []
-        return file
+        return file, changed
 
     for f_proc in diff["diffs"]:
         new_fname = f_proc["new"].name.lstrip("/")
         old_fname = f_proc["old"].name.lstrip("/")
         if new_fname != file.filename and old_fname != file.filename:
             continue
+        changed = True
         if old_fname != new_fname:
             if new_fname == "dev/null":
                 file.lines = []
-                return file
+                return file, changed
             # Change the file name so that new lines
             # are correctly created.
             file.filename = new_fname
@@ -119,13 +121,11 @@ def apply_diff(file, diff):
         f_diff = f_proc["changes"]
         for change in f_diff:
             if change.action == "+":
-                file.add_one(
-                    Line(change.line + 1, is_new_line=True, filename=file.filename)
-                )
+                file.add_one(Line(change.line + 1, is_new_line=True, filename=file.filename))
             elif change.action == "-":
                 file.remove_one(change.line + 1)
         break
-    return file
+    return file, changed
 
 
 def apply_diff_backwards(file, diff):

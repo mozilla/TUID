@@ -751,7 +751,6 @@ def test_out_of_order_get_tuids_from_files(service):
     rev_initial = "3eccd139667d"
     rev_latest = "4e9446f9e8f0"
     rev_middle = "9b7db28b360d"
-    test_file = ["dom/base/nsWrapperCache.cpp"]
     service.clogger.csetlog.refresh()
     service.clogger.disable_all()
     service.clogger.initialize_to_range(rev_initial, rev_latest)
