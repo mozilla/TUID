@@ -268,7 +268,6 @@ class TUIDService:
             "size": 1,
         }
         r = self.annotations.search(query).hits.hits[0]
-        # TODO: Return origin revision of this TUIDs instead of r._id
         return r._source.annotation
 
     def _get_one_tuid(self, cset, path, line):
