@@ -33,31 +33,30 @@ def service(config, new_db):
 
 
 def test_caching(service):
-    # File changed revisions
-    rev1_file_changed = "1aa26cb6f9d6"
-    rev2_file_changed = "aa0394eb1c57"
-    # File not changed revisions
-    rev2_file_not_changed = "c0200f9fc1ab"
-    # Oldest revision where file is not changed
-    rev1_file_not_changed = "5ea694074089"
-    service.clogger.initialize_to_range(rev1_file_not_changed, rev2_file_not_changed)
+    initial_revision = "5ea694074089"
+    initial_revision_unchanged = "6a865ed8750b"
+    # The revision in which file has been changed
+    # (in between initial and latest)
+    initial_revision_changed = "aa0394eb1c57"
+    # Latest revision
+    final_revision = "8d73f18bc1a2"
+    test_file = ["gfx/gl/GLContextProviderGLX.cpp"]
 
-    test_files = [["gfx/gl/GLContextProviderGLX.cpp"]]
+    service.clogger.initialize_to_range(initial_revision, final_revision)
 
-    for i, elem in enumerate(test_files):
-        result1 = service.get_tuids_from_files(elem, rev1_file_not_changed)
-        result2 = service.get_tuids_from_files(elem, rev2_file_not_changed)
-        # It should be not equal because in between
-        # these two revisions file has been changed.
-        assert result1[0][0][1] != result2[0][0][1]
+    initial_tuids = service.get_tuids_from_files(test_file, initial_revision)[0][0][1]
+    final_tuids = service.get_tuids_from_files(test_file, final_revision)[0][0][1]
+    # It should be not equal because in between
+    # these two revisions file has been changed.
+    assert initial_tuids != final_tuids
 
     # _get_annotation function should give a non None result because
-    # rev1_file_changed and rev2_file_changed are in between the above
+    # initial_revision_unchanged and initial_revision_changed are in between the above
     # requested revisions, so it should have cached.
-    result1_changed = service._get_annotation(rev1_file_changed, test_files[0][0])
-    assert result1_changed
-    assert result1_changed != service.stringify_tuids(result2[0][0][1])
+    unchanged_tuids = service._get_annotation(initial_revision_unchanged, test_file[0])
+    assert unchanged_tuids
+    assert unchanged_tuids == service.stringify_tuids(initial_tuids)
 
-    result2_changed = service._get_annotation(rev2_file_changed, test_files[0][0])
-    assert result2_changed
-    assert result2_changed == service.stringify_tuids(result2[0][0][1])
+    changed_tuids = service._get_annotation(initial_revision_changed, test_file[0])
+    assert changed_tuids
+    assert changed_tuids == service.stringify_tuids(final_tuids)
