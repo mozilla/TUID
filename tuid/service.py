@@ -492,7 +492,14 @@ class TUIDService:
         return threads_running
 
     def get_tuids_from_files(
-        self, files, revision, going_forward=False, repo=None, use_thread=True, max_csets_proc=30
+        self,
+        files,
+        revision,
+        going_forward=False,
+        repo=None,
+        use_thread=True,
+        max_csets_proc=30,
+        etl=True,
     ):
         """
         Gets the TUIDs for a set of files, at a given revision.
@@ -538,6 +545,13 @@ class TUIDService:
         :return: The following tuple which contains:
                     ([list of (file, list(tuids)) tuples], True/False if completed or not)
         """
+
+        # If request comes from ETL machines, Stops caching
+        if etl:
+            Log.note("Stop caching run on clogger.")
+            with self.clogger.caching_signal.lock:
+                self.clogger.caching_signal._go = False
+
         self._add_thread()
         completed = True
 
@@ -751,6 +765,10 @@ class TUIDService:
                 Log.note("Forcing Garbage collection to help with memory.")
                 gc.collect()
                 self.count_locker.value = 0
+
+        if etl:
+            Log.note("Start caching on clogger.")
+            self.clogger.caching_signal.go()
 
         return result, completed
 

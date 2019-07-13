@@ -54,7 +54,6 @@ def test_tipfilling(clogger):
     clogger.disable_tipfilling = True
     clogger.disable_backfilling = True
     clogger.disable_deletion = True
-    clogger.disable_maintenance = True
 
     num_trys = 50
     wait_time = 2
@@ -90,8 +89,7 @@ def test_tipfilling(clogger):
 def test_backfilling_to_revision(clogger):
     clogger.disable_backfilling = False
     clogger.disable_tipfilling = True
-    clogger.disable_deletion = True
-    clogger.disable_maintenance = True
+    clogger.disable_caching = True
 
     num_trys = 50
     wait_time = 2
@@ -161,8 +159,7 @@ def test_backfilling_to_revision(clogger):
 def test_backfilling_by_count(clogger):
     clogger.disable_backfilling = False
     clogger.disable_tipfilling = True
-    clogger.disable_deletion = True
-    clogger.disable_maintenance = True
+    clogger.disable_caching = True
 
     num_trys = 50
     wait_time = 2
@@ -235,8 +232,7 @@ def test_backfilling_by_count(clogger):
 def test_partial_tipfilling(clogger):
     clogger.disable_tipfilling = True
     clogger.disable_backfilling = True
-    clogger.disable_maintenance = True
-    clogger.disable_deletion = True
+    clogger.disable_caching = True
 
     num_trys = 50
     wait_time = 2
@@ -262,8 +258,7 @@ def test_partial_tipfilling(clogger):
 def test_get_revnum_range_backfill(clogger):
     clogger.disable_tipfilling = True
     clogger.disable_backfilling = True
-    clogger.disable_maintenance = True
-    clogger.disable_deletion = True
+    clogger.disable_caching = True
 
     # Get the current tail, go 10 changesets back and request
     # the final one as the second revision.
@@ -295,8 +290,7 @@ def test_get_revnum_range_backfill(clogger):
 def test_get_revnum_range_tipfill(clogger):
     clogger.disable_tipfilling = True
     clogger.disable_backfilling = True
-    clogger.disable_maintenance = True
-    clogger.disable_deletion = True
+    clogger.disable_caching = True
 
     # Get the current tip, delete it, then request it's
     # revnum range up to a known revision
@@ -324,8 +318,7 @@ def test_get_revnum_range_tipfill(clogger):
 def test_get_revnum_range_tipnback(clogger):
     clogger.disable_tipfilling = True
     clogger.disable_backfilling = True
-    clogger.disable_maintenance = True
-    clogger.disable_deletion = True
+    clogger.disable_caching = True
 
     for ordering in range(2):
         # Used for testing output
