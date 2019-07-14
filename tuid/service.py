@@ -548,9 +548,10 @@ class TUIDService:
 
         # If request comes from ETL machines, Stops caching
         if etl:
-            Log.note("Stop caching run on clogger.")
-            with self.clogger.caching_signal.lock:
-                self.clogger.caching_signal._go = False
+            if self.clogger.caching_signal._go:
+                Log.note("Stop caching run on clogger.")
+                with self.clogger.caching_signal.lock:
+                    self.clogger.caching_signal._go = False
 
         self._add_thread()
         completed = True
@@ -561,6 +562,9 @@ class TUIDService:
             if not check:
                 # Error was already output by _check_branch
                 self._remove_thread()
+                if etl:
+                    Log.note("Start caching on clogger.")
+                    self.clogger.caching_signal.go()
                 return [(file, []) for file in files], completed
 
         if repo in ("try",):
@@ -574,6 +578,9 @@ class TUIDService:
                 result = [(file, []) for file in files], completed
 
             self._remove_thread()
+            if etl:
+                Log.note("Start caching on clogger.")
+                self.clogger.caching_signal.go()
             return result
 
         result = []

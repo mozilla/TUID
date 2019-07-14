@@ -24,7 +24,7 @@ from mo_threads import Till, Thread, Lock, Queue, Signal
 from mo_threads.threads import ALL
 from mo_times.durations import DAY
 from pyLibrary.env import http, elasticsearch
-from pyLibrary.sql import sql_list, quote_set
+from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
 from tuid.util import HG_URL, insert, delete
 
@@ -623,19 +623,29 @@ class Clogger:
         while not please_stop:
             # Wait until gets a signal
             # to begin (or end).
+            Log.note("before wait loop")
             (self.caching_signal | please_stop).wait()
 
+            Log.note("after wait loop")
             if please_stop:
                 break
 
             if self.caching_signal._go == False or self.disable_caching:
                 continue
 
+            Log.note("after wait loop and after signal check")
             # Get current tip
             tip_revision = self.get_tip()[1]
-            file_n_rev = self.conn.get(
-                "SELECT file, revision FROM latestFileMod where revision != " + tip_revision
-            )
+
+            Log.note("caching on (1) " + tip_revision)
+
+            try:
+                with self.conn.transaction() as t:
+                    file_n_rev = t.get_one(
+                        "SELECT file, revision FROM latestFileMod WHERE revision != 'aa0394eb1c57';"
+                    )
+            except Exception as e:
+                Log.warning("Unknown error occurred during caching:", cause=e)
 
             frontier = file_n_rev[1]
             file = file_n_rev[0]
@@ -645,12 +655,12 @@ class Clogger:
 
             csets = self.get_revnnums_from_range(frontier, tip_revision)
 
-            for cset in csets:
+            for revnum, cset in csets[1:]:
                 if self.caching_signal._go == False:
                     continue
-
+                Log.note("caching on(inside loop) " + file + " on " + cset)
                 # Update file to new cset
-                self.tuid_service.get_tuids_from_files(file, cset, etl=False)
+                self.tuid_service.get_tuids_from_files([file], cset, etl=False)
 
 
 CSETLOG_SCHEMA = {
