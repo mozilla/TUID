@@ -35,7 +35,7 @@ def service(config, new_db):
         Log.error("expecting 'yes' or 'no'")
 
 
-"""
+@pytest.mark.first_run
 def test_caching(service):
     service.clogger.disable_all()
     initial_revision = "5ea694074089"
@@ -69,8 +69,6 @@ def test_caching(service):
     changed_tuids = service._get_annotation(initial_revision_changed, test_file[0])
     assert changed_tuids
     assert changed_tuids == service.stringify_tuids(final_tuids)
-
-"""
 
 
 def test_caching_daemon(service):
