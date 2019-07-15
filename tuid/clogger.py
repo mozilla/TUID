@@ -623,17 +623,17 @@ class Clogger:
         while not please_stop:
             # Wait until gets a signal
             # to begin (or end).
-            Log.note("before wait loop")
+            # Log.note("before wait loop")
             (self.caching_signal | please_stop).wait()
 
-            Log.note("after wait loop")
+            # Log.note("after wait loop")
             if please_stop:
                 break
 
             if self.caching_signal._go == False or self.disable_caching:
                 continue
 
-            Log.note("after wait loop and after signal check")
+            # Log.note("after wait loop and after signal check")
             # Get current tip
             tip_revision = self.get_tip()[1]
 
@@ -659,7 +659,7 @@ class Clogger:
             for revnum, cset in csets[1:]:
                 if self.caching_signal._go == False:
                     continue
-                Log.note("caching on(inside loop) " + file + " on " + cset)
+                # Log.note("caching on(inside loop) " + file + " on " + cset)
                 # Update file to new cset
                 self.tuid_service.get_tuids_from_files([file], cset, etl=False)
 
