@@ -642,7 +642,8 @@ class Clogger:
             try:
                 with self.conn.transaction() as t:
                     file_n_rev = t.get_one(
-                        "SELECT file, revision FROM latestFileMod WHERE revision != 'aa0394eb1c57';"
+                        "SELECT file, revision FROM latestFileMod WHERE revision != "
+                        + quote_value(tip_revision)
                     )
             except Exception as e:
                 Log.warning("Unknown error occurred during caching:", cause=e)
