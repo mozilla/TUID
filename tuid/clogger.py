@@ -620,48 +620,42 @@ class Clogger:
         This daemon caches the annotations for the files available
         in the LatestFileMod to tip of csetLog table
         """
-        while not please_stop:
-            # Wait until gets a signal
-            # to begin (or end).
-            # Log.note("before wait loop")
-            (self.caching_signal | please_stop).wait()
+        try:
+            while not please_stop:
+                # Wait until gets a signal
+                # to begin (or end).
+                (self.caching_signal | please_stop).wait()
 
-            # Log.note("after wait loop")
-            if please_stop:
-                break
+                if please_stop:
+                    break
 
-            if self.caching_signal._go == False or self.disable_caching:
-                continue
+                if self.caching_signal._go == False or self.disable_caching:
+                    continue
 
-            # Log.note("after wait loop and after signal check")
-            # Get current tip
-            tip_revision = self.get_tip()[1]
+                # Get current tip
+                tip_revision = self.get_tip()[1]
 
-            Log.note("caching on (1) " + tip_revision)
-
-            try:
                 with self.conn.transaction() as t:
                     file_n_rev = t.get_one(
                         "SELECT file, revision FROM latestFileMod WHERE revision != "
                         + quote_value(tip_revision)
                     )
-            except Exception as e:
-                Log.warning("Unknown error occurred during caching:", cause=e)
 
-            frontier = file_n_rev[1]
-            file = file_n_rev[0]
+                frontier = file_n_rev[1]
+                file = file_n_rev[0]
 
-            if self.caching_signal._go == False:
-                continue
-
-            csets = self.get_revnnums_from_range(frontier, tip_revision)
-
-            for revnum, cset in csets[1:]:
                 if self.caching_signal._go == False:
                     continue
-                # Log.note("caching on(inside loop) " + file + " on " + cset)
-                # Update file to new cset
-                self.tuid_service.get_tuids_from_files([file], cset, etl=False)
+
+                csets = self.get_revnnums_from_range(frontier, tip_revision)
+
+                for revnum, cset in csets[1:]:
+                    if self.caching_signal._go == False:
+                        continue
+                    # Update file to new cset
+                    self.tuid_service.get_tuids_from_files([file], cset, etl=False)
+        except Exception as e:
+            Log.warning("Unknown error occurred during caching: ", cause=e)
 
 
 CSETLOG_SCHEMA = {
