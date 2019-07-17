@@ -50,15 +50,16 @@ def test_caching_daemon(service):
     delete(service.annotations, filter)
 
     service.clogger.initialize_to_range(initial_revision, final_revision)
+    revision_list = service.clogger.get_revnnums_from_range(initial_revision, final_revision)
 
+    assert not service.clogger.caching_signal._go
     initial_tuids = service.get_tuids_from_files(test_file, initial_revision)[0][0][1]
     assert initial_tuids
     assert service.clogger.caching_signal._go
-    assert not service.clogger.disable_caching
 
-    # We requested tuids for initial revision and inserted revisions in
-    # csetLog from initial to final revision, get_tuids_from_files function
-    # starts caching daemon, so it should insert tuids till final revision
+    # We first requested the changesets from initial_revision to final_revision (inclusive)
+    # to be in the csetLog. The get_tuids_from_files function then starts the caching daemon
+    # which should insert TUIDs for revisions initial_revision to final_revision.
     timeout = Till(seconds=DAEMON_RUN_TIMEOUT)
     while not timeout:
         if service._get_annotation(final_revision, test_file[0]):
@@ -66,7 +67,9 @@ def test_caching_daemon(service):
         Till(seconds=timeout_seconds).wait()
 
     service.clogger.caching_signal._go = False
-    assert service._get_annotation(final_revision, test_file[0])
+
+    for _, rev in revision_list:
+        assert service._get_annotation(rev, test_file[0])
 
 
 def test_caching(service):

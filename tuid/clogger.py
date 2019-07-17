@@ -44,6 +44,7 @@ MINIMUM_PERMANENT_CSETS = 200  # changesets
 MAXIMUM_NONPERMANENT_CSETS = 1500  # changesets
 SIGNAL_MAINTENANCE_CSETS = int(MAXIMUM_NONPERMANENT_CSETS + (0.2 * MAXIMUM_NONPERMANENT_CSETS))
 UPDATE_VERY_OLD_FRONTIERS = False
+CACHE_WAIT_TIME = 15  # seconds
 
 SINGLE_CLOGGER = None
 
@@ -625,16 +626,15 @@ class Clogger:
                 # Wait until gets a signal
                 # to begin (or end).
                 (self.caching_signal | please_stop).wait()
+                Till(seconds=CACHE_WAIT_TIME).wait()
 
                 if please_stop:
                     break
-
                 if self.caching_signal._go == False or self.disable_caching:
                     continue
 
                 # Get current tip
                 tip_revision = self.get_tip()[1]
-
                 with self.conn.transaction() as t:
                     file_n_rev = t.get_one(
                         "SELECT file, revision FROM latestFileMod WHERE revision != "
@@ -648,7 +648,6 @@ class Clogger:
                     continue
 
                 csets = self.get_revnnums_from_range(frontier, tip_revision)
-
                 for revnum, cset in csets[1:]:
                     if self.caching_signal._go == False:
                         continue
