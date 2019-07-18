@@ -50,9 +50,7 @@ class AnnotateFile(SourceFile, object):
                 new_lines.append(line_obj)
                 continue
             new_line_obj = TuidLine(
-                TuidMap(None, line_obj.line),
-                filename=line_obj.filename,
-                is_new_line=True,
+                TuidMap(None, line_obj.line), filename=line_obj.filename, is_new_line=True
             )
             new_lines.append(new_line_obj)
         self.lines = new_lines
@@ -102,20 +100,26 @@ class AnnotateFile(SourceFile, object):
         insert_lines = set(all_new_lines) - set(existing_tuids.keys())
         if len(insert_lines) > 0:
             try:
-                insert_entries = [
-                    (self.tuid_service.tuid(),) + line_origins[linenum - 1]
-                    for linenum in insert_lines
-                ]
+                # Insert None such that tuid_gen will take care the rest
+                insert_entries = [(0,) + line_origins[linenum - 1] for linenum in insert_lines]
 
                 records = wrap(
                     [
-                        self.tuid_service._make_record_temporal(
-                            tuid, revision, file, line
-                        )
+                        self.tuid_service._make_record_temporal(tuid, revision, file, line)
                         for tuid, file, revision, line in insert_entries
                     ]
                 )
                 insert(self.tuid_service.temporal, records)
+
+                # Wait for generator to generate TUIDs
+                insert_entries = []
+                for l in insert_lines:
+                    _, cset, file, line = l
+                    while not self._get_one_tuid(cset, file, line):
+                        continue
+                    tuid = self._get_one_tuid(cset, file, line)
+                    insert_entries.append((tuid, file, revision, line))
+
             except Exception as e:
                 Log.note(
                     "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
@@ -183,9 +187,7 @@ def wait_until(index, condition):
 def delete(index, filter):
     index.delete_record(filter)
     index.refresh()
-    wait_until(
-        index, lambda: index.search({"size": 0, "query": filter}).hits.total == 0
-    )
+    wait_until(index, lambda: index.search({"size": 0, "query": filter}).hits.total == 0)
 
 
 def insert(index, records):

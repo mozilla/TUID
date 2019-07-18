@@ -31,7 +31,7 @@ def _get_one_tuid(service):
     # Returns a single TUID if it exists else None
     query = {
         "_source": {"includes": ["revision", "line", "file", "tuid"]},
-        "query": {"bool": {"must": [{"term": {"tuid": 1}}]}},
+        "query": {"bool": {"must": [{"term": {"tuid": 0}}]}},
         "size": 1,
     }
     temp = service.temporal.search(query).hits.hits[0]._source
