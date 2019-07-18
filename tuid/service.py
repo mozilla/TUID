@@ -833,11 +833,14 @@ class TUIDService:
                 if change.action == "+":
                     tuid_tmp = self._get_one_tuid(cset, file, change.line + 1)
                     if tuid_tmp == None:
-                        new_tuid = self.tuid()
+                        # TODO: Insted of generating TUID here
+                        # Call tuid generator by inserting this information into temporal table and wait.
+                        new_tuid = None  # self.tuid()
                         list_to_insert.append((new_tuid, cset, file, change.line + 1))
                     else:
                         new_tuid = tuid_tmp
-                    new_ann = add_one(TuidMap(new_tuid, change.line + 1), new_ann)
+                        new_ann = add_one(TuidMap(new_tuid, change.line + 1), new_ann)
+                    # new_ann = add_one(TuidMap(new_tuid, change.line + 1), new_ann)
                 elif change.action == "-":
                     new_ann = remove_one(change.line + 1, new_ann)
             break  # Found the file, exit searching
@@ -850,6 +853,14 @@ class TUIDService:
                 ]
             )
             insert(self.temporal, records)
+
+            # Wait for generator to generate TUIDs
+            for l in list_to_insert:
+                _, cset, file, line = l
+                while not self._get_one_tuid(cset, file, line):
+                    pass
+                new_tuid = self._get_one_tuid(cset, file, line)
+                new_ann = add_one(TuidMap(new_tuid, line), new_ann)
 
         return new_ann, file
 
