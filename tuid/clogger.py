@@ -27,6 +27,7 @@ from pyLibrary.env import http, elasticsearch
 from pyLibrary.sql.sqlite import quote_value
 from tuid import sql
 from tuid.util import HG_URL, insert, delete
+from collections import defaultdict
 
 RETRY = {"times": 3, "sleep": 5}
 SQL_CSET_BATCH_SIZE = 500
@@ -45,6 +46,7 @@ MAXIMUM_NONPERMANENT_CSETS = 1500  # changesets
 SIGNAL_MAINTENANCE_CSETS = int(MAXIMUM_NONPERMANENT_CSETS + (0.2 * MAXIMUM_NONPERMANENT_CSETS))
 UPDATE_VERY_OLD_FRONTIERS = False
 CACHE_WAIT_TIME = 15  # seconds
+CACHING_BATCH_SIZE = 50
 
 SINGLE_CLOGGER = None
 
@@ -621,8 +623,8 @@ class Clogger:
         This daemon caches the annotations for the files available
         in the LatestFileMod to tip of csetLog table
         """
-        try:
-            while not please_stop:
+        while not please_stop:
+            try:
                 # Wait until gets a signal
                 # to begin (or end).
                 (self.caching_signal | please_stop).wait()
@@ -636,25 +638,19 @@ class Clogger:
                 # Get current tip
                 tip_revision = self.get_tip()[1]
                 with self.conn.transaction() as t:
-                    file_n_rev = t.get_one(
-                        "SELECT file, revision FROM latestFileMod WHERE revision != "
-                        + quote_value(tip_revision)
+                    files_to_update = t.get(
+                        "SELECT file FROM latestFileMod WHERE revision != ? limit 1000",
+                        (tip_revision),
                     )
 
-                frontier = file_n_rev[1]
-                file = file_n_rev[0]
-
-                if self.caching_signal._go == False:
-                    continue
-
-                csets = self.get_revnnums_from_range(frontier, tip_revision)
-                for revnum, cset in csets[1:]:
+                for _, fs in jx.groupby(files_to_update, size=CACHING_BATCH_SIZE):
                     if self.caching_signal._go == False:
-                        continue
-                    # Update file to new cset
-                    self.tuid_service.get_tuids_from_files([file], cset, etl=False)
-        except Exception as e:
-            Log.warning("Unknown error occurred during caching: ", cause=e)
+                        break
+                    files = [f[0] for f in fs]
+                    # Update file to the tip revision
+                    self.tuid_service.get_tuids_from_files(files, tip_revision, etl=False)
+            except Exception as e:
+                Log.warning("Unknown error occurred during caching: ", cause=e)
 
 
 CSETLOG_SCHEMA = {
