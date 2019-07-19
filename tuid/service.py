@@ -491,8 +491,20 @@ class TUIDService:
             threads_running = self.service_threads_running
         return threads_running
 
+    def start_cache_daemon(self, etl=True):
+        if etl:
+            Log.note("Start caching on clogger.")
+            self.clogger.caching_signal.go()
+
     def get_tuids_from_files(
-        self, files, revision, going_forward=False, repo=None, use_thread=True, max_csets_proc=30
+        self,
+        files,
+        revision,
+        going_forward=False,
+        repo=None,
+        use_thread=True,
+        max_csets_proc=30,
+        etl=True,
     ):
         """
         Gets the TUIDs for a set of files, at a given revision.
@@ -538,6 +550,14 @@ class TUIDService:
         :return: The following tuple which contains:
                     ([list of (file, list(tuids)) tuples], True/False if completed or not)
         """
+
+        # If request comes from ETL machines, Stops caching
+        if etl:
+            if self.clogger.caching_signal._go:
+                Log.note("Stop caching run on clogger.")
+                with self.clogger.caching_signal.lock:
+                    self.clogger.caching_signal._go = False
+
         self._add_thread()
         completed = True
 
@@ -547,6 +567,7 @@ class TUIDService:
             if not check:
                 # Error was already output by _check_branch
                 self._remove_thread()
+                self.start_cache_daemon(etl=etl)
                 return [(file, []) for file in files], completed
 
         if repo in ("try",):
@@ -560,6 +581,7 @@ class TUIDService:
                 result = [(file, []) for file in files], completed
 
             self._remove_thread()
+
             return result
 
         result = []
@@ -644,7 +666,7 @@ class TUIDService:
                     )
 
         def update_tuids_in_thread(
-            new_files, frontier_update_list, revision, using_thread, please_stop=None
+            new_files, frontier_update_list, revision, using_thread, etl=True, please_stop=None
         ):
             # Processes the new files and files which need their frontier updated
             # outside of the main thread as this can take a long time.
@@ -699,7 +721,7 @@ class TUIDService:
                 result = [[] for _ in range(len(new_files) + len(frontier_update_list))]
             finally:
                 self._remove_thread()
-
+                self.start_cache_daemon(etl=etl)
                 if using_thread:
                     self.statsdaemon.update_totals(0, len(result))
 
@@ -734,6 +756,7 @@ class TUIDService:
                     recomputed_frontier_updates,
                     revision,
                     threaded,
+                    etl=etl,
                 )
             for _ in range(1, thread_count):  # Skip the first thread
                 self._add_thread()
@@ -751,6 +774,8 @@ class TUIDService:
                 Log.note("Forcing Garbage collection to help with memory.")
                 gc.collect()
                 self.count_locker.value = 0
+
+        self.start_cache_daemon(etl=(etl and not threaded))
 
         return result, completed
 

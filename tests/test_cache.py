@@ -10,29 +10,70 @@ from __future__ import unicode_literals
 
 import pytest
 
-from mo_dots import Null
 from mo_logs import Log
-from mo_threads import Thread, Till
+from mo_threads import Till
 from tuid.service import TUIDService
-from mo_dots import Null, wrap
+from mo_dots import Null
+from pyLibrary.sql.sqlite import quote_value
+from tuid.util import delete
 
 _service = None
+
+DAEMON_RUN_TIMEOUT = 120
 
 
 @pytest.fixture
 def service(config, new_db):
     global _service
     if new_db == "yes":
-        return TUIDService(database=Null, start_workers=False, kwargs=config.tuid)
+        return TUIDService(database=Null, start_workers=True, kwargs=config.tuid)
     elif new_db == "no":
         if _service is None:
-            _service = TUIDService(kwargs=config.tuid, start_workers=False)
+            _service = TUIDService(kwargs=config.tuid, start_workers=True)
         return _service
     else:
         Log.error("expecting 'yes' or 'no'")
 
 
+def test_caching_daemon(service):
+    service.clogger.disable_tipfilling = True
+    service.clogger.disable_backfilling = True
+    service.clogger.disable_caching = False
+    initial_revision = "5ea694074089"
+    final_revision = "aa0394eb1c57"
+    test_file = ["gfx/gl/GLContextProviderGLX.cpp"]
+    timeout_seconds = 1
+
+    with service.conn.transaction() as t:
+        t.execute("DELETE FROM latestFileMod")
+    filter = {"terms": {"file": test_file}}
+    delete(service.annotations, filter)
+
+    service.clogger.initialize_to_range(initial_revision, final_revision)
+    revision_list = service.clogger.get_revnnums_from_range(initial_revision, final_revision)
+
+    assert not service.clogger.caching_signal._go
+    initial_tuids = service.get_tuids_from_files(test_file, initial_revision)[0][0][1]
+    assert initial_tuids
+    assert service.clogger.caching_signal._go
+
+    # We first requested the changesets from initial_revision to final_revision (inclusive)
+    # to be in the csetLog. The get_tuids_from_files function then starts the caching daemon
+    # which should insert TUIDs for revisions initial_revision to final_revision.
+    timeout = Till(seconds=DAEMON_RUN_TIMEOUT)
+    while not timeout:
+        if service._get_annotation(final_revision, test_file[0]):
+            break
+        Till(seconds=timeout_seconds).wait()
+
+    service.clogger.caching_signal._go = False
+
+    for _, rev in revision_list:
+        assert service._get_annotation(rev, test_file[0])
+
+
 def test_caching(service):
+    service.clogger.disable_all()
     initial_revision = "5ea694074089"
     initial_revision_unchanged = "6a865ed8750b"
     # The revision in which file has been changed
@@ -43,6 +84,10 @@ def test_caching(service):
     test_file = ["gfx/gl/GLContextProviderGLX.cpp"]
 
     service.clogger.initialize_to_range(initial_revision, final_revision)
+    with service.conn.transaction() as t:
+        t.execute("DELETE FROM latestFileMod")
+        filter = {"terms": {"file": test_file}}
+        delete(service.annotations, filter)
 
     initial_tuids = service.get_tuids_from_files(test_file, initial_revision)[0][0][1]
     final_tuids = service.get_tuids_from_files(test_file, final_revision)[0][0][1]

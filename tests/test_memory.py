@@ -74,12 +74,8 @@ def test_annotation_memory(service):
                 Till(seconds=0.001).wait()
                 result = service.temporal.search(query)
             service.temporal.delete_record(filter)
-            t.execute(
-                "DELETE FROM annotations WHERE file IN " + quote_set(files_to_get)
-            )
-            t.execute(
-                "DELETE FROM latestFileMod WHERE file IN " + quote_set(files_to_get)
-            )
+            t.execute("DELETE FROM annotations WHERE file IN " + quote_set(files_to_get))
+            t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(files_to_get))
 
         if start_mem == -1:
             start_mem = round(process.memory_info().rss / (1000 * 1000), 2)
@@ -96,9 +92,7 @@ def test_annotation_memory(service):
             endmem=end_mem,
             pc=pc_used,
         )
-        Log.note(
-            "Used {{mem}} Mb since first get_tuids call.", mem=str(end_mem - start_mem)
-        )
+        Log.note("Used {{mem}} Mb since first get_tuids call.", mem=str(end_mem - start_mem))
 
         if GC_DEBUG:
             Log.note("Uncollected garbage: ")

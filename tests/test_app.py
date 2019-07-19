@@ -35,10 +35,7 @@ def app():
         app_process = Null
     elif not app_process:
         app_process = Process(
-            "TUID app",
-            ["python", "tuid/app.py"],
-            env={str("PYTHONPATH"): pythonpath},
-            debug=True,
+            "TUID app", ["python", "tuid/app.py"], env={str("PYTHONPATH"): pythonpath}, debug=True
         )
         for line in app_process.stderr:
             if line.startswith(b" * Running on "):
@@ -124,9 +121,7 @@ def test_single_file(config, app):
         },
     )
 
-    list_response = wrap(
-        [{h: v for h, v in zip(response.header, r)} for r in response.data]
-    )
+    list_response = wrap([{h: v for h, v in zip(response.header, r)} for r in response.data])
     tuids = list_response[0].tuids
 
     assert len(tuids) == 41  # 41 lines expected
@@ -174,6 +169,4 @@ def test_client(config, app):
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_client_w_try(config, app):
     client = TuidClient(config.client)
-    client.get_tuid(
-        revision="0f4946791ddb", file="dom/base/nsWrapperCache.cpp", branch="try"
-    )
+    client.get_tuid(revision="0f4946791ddb", file="dom/base/nsWrapperCache.cpp", branch="try")
