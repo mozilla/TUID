@@ -835,7 +835,7 @@ class TUIDService:
                     if tuid_tmp == None:
                         # TODO: Insted of generating TUID here
                         # Call tuid generator by inserting this information into temporal table and wait.
-                        new_tuid = None  # self.tuid()
+                        new_tuid = 0  # self.tuid()
                         list_to_insert.append((new_tuid, cset, file, change.line + 1))
                     else:
                         new_tuid = tuid_tmp
@@ -1482,7 +1482,9 @@ class TUIDService:
         """
 
         new_line_origins = {
-            line_num: (self.tuid(),) + line_origins[line_num - 1] for line_num in new_lines
+            # line_num: (self.tuid(),) + line_origins[line_num - 1] for line_num in new_lines
+            line_num: (0,) + line_origins[line_num - 1]
+            for line_num in new_lines
         }
 
         duplicate_lines = {
@@ -1512,6 +1514,13 @@ class TUIDService:
             ]
         )
         insert(self.temporal, records)
+
+        for line_num in new_line_origins:
+            file, revision, line = line_origins[line_num - 1]
+            while not self._get_one_tuid(revision, file, line):
+                pass
+            new_tuid = self._get_one_tuid(revision, file, line)
+            new_line_origins[line_num] = (new_tuid,) + line_origins[line_num - 1]
 
         return new_line_origins
 
