@@ -126,7 +126,6 @@ class TUIDService:
 
         temporal = self.esconfig.temporal
         set_default(temporal, {"schema": TEMPORAL_SCHEMA})
-        # what would be the _id here
         self.temporal = self.es_temporal.get_or_create_index(kwargs=temporal)
         self.temporal.refresh()
 

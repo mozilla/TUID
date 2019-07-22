@@ -3,36 +3,63 @@ from __future__ import division
 from __future__ import unicode_literals
 
 
-from mo_dots import wrap, coalesce
-from mo_logs import Log, constants, startup, Except
-from tuid.service import TUIDService
+from mo_dots import wrap, coalesce, set_default
+from mo_logs import Log, constants, startup
+from mo_logs.exceptions import suppress_exception
 from tuid.util import insert
+from pyLibrary.env import elasticsearch
+import os
 
-OVERVIEW = None
-QUERY_SIZE_LIMIT = 10 * 1000 * 1000
-EXPECTING_QUERY = b"expecting query\r\n"
-TOO_BUSY = 10
-TOO_MANY_THREADS = 4
+
+TEMPORAL_SCHEMA = {
+    "settings": {"index.number_of_replicas": 1, "index.number_of_shards": 1},
+    "mappings": {
+        "temporaltype": {
+            "_all": {"enabled": False},
+            "properties": {
+                "tuid": {"type": "integer", "store": True},
+                "revision": {"type": "keyword", "store": True},
+                "file": {"type": "keyword", "store": True},
+                "line": {"type": "integer", "store": True},
+            },
+        }
+    },
+}
 
 
 class TUID_Generator:
     def __init__(self):
 
-        config = startup.read_settings(
-            filename="/home/ajupazhamayil/TUID/tests/travis/config.json"
-        )
+        config = startup.read_settings(filename=os.environ.get("TUID_CONFIG"))
+
         constants.set(config.constants)
         Log.start(config.debug)
 
+        self.esconfig = config.tuid.esservice
+        self.es_temporal = elasticsearch.Cluster(kwargs=self.esconfig.temporal)
+        self.es_annotations = elasticsearch.Cluster(kwargs=self.esconfig.annotations)
+
+        self.init_db()
         # TODO: Do the configuration directly from config file
         # Not from service call
-        self.service = TUIDService(config.tuid)
+        # self.service = TUIDService(config.tuid)
 
         query = {"size": 0, "aggs": {"value": {"max": {"field": "tuid"}}}}
         self.next_tuid = int(
-            coalesce(eval(str(self.service.temporal.search(query).aggregations.value.value)), 0)
-            + 1
+            coalesce(eval(str(self.temporal.search(query).aggregations.value.value)), 0) + 1
         )
+
+    def init_db(self):
+        temporal = self.esconfig.temporal
+        set_default(temporal, {"schema": TEMPORAL_SCHEMA})
+        self.temporal = self.es_temporal.get_or_create_index(kwargs=temporal)
+        self.temporal.refresh()
+
+        total = self.temporal.search({"size": 0})
+        while not total.hits:
+            total = self.temporal.search({"size": 0})
+        with suppress_exception:
+            self.temporal.add_alias()
 
     def tuid(self):
         """
@@ -44,13 +71,12 @@ class TUID_Generator:
             self.next_tuid += 1
 
     def get_tuid_tobe_assigned(self):
-        # Returns a single TUID if it exists else None
         query = {
             "_source": {"includes": ["revision", "line", "file", "tuid"]},
             "query": {"bool": {"must": [{"term": {"tuid": 0}}]}},
             "size": 100,
         }
-        temp = self.service.temporal.search(query).hits.hits
+        temp = self.temporal.search(query).hits.hits
         return temp
 
     def _make_record_temporal(self, line):
@@ -58,13 +84,6 @@ class TUID_Generator:
         record = line._source
         record["_id"] = id
         record["tuid"] = self.tuid()
-        # record = {
-        #     "_id": revision + file + str(line),
-        #     "tuid": tuid,
-        #     "revision": revision,
-        #     "file": file,
-        #     "line": line,
-        # }
         return wrap([{"value": record}])
 
 
@@ -75,5 +94,5 @@ while True:
     # {'file': 'gfx/thebes/GLContextProviderGLX.cpp', 'line': 1, 'tuid': 0, 'revision': '0ec22e77aefc'}
     for l in line:
         record = gen._make_record_temporal(l)
-        insert(gen.service.temporal, record)
+        insert(gen.temporal, record)
         # print("Giving tuid for "+str(record))
