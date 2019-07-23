@@ -1552,6 +1552,9 @@ class TUIDService:
         )
         return new_lines, existing_tuids
 
+    def give_tuids(self, length):
+        return [TuidMap(self.tuid(), i + 1) for i in range(0, length)]
+
     def _get_tuids(self, files, revision, annotated_files, repo=None):
         """
         Returns (TUID, line) tuples for a given file at a given revision.
@@ -1615,49 +1618,51 @@ class TUIDService:
                     self.insert_annotate_dummy(revision, file)
                     results.append((file, []))
                     continue
-
-                # Gather all missing csets and the
-                # corresponding lines.
-                line_origins = []
-                for node in annotated_object["annotate"]:
-                    cset_len12 = node["node"][:12]
-
-                    # If the line added by `cset_len12` is not known
-                    # add it. Use the 'abspath' field to determine the
-                    # name of the file it was created in (in case it was
-                    # changed). Copy to make sure we don't create a reference
-                    # here.
-                    line_origins.append(
-                        copy.deepcopy((node["abspath"], cset_len12, int(node["targetline"])))
-                    )
-
-                # Update DB with any revisions found in annotated
-                # object that are not in the DB.
-                new_line_origins = {}
-                new_lines, existing_tuids = self.get_new_lines(line_origins)
-                if len(new_lines) > 0:
-                    try:
-                        new_line_origins = self.insert_tuids_with_duplicates(
-                            file, revision, new_lines, line_origins
-                        )
-
-                        # Format so we don't have to use [0] to get at the tuids
-                        for linenum in new_line_origins:
-                            new_line_origins[linenum] = new_line_origins[linenum][0]
-                    except Exception as e:
-                        # Something broke for this file, ignore it and go to the
-                        # next one.
-                        Log.note("Failed to insert new tuids {{cause}}", cause=e)
-                        continue
-
-                tuids = []
-                for line_ind, line_origin in enumerate(line_origins):
-                    line_num = line_ind + 1
-                    if line_num in existing_tuids:
-                        tuids.append(TuidMap(existing_tuids[line_num], line_num))
-                    else:
-                        tuids.append(TuidMap(new_line_origins[line_num], line_num))
-
+                #
+                # # Gather all missing csets and the
+                # # corresponding lines.
+                # line_origins = []
+                # for node in annotated_object["annotate"]:
+                #     cset_len12 = node["node"][:12]
+                #
+                #     # If the line added by `cset_len12` is not known
+                #     # add it. Use the 'abspath' field to determine the
+                #     # name of the file it was created in (in case it was
+                #     # changed). Copy to make sure we don't create a reference
+                #     # here.
+                #     line_origins.append(
+                #         copy.deepcopy((node["abspath"], cset_len12, int(node["targetline"])))
+                #     )
+                #
+                # # Update DB with any revisions found in annotated
+                # # object that are not in the DB.
+                # new_line_origins = {}
+                # new_lines, existing_tuids = self.get_new_lines(line_origins)
+                # if len(new_lines) > 0:
+                #     try:
+                #         new_line_origins = self.insert_tuids_with_duplicates(
+                #             file, revision, new_lines, line_origins
+                #         )
+                #
+                #         # Format so we don't have to use [0] to get at the tuids
+                #         for linenum in new_line_origins:
+                #             new_line_origins[linenum] = new_line_origins[linenum][0]
+                #     except Exception as e:
+                #         # Something broke for this file, ignore it and go to the
+                #         # next one.
+                #         Log.note("Failed to insert new tuids {{cause}}", cause=e)
+                #         continue
+                #
+                # tuids = []
+                # for line_ind, line_origin in enumerate(line_origins):
+                #     line_num = line_ind + 1
+                #     if line_num in existing_tuids:
+                #         tuids.append(TuidMap(existing_tuids[line_num], line_num))
+                #     else:
+                #         tuids.append(TuidMap(new_line_origins[line_num], line_num))
+                #
+                file_length = 1  # TODO Find the file length directly from hg
+                tuids = self.give_tuids(file_length)
                 str_tuids = self.stringify_tuids(tuids)
                 entry = [(revision, file, str_tuids)]
 
