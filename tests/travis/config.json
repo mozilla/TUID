@@ -81,6 +81,17 @@
                 "consistency": "one",
                 "debug": false,
                 "limit_replicas": false
+            },
+            "todo": {
+                "host": "http://localhost",
+                "port": 9200,
+                "index": "todo",
+                "type": "todotype",
+                "typed": false,
+                "timeout": 300,
+                "consistency": "one",
+                "debug": false,
+                "limit_replicas": false
             }
         }
     },

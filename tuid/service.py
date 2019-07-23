@@ -73,6 +73,7 @@ class TUIDService:
             self.esconfig = self.config.esservice
             self.es_temporal = elasticsearch.Cluster(kwargs=self.esconfig.temporal)
             self.es_annotations = elasticsearch.Cluster(kwargs=self.esconfig.annotations)
+            self.es_todo = elasticsearch.Cluster(kwargs=self.esconfig.todo)
 
             if not self.conn.get_one("SELECT name FROM sqlite_master WHERE type='table';"):
                 self.init_db()
@@ -203,6 +204,15 @@ class TUIDService:
         record = {
             "_id": revision + file + str(line),
             "tuid": tuid,
+            "revision": revision,
+            "file": file,
+            "line": line,
+        }
+        return {"value": record}
+
+    def _make_record_todo(self, file, revision, line):
+        record = {
+            "_id": revision + file + str(line),
             "revision": revision,
             "file": file,
             "line": line,
@@ -1480,6 +1490,12 @@ class TUIDService:
             requests, the tuid will be duplicated in _get_tuids.
         """
 
+        # [('dom/base/nsWrapperCache.cpp', 'c4618e8cb8ff', 1)]
+        todo_records = wrap(
+            [self._make_record_todo(line_origins[line_num - 1]) for line_num in new_lines]
+        )
+        insert(self.todo, todo_records)
+
         new_line_origins = {
             # line_num: (self.tuid(),) + line_origins[line_num - 1] for line_num in new_lines
             line_num: (0,) + line_origins[line_num - 1]
@@ -1825,6 +1841,19 @@ TEMPORAL_SCHEMA = {
     },
 }
 
+TODO_SCHEMA = {
+    "settings": {"index.number_of_replicas": 1, "index.number_of_shards": 1},
+    "mappings": {
+        "todotype": {
+            "_all": {"enabled": False},
+            "properties": {
+                "revision": {"type": "keyword", "store": True},
+                "file": {"type": "keyword", "store": True},
+                "line": {"type": "integer", "store": True},
+            },
+        }
+    },
+}
 
 ANNOTATIONS_SCHEMA = {
     "settings": {"index.number_of_replicas": 1, "index.number_of_shards": 1},
