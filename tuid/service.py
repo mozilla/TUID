@@ -334,11 +334,11 @@ class TUIDService:
         output2["merge"] = check_merge(merge_description)
         return output2
 
-    # Gets an annotated file from a particular revision from https://hg.mozilla.org/
+    # Gets number of lines in a file from a particular revision from https://hg.mozilla.org/
     def _get_hg_annotate(self, cset, file, annotated_files, thread_num, repo, please_stop=None):
         with self.ann_thread_locker:
             self.ann_threads_running += 1
-        url = str(HG_URL) + "/" + repo + "/json-annotate/" + cset + "/" + file
+        url = str(HG_URL) + "/" + repo + "/raw-file/" + cset + "/" + file
         if DEBUG:
             Log.note("HG: {{url}}", url=url)
 
@@ -364,7 +364,13 @@ class TUIDService:
         annotated_files[thread_num] = []
         if not timeout:
             try:
-                annotated_files[thread_num] = http.get_json(url, retry=RETRY)
+                response = http.get(url, retry=RETRY, stream=True)
+                if response.status_code == 200:
+                    annotated_files[thread_num] = (
+                        response.all_content.decode("UTF-8").count("\n") + 1
+                    )
+                else:
+                    annotated_files[thread_num] = -1
             except Exception as e:
                 Log.warning(
                     "Unexpected error while trying to get annotate for {{url}}", url=url, cause=e
@@ -1567,13 +1573,13 @@ class TUIDService:
 
         :param files: list of files to process
         :param revision: revision at which to get the file
-        :param annotated_files: annotations for each file
+        :param annotated_files: number of lines for each file
         :param repo: The branch to get tuids from
         :return: List of TuidMap objects
         """
         with self.temporal_locker:
             results = []
-            for fcount, annotated_object in enumerate(annotated_files):
+            for fcount, file_length in enumerate(annotated_files):
                 file = files[fcount]
                 # TODO: Replace old empty annotation if a new one is found
                 # TODO: at the same revision and if it is not empty as well.
@@ -1585,34 +1591,13 @@ class TUIDService:
                     continue
 
                 # If it's not defined at this revision, we need to add it in
-                errored = False
-                if isinstance(annotated_object, (text_type, str)):
-                    errored = True
+                if file_length == -1:
                     Log.warning(
                         "{{file}} does not exist in the revision={{cset}} branch={{branch_name}}",
                         branch_name=repo,
                         cset=revision,
                         file=file,
                     )
-                elif annotated_object is None:
-                    Log.warning(
-                        "Unexpected error getting annotation for: {{file}} in the revision={{cset}} branch={{branch_name}}",
-                        branch_name=repo,
-                        cset=revision,
-                        file=file,
-                    )
-                    errored = True
-                elif "annotate" not in annotated_object:
-                    Log.warning(
-                        "Missing annotate, type got: {{ann_type}}, expecting:dict returned when getting "
-                        "annotation for: {{file}} in the revision {{cset}}",
-                        cset=revision,
-                        file=file,
-                        ann_type=type(annotated_object),
-                    )
-                    errored = True
-
-                if errored:
                     Log.note("Inserting dummy entry...")
                     self.insert_tuid_dummy(revision, file)
                     self.insert_annotate_dummy(revision, file)
@@ -1661,7 +1646,6 @@ class TUIDService:
                 #     else:
                 #         tuids.append(TuidMap(new_line_origins[line_num], line_num))
                 #
-                file_length = 1  # TODO Find the file length directly from hg
                 tuids = self.give_tuids(file_length)
                 str_tuids = self.stringify_tuids(tuids)
                 entry = [(revision, file, str_tuids)]
