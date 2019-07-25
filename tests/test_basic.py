@@ -259,10 +259,22 @@ def test_multithread_service(service):
 
 
 def test_new_then_old(service):
+    old_rev = "6162f89a4838"
+    new_rev = "06b1a22c5e62"
+    file = "testing/geckodriver/CONTRIBUTING.md"
+    service.clogger.initialize_to_range(old_rev, new_rev)
     # delete database then run this test
-    old = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838")
-    new = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62")
-
+    old = service.get_tuids(file, old_rev)
+    with service.conn.transaction() as t:
+        t.execute("DELETE FROM latestFileMod")
+        t.execute(
+            "INSERT OR REPLACE INTO latestFileMod (revision, file) VALUES ('"
+            + old_rev
+            + "', '"
+            + file
+            + "')"
+        )
+    new = service.get_tuids_from_files(["testing/geckodriver/CONTRIBUTING.md"], new_rev)[0]
     assert len(old) == len(new)
     for i in range(0, len(old)):
         assert old[i] == new[i]
