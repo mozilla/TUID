@@ -1561,6 +1561,15 @@ class TUIDService:
     def give_tuids(self, length):
         return [TuidMap(self.tuid(), i + 1) for i in range(0, length)]
 
+    def is_file_exists(self, file):
+        query = {
+            "_source": {"includes": ["revision"]},
+            "query": {"bool": {"must": [{"term": {"file": file}}]}},
+            "size": 1,
+        }
+        r = self.annotations.search(query).hits.hits[0]._source.revision
+        return r
+
     def _get_tuids(self, files, revision, annotated_files, repo=None):
         """
         Returns (TUID, line) tuples for a given file at a given revision.
@@ -1588,6 +1597,13 @@ class TUIDService:
                 tmp_ann = self._get_annotation(revision, file)
                 if tmp_ann != None:
                     results.append((file, self.destringify_tuids(tmp_ann)))
+                    continue
+
+                # Just for testing purpose
+                curr_frontier = self.is_file_exists(file)
+                if curr_frontier:
+                    temp = self._update_file_frontiers([(file, curr_frontier)], revision)
+                    results.append(temp)
                     continue
 
                 # If it's not defined at this revision, we need to add it in
