@@ -136,6 +136,17 @@ class TUIDService:
         with suppress_exception:
             self.temporal.add_alias()
 
+        todo = self.esconfig.temporal
+        set_default(todo, {"schema": TODO_SCHEMA})
+        self.todo = self.es_temporal.get_or_create_index(kwargs=todo)
+        self.todo.refresh()
+
+        total = self.temporal.search({"size": 0})
+        while not total.hits:
+            total = self.temporal.search({"size": 0})
+        with suppress_exception:
+            self.temporal.add_alias()
+
         annotations = self.esconfig.annotations
         set_default(annotations, {"schema": ANNOTATIONS_SCHEMA})
         # what would be the _id here
@@ -834,7 +845,7 @@ class TUIDService:
                 if new_fname == "dev/null":
                     return [], file
                 # Change the file name so that new tuids
-                # are correctly created.
+                # are correctly created.mde
                 file = new_fname
 
             f_diff = f_proc["changes"]
