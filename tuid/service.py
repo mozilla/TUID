@@ -366,9 +366,9 @@ class TUIDService:
             try:
                 response = http.get(url, retry=RETRY, stream=True)
                 if response.status_code == 200:
-                    annotated_files[thread_num] = (
-                        response.all_content.decode("UTF-8").count("\n") + 1
-                    )
+                    # TODO: What if code has '\n' test
+                    # Also I presume every file will have a trailing empty line
+                    annotated_files[thread_num] = response.all_content.decode("UTF-8").count("\n")
                 else:
                     annotated_files[thread_num] = -1
             except Exception as e:
@@ -1600,11 +1600,11 @@ class TUIDService:
                     continue
 
                 # Just for testing purpose
-                curr_frontier = self.is_file_exists(file)
-                if curr_frontier:
-                    temp = self._update_file_frontiers([(file, curr_frontier)], revision)
-                    results.append(temp)
-                    continue
+                # curr_frontier = self.is_file_exists(file)
+                # if curr_frontier:
+                #     temp = self._update_file_frontiers([(file, curr_frontier)], revision)
+                #     results.append(temp)
+                #     continue
 
                 # If it's not defined at this revision, we need to add it in
                 if file_length == -1:
