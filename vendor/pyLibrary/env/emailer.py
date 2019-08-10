@@ -8,20 +8,17 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import unicode_literals
-from __future__ import division
-from __future__ import absolute_import
+from __future__ import absolute_import, division, unicode_literals
 
+from mo_future import is_text, is_binary
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import smtplib
 import sys
 
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-
-from mo_logs import Log
-from mo_dots import listwrap
-from mo_dots import coalesce
+from mo_dots import coalesce, listwrap
 from mo_kwargs import override
+from mo_logs import Log
 
 
 class Emailer:
@@ -36,7 +33,7 @@ class Emailer:
         subject="catchy title",
         port=465,
         use_ssl=1,
-        kwargs=None,
+        kwargs=None
     ):
         self.settings = kwargs
         self.server = None
@@ -63,13 +60,12 @@ class Emailer:
 
         self.server = None
 
-    def send_email(
-        self,
-        from_address=None,
-        to_address=None,
-        subject=None,
-        text_data=None,
-        html_data=None,
+    def send_email(self,
+            from_address=None,
+            to_address=None,
+            subject=None,
+            text_data=None,
+            html_data=None
     ):
         """Sends an email.
 
@@ -86,9 +82,7 @@ class Emailer:
         settings = self.settings
 
         from_address = coalesce(from_address, settings["from"], settings.from_address)
-        to_address = listwrap(
-            coalesce(to_address, settings.to_address, settings.to_addrs)
-        )
+        to_address = listwrap(coalesce(to_address, settings.to_address, settings.to_addrs))
 
         if not from_address or not to_address:
             raise Exception("Both from_addr and to_addrs must be specified")
@@ -98,15 +92,15 @@ class Emailer:
         if not html_data:
             msg = MIMEText(text_data)
         elif not text_data:
-            msg = MIMEText(html_data, "html")
+            msg = MIMEText(html_data, 'html')
         else:
-            msg = MIMEMultipart("alternative")
-            msg.attach(MIMEText(text_data, "plain"))
-            msg.attach(MIMEText(html_data, "html"))
+            msg = MIMEMultipart('alternative')
+            msg.attach(MIMEText(text_data, 'plain'))
+            msg.attach(MIMEText(html_data, 'html'))
 
-        msg["Subject"] = coalesce(subject, settings.subject)
-        msg["From"] = from_address
-        msg["To"] = ", ".join(to_address)
+        msg['Subject'] = coalesce(subject, settings.subject)
+        msg['From'] = from_address
+        msg['To'] = ', '.join(to_address)
 
         if self.server:
             # CALL AS PART OF A SMTP SESSION
@@ -117,7 +111,8 @@ class Emailer:
                 self.server.sendmail(from_address, to_address, msg.as_string())
 
 
-if sys.hexversion < 0x020603F0:
+
+if sys.hexversion < 0x020603f0:
     # versions earlier than 2.6.3 have a bug in smtplib when sending over SSL:
     #     http://bugs.python.org/issue4066
 
@@ -128,10 +123,12 @@ if sys.hexversion < 0x020603F0:
 
     def _get_socket_fixed(self, host, port, timeout):
         if self.debuglevel > 0:
-            print >>sys.stderr, "connect:", (host, port)
+            print>> sys.stderr, 'connect:', (host, port)
         new_socket = socket.create_connection((host, port), timeout)
         new_socket = ssl.wrap_socket(new_socket, self.keyfile, self.certfile)
         self.file = smtplib.SSLFakeFile(new_socket)
         return new_socket
 
     smtplib.SMTP_SSL._get_socket = _get_socket_fixed
+
+

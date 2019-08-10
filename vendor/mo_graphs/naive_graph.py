@@ -40,10 +40,10 @@ class NaiveGraph(BaseGraph):
 
     def get_children(self, node):
         # FIND THE REVISION
-        return set(c for p, c in self.edges if p == node)
+        return set(c for p, c in self.edges if p==node)
 
     def get_parents(self, node):
-        return set(p for p, c in self.edges if c == node)
+        return set(p for p, c in self.edges if c==node)
 
     def get_edges(self, node):
         return set(e for e in self.edges if e.parent == node or e.child == node)
@@ -53,3 +53,4 @@ class NaiveGraph(BaseGraph):
         RETURN ALL ADJACENT NODES
         """
         return set(p if c == node else c for p, c in self.get_edges(node))
+

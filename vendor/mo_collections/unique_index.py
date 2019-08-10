@@ -8,13 +8,11 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
-from collections import Mapping, Iterable, Set
+from collections import Iterable, Mapping, Set
 
-from mo_dots import unwrap, tuplewrap, wrap
+from mo_dots import is_data, is_sequence, tuplewrap, unwrap, wrap
 from mo_dots.objects import datawrap
 from mo_future import PY2, iteritems
 from mo_logs import Log
@@ -47,13 +45,11 @@ class UniqueIndex(Set, Mapping):
                 d = self._data.get(_key)
                 return wrap(d)
             else:
-                output = wrap(
-                    [
-                        d
-                        for d in self._data.values()
-                        if all(wrap(d)[k] == v for k, v in _key.items())
-                    ]
-                )
+                output = wrap([
+                    d
+                    for d in self._data.values()
+                    if all(wrap(d)[k] == v for k, v in _key.items())
+                ])
                 return output
         except Exception as e:
             Log.error("something went wrong", e)
@@ -85,24 +81,22 @@ class UniqueIndex(Set, Mapping):
         if key == None:
             Log.error("Expecting key to be not None")
 
-        d = self._data.get(key)
+        try:
+            d = self._data.get(key)
+        except Exception as e:
+            key = value2key(self._keys, val)
+
         if d is None:
             self._data[key] = unwrap(val)
             self.count += 1
         elif d is not val:
             if self.fail_on_dup:
-                Log.error(
-                    "{{new|json}} with key {{key|json}} already filled with {{old|json}}",
-                    key=key,
-                    new=val,
-                    old=self[val],
-                )
+                Log.error("{{new|json}} with key {{key|json}} already filled with {{old|json}}", key=key, new=val, old=self[val])
             elif DEBUG:
-                Log.warning(
-                    "key {{key|json}} already filled\nExisting\n{{existing|json|indent}}\nValue\n{{value|json|indent}}",
+                Log.warning("key {{key|json}} already filled\nExisting\n{{existing|json|indent}}\nValue\n{{value|json|indent}}",
                     key=key,
                     existing=d,
-                    value=val,
+                    value=val
                 )
 
     def extend(self, values):
@@ -126,12 +120,9 @@ class UniqueIndex(Set, Mapping):
         return self[key] != None
 
     if PY2:
-
         def __iter__(self):
             return (wrap(v) for v in self._data.itervalues())
-
     else:
-
         def __iter__(self):
             return (wrap(v) for v in self._data.values())
 
@@ -169,7 +160,7 @@ class UniqueIndex(Set, Mapping):
         if not isinstance(other, Iterable):
             Log.error("Expecting other to be iterable")
         other = UniqueIndex(keys=self._keys, data=other, fail_on_dup=False)
-        return (self - other) | (other - self)
+        return (self-other) | (other-self)
 
     def __len__(self):
         if self.count == 0:
@@ -186,16 +177,16 @@ class UniqueIndex(Set, Mapping):
 
 def value2key(keys, val):
     if len(keys) == 1:
-        if isinstance(val, Mapping):
+        if is_data(val):
             return val[keys[0]]
-        elif isinstance(val, (list, tuple)):
+        elif is_sequence(val):
             return val[0]
         else:
             return val
     else:
-        if isinstance(val, Mapping):
+        if is_data(val):
             return datawrap({k: val[k] for k in keys})
-        elif isinstance(val, (list, tuple)):
+        elif is_sequence(val):
             return datawrap(dict(zip(keys, val)))
         else:
             Log.error("do not know what to do here")

@@ -52,8 +52,12 @@ class GCGraph(BaseGraph):
         return self.parents[node]
 
     def get_edges(self, node):
-        return set(Edge(node, child) for child in self.children[node]) | set(
-            Edge(parent, node) for parent in self.parents[node]
+        return set(
+            Edge(node, child)
+            for child in self.children[node]
+        ) | set(
+            Edge(parent, node)
+            for parent in self.parents[node]
         )
 
     def get_family(self, node):
@@ -61,3 +65,4 @@ class GCGraph(BaseGraph):
         RETURN ALL ADJACENT NODES
         """
         return self.get_children(node) | self.get_parents(node)
+

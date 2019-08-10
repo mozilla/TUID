@@ -7,35 +7,25 @@
 #
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
-import json
-import math
-import time
-from collections import Mapping
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
+import json
 from json.encoder import encode_basestring
+import math
 from math import floor
+import time
 
-from mo_dots import Data, FlatList, NullType, Null, SLOT
-from mo_future import (
-    text_type,
-    binary_type,
-    long,
-    utf8_json_encoder,
-    sort_using_key,
-    xrange,
-    PYPY,
-)
-from mo_json import ESCAPE_DCT, scrub, float2json
+from mo_dots import Data, FlatList, Null, NullType, SLOT, is_data, is_list
+from mo_future import PYPY, binary_type, is_binary, is_text, long, sort_using_key, text_type, utf8_json_encoder, xrange
 from mo_logs import Except
-from mo_logs.strings import utf82unicode, quote
+from mo_logs.strings import quote, utf82unicode
 from mo_times import Timer
 from mo_times.dates import Date
 from mo_times.durations import Duration
+
+from mo_json import ESCAPE_DCT, float2json, scrub
 
 json_decoder = json.JSONDecoder().decode
 _get = object.__getattribute__
@@ -51,27 +41,25 @@ _ = Except
 # 2) WHEN USING PYPY, WE USE CLEAR-AND-SIMPLE PROGRAMMING SO THE OPTIMIZER CAN DO
 #    ITS JOB.  ALONG WITH THE UnicodeBuilder WE GET NEAR C SPEEDS
 
-COMMA = ","
-QUOTE = '"'
-COLON = ":"
+COMMA = u","
+QUOTE = u'"'
+COLON = u":"
 QUOTE_COLON = QUOTE + COLON
 COMMA_QUOTE = COMMA + QUOTE
 
-PRETTY_COMMA = ", "
-PRETTY_COLON = ": "
+PRETTY_COMMA = u", "
+PRETTY_COLON = u": "
 
 if PYPY:
     # UnicodeBuilder IS ABOUT 2x FASTER THAN list()
     from __pypy__.builders import UnicodeBuilder
 else:
-
     class UnicodeBuilder(list):
         def __init__(self, length=None):
             list.__init__(self)
 
         def build(self):
-            return "".join(self)
-
+            return u"".join(self)
 
 append = UnicodeBuilder.append
 
@@ -121,16 +109,17 @@ class cPythonJSONEncoder(object):
         try:
             with Timer("scrub", too_long=0.1):
                 scrubbed = scrub(value)
-            with Timer("encode", too_long=0.1):
-                return text_type(self.encoder(scrubbed))
+            param = {"size": 0}
+            with Timer("encode {{size}} characters", param=param, too_long=0.1):
+                output = text_type(self.encoder(scrubbed))
+                param["size"] = len(output)
+                return output
         except Exception as e:
             from mo_logs.exceptions import Except
             from mo_logs import Log
 
             e = Except.wrap(e)
-            Log.warning(
-                "problem serializing {{type}}", type=text_type(repr(value)), cause=e
-            )
+            Log.warning("problem serializing {{type}}", type=text_type(repr(value)), cause=e)
             raise e
 
 
@@ -140,17 +129,13 @@ def ujson_encode(value, pretty=False):
 
     try:
         scrubbed = scrub(value)
-        return ujson_dumps(
-            scrubbed, ensure_ascii=False, sort_keys=True, escape_forward_slashes=False
-        ).decode("utf8")
+        return ujson_dumps(scrubbed, ensure_ascii=False, sort_keys=True, escape_forward_slashes=False).decode('utf8')
     except Exception as e:
         from mo_logs.exceptions import Except
         from mo_logs import Log
 
         e = Except.wrap(e)
-        Log.warning(
-            "problem serializing {{type}}", type=text_type(repr(value)), cause=e
-        )
+        Log.warning("problem serializing {{type}}", type=text_type(repr(value)), cause=e)
         raise e
 
 
@@ -158,13 +143,13 @@ def _value2json(value, _buffer):
     try:
         _class = value.__class__
         if value is None:
-            append(_buffer, "null")
+            append(_buffer, u"null")
             return
         elif value is True:
-            append(_buffer, "true")
+            append(_buffer, u"true")
             return
         elif value is False:
-            append(_buffer, "false")
+            append(_buffer, u"false")
             return
 
         type = value.__class__
@@ -185,7 +170,7 @@ def _value2json(value, _buffer):
             append(_buffer, QUOTE)
         elif type is dict:
             if not value:
-                append(_buffer, "{}")
+                append(_buffer, u"{}")
             else:
                 _dict2json(value, _buffer)
             return
@@ -197,7 +182,7 @@ def _value2json(value, _buffer):
             append(_buffer, text_type(value))
         elif type is float:
             if math.isnan(value) or math.isinf(value):
-                append(_buffer, "null")
+                append(_buffer, u'null')
             else:
                 append(_buffer, float2json(value))
         elif type in (set, list, tuple, FlatList):
@@ -213,20 +198,20 @@ def _value2json(value, _buffer):
         elif type is Duration:
             append(_buffer, float2json(value.seconds))
         elif type is NullType:
-            append(_buffer, "null")
-        elif isinstance(value, Mapping):
+            append(_buffer, u"null")
+        elif is_data(value):
             if not value:
-                append(_buffer, "{}")
+                append(_buffer, u"{}")
             else:
                 _dict2json(value, _buffer)
             return
-        elif hasattr(value, "__data__"):
+        elif hasattr(value, '__data__'):
             d = value.__data__()
             _value2json(d, _buffer)
-        elif hasattr(value, "__json__"):
+        elif hasattr(value, '__json__'):
             j = value.__json__()
             append(_buffer, j)
-        elif hasattr(value, "__iter__"):
+        elif hasattr(value, '__iter__'):
             _iter2json(value, _buffer)
         else:
             from mo_logs import Log
@@ -240,39 +225,39 @@ def _value2json(value, _buffer):
 
 def _list2json(value, _buffer):
     if not value:
-        append(_buffer, "[]")
+        append(_buffer, u"[]")
     else:
-        sep = "["
+        sep = u"["
         for v in value:
             append(_buffer, sep)
             sep = COMMA
             _value2json(v, _buffer)
-        append(_buffer, "]")
+        append(_buffer, u"]")
 
 
 def _iter2json(value, _buffer):
-    append(_buffer, "[")
-    sep = ""
+    append(_buffer, u"[")
+    sep = u""
     for v in value:
         append(_buffer, sep)
         sep = COMMA
         _value2json(v, _buffer)
-    append(_buffer, "]")
+    append(_buffer, u"]")
 
 
 def _dict2json(value, _buffer):
     try:
-        prefix = '{"'
+        prefix = u"{\""
         for k, v in value.items():
             append(_buffer, prefix)
             prefix = COMMA_QUOTE
-            if isinstance(k, binary_type):
+            if is_binary(k):
                 k = utf82unicode(k)
             for c in k:
                 append(_buffer, ESCAPE_DCT.get(c, c))
             append(_buffer, QUOTE_COLON)
             _value2json(v, _buffer)
-        append(_buffer, "}")
+        append(_buffer, u"}")
     except Exception as e:
         from mo_logs import Log
 
@@ -291,51 +276,47 @@ def pretty_json(value):
             return "false"
         elif value is True:
             return "true"
-        elif isinstance(value, Mapping):
+        elif is_data(value):
             try:
                 items = sort_using_key(value.items(), lambda r: r[0])
-                values = [
-                    encode_basestring(k) + PRETTY_COLON + indent(pretty_json(v)).strip()
-                    for k, v in items
-                    if v != None
-                ]
+                values = [encode_basestring(k) + PRETTY_COLON + pretty_json(v) for k, v in items if v != None]
                 if not values:
                     return "{}"
                 elif len(values) == 1:
                     return "{" + values[0] + "}"
                 else:
-                    return "{\n" + INDENT + (",\n" + INDENT).join(values) + "\n}"
+                    return "{\n" + ",\n".join(indent(v) for v in values) + "\n}"
             except Exception as e:
                 from mo_logs import Log
                 from mo_math import OR
 
-                if OR(not isinstance(k, text_type) for k in value.keys()):
+                if OR(not is_text(k) for k in value.keys()):
                     Log.error(
                         "JSON must have string keys: {{keys}}:",
                         keys=[k for k in value.keys()],
-                        cause=e,
+                        cause=e
                     )
 
                 Log.error(
                     "problem making dict pretty: keys={{keys}}:",
                     keys=[k for k in value.keys()],
-                    cause=e,
+                    cause=e
                 )
         elif value in (None, Null):
             return "null"
-        elif isinstance(value, (text_type, binary_type)):
-            if isinstance(value, binary_type):
+        elif value.__class__ in (binary_type, text_type):
+            if is_binary(value):
                 value = utf82unicode(value)
             try:
-                return quote(value)
+                if "\n" in value and value.strip():
+                    return pretty_json({"$concat": value.split("\n"), "separator": "\n"})
+                else:
+                    return quote(value)
             except Exception as e:
                 from mo_logs import Log
 
                 try:
-                    Log.note(
-                        "try explicit convert of string with length {{length}}",
-                        length=len(value),
-                    )
+                    Log.note("try explicit convert of string with length {{length}}", length=len(value))
                     acc = [QUOTE]
                     for c in value:
                         try:
@@ -349,24 +330,18 @@ def pretty_json(value):
                             pass
                             # Log.warning("odd character {{ord}} found in string.  Ignored.",  ord= ord(c)}, cause=g)
                     acc.append(QUOTE)
-                    output = "".join(acc)
+                    output = u"".join(acc)
                     Log.note("return value of length {{length}}", length=len(output))
                     return output
                 except BaseException as f:
-                    Log.warning(
-                        "can not even explicit convert {{type}}",
-                        type=f.__class__.__name__,
-                        cause=f,
-                    )
+                    Log.warning("can not convert {{type}} to json", type=f.__class__.__name__, cause=f)
                     return "null"
-        elif isinstance(value, list):
+        elif is_list(value):
             if not value:
                 return "[]"
 
             if ARRAY_MAX_COLUMNS == 1:
-                return (
-                    "[\n" + ",\n".join([indent(pretty_json(v)) for v in value]) + "\n]"
-                )
+                return "[\n" + ",\n".join([indent(pretty_json(v)) for v in value]) + "\n]"
 
             if len(value) == 1:
                 j = pretty_json(value[0])
@@ -377,29 +352,16 @@ def pretty_json(value):
 
             js = [pretty_json(v) for v in value]
             max_len = max(*[len(j) for j in js])
-            if (
-                max_len <= ARRAY_ITEM_MAX_LENGTH
-                and max(*[j.find("\n") for j in js]) == -1
-            ):
+            if max_len <= ARRAY_ITEM_MAX_LENGTH and max(*[j.find("\n") for j in js]) == -1:
                 # ALL TINY VALUES
-                num_columns = max(
-                    1,
-                    min(
-                        ARRAY_MAX_COLUMNS,
-                        int(floor((ARRAY_ROW_LENGTH + 2.0) / float(max_len + 2))),
-                    ),
-                )  # +2 TO COMPENSATE FOR COMMAS
+                num_columns = max(1, min(ARRAY_MAX_COLUMNS, int(floor((ARRAY_ROW_LENGTH + 2.0) / float(max_len + 2)))))  # +2 TO COMPENSATE FOR COMMAS
                 if len(js) <= num_columns:  # DO NOT ADD \n IF ONLY ONE ROW
                     return "[" + PRETTY_COMMA.join(js) + "]"
                 if num_columns == 1:  # DO NOT rjust IF THERE IS ONLY ONE COLUMN
-                    return (
-                        "[\n"
-                        + ",\n".join([indent(pretty_json(v)) for v in value])
-                        + "\n]"
-                    )
+                    return "[\n" + ",\n".join([indent(pretty_json(v)) for v in value]) + "\n]"
 
                 content = ",\n".join(
-                    PRETTY_COMMA.join(j.rjust(max_len) for j in js[r : r + num_columns])
+                    PRETTY_COMMA.join(j.rjust(max_len) for j in js[r:r + num_columns])
                     for r in xrange(0, len(js), num_columns)
                 )
                 return "[\n" + indent(content) + "\n]"
@@ -415,10 +377,9 @@ def pretty_json(value):
                 except Exception:
                     from mo_logs import Log
 
-                    Log.warning(
-                        "problem concatenating string of length {{len1}} and {{len2}}",
+                    Log.warning("problem concatenating string of length {{len1}} and {{len2}}",
                         len1=len("".join(output)),
-                        len2=len(p),
+                        len2=len(p)
                     )
             output.append("\n]")
             try:
@@ -427,19 +388,19 @@ def pretty_json(value):
                 from mo_logs import Log
 
                 Log.error("not expected", cause=e)
-        elif hasattr(value, "__data__"):
+        elif hasattr(value, '__data__'):
             d = value.__data__()
             return pretty_json(d)
-        elif hasattr(value, "__json__"):
+        elif hasattr(value, '__json__'):
             j = value.__json__()
             if j == None:
                 return "   null   "  # TODO: FIND OUT WHAT CAUSES THIS
             return pretty_json(json_decoder(j))
         elif scrub(value) is None:
             return "null"
-        elif hasattr(value, "__iter__"):
+        elif hasattr(value, '__iter__'):
             return pretty_json(list(value))
-        elif hasattr(value, "__call__"):
+        elif hasattr(value, '__call__'):
             return "null"
         else:
             try:
@@ -478,25 +439,27 @@ def problem_serializing(value, e=None):
 
     if rep == None:
         Log.error(
-            "Problem turning value of type {{type}} to json", type=typename, cause=e
+            "Problem turning value of type {{type}} to json",
+            type=typename,
+            cause=e
         )
     else:
         Log.error(
             "Problem turning value ({{value}}) of type {{type}} to json",
             value=rep,
             type=typename,
-            cause=e,
+            cause=e
         )
 
 
 def indent(value, prefix=INDENT):
     try:
         content = value.rstrip()
-        suffix = value[len(content) :]
+        suffix = value[len(content):]
         lines = content.splitlines()
-        return prefix + ("\n" + prefix).join(lines) + suffix
+        return prefix + (u"\n" + prefix).join(lines) + suffix
     except Exception as e:
-        raise Exception("Problem with indent of value (" + e.message + ")\n" + value)
+        raise Exception(u"Problem with indent of value (" + e.message + u")\n" + value)
 
 
 def value_compare(a, b):
@@ -533,7 +496,6 @@ def unicode_key(key):
     """
     if not isinstance(key, (text_type, binary_type)):
         from mo_logs import Log
-
         Log.error("{{key|quote}} is not a valid key", key=key)
     return quote(text_type(key))
 
@@ -547,3 +509,5 @@ else:
     # from ujson import dumps as ujson_dumps
     # json_encoder = ujson_encode
     json_encoder = cPythonJSONEncoder().encode
+
+

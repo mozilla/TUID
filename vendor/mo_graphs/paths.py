@@ -22,7 +22,6 @@ class Path(list):
     USES Steps TO DEFINE A LIST
     Steps POINT TO parent, SO THIS CLASS HANDLES THE REVERSE NATURE
     """
-
     def __init__(self, last_step):
         self.last = last_step
         self.list = None
@@ -42,14 +41,14 @@ class Path(list):
         if not self.list:
             self._build_list()
 
-        if index >= len(self.list):
+        if index>=len(self.list):
             return None
         return self.list[index]
 
     def __setitem__(self, i, y):
         if not self.list:
             self._build_list()
-        self.list[i] = y
+        self.list[i]=y
 
     def __iter__(self):
         if not self.list:
@@ -73,9 +72,7 @@ class Path(list):
         return len(self.list)
 
     def __getslice__(self, i, j):
-        Log.error(
-            "slicing is broken in Python 2.7: a[i:j] == a[i+len(a), j] sometimes.  Use [start:stop:step]"
-        )
+        Log.error("slicing is broken in Python 2.7: a[i:j] == a[i+len(a), j] sometimes.  Use [start:stop:step]")
 
     def copy(self):
         if not self.list:
@@ -123,3 +120,4 @@ class Path(list):
         RETURN LAST ELEMENT IN FlatList [-1]
         """
         return self.last.node
+

@@ -7,9 +7,7 @@
 #
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
-from __future__ import unicode_literals
-from __future__ import division
-from __future__ import absolute_import
+from __future__ import absolute_import, division, unicode_literals
 
 import jx_base
 from mo_dots import Data
@@ -17,7 +15,8 @@ from mo_dots import Data
 
 class Table(jx_base.Table):
 
-    __slots__ = ["header", "data", "meta"]
+    __slots__ = ['header', 'data', 'meta']
+
 
     def __init__(self, header=None, data=None):
         self.header = header
@@ -27,3 +26,5 @@ class Table(jx_base.Table):
 
     def groupby(self, keys):
         pass
+
+

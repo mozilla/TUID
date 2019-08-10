@@ -7,28 +7,26 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import unicode_literals
-from __future__ import division
-from __future__ import absolute_import
+from __future__ import absolute_import, division, unicode_literals
 
+from mo_future import is_text, is_binary
 import datetime
 from socket import timeout as socket_timeout
 
-from kombu import Connection, Producer, Exchange
-from pytz import timezone
-from mozillapulse.utils import time_to_string
-
-from mo_logs import constants
-from pyLibrary import jsons
-from mo_logs.exceptions import Except, suppress_exception
-from mo_logs import Log
-from mo_dots import wrap, coalesce, Data, set_default
-from mo_kwargs import override
-from mo_threads import Thread, Lock
+from kombu import Connection, Exchange, Producer
 from mozillapulse.consumers import GenericConsumer
+from mozillapulse.utils import time_to_string
+from pytz import timezone
 
-count_locker = Lock()
-count = 0
+from mo_dots import Data, coalesce, set_default, wrap
+from mo_kwargs import override
+from mo_logs import Log
+from mo_logs.exceptions import Except, suppress_exception
+from mo_threads import Lock, Thread
+from pyLibrary import jsons
+
+count_locker=Lock()
+count=0
 
 
 class Consumer(Thread):
@@ -39,7 +37,7 @@ class Consumer(Thread):
         topic,  # message name pattern to subscribe to  ('#' is wildcard)
         target=None,  # WILL BE CALLED WITH PULSE PAYLOADS AND ack() IF COMPLETE$ED WITHOUT EXCEPTION
         target_queue=None,  # (aka self.queue) WILL BE FILLED WITH PULSE PAYLOADS
-        host="pulse.mozilla.org",  # url to connect,
+        host='pulse.mozilla.org',  # url to connect,
         port=5671,  # tcp port
         user=None,
         password=None,
@@ -49,25 +47,19 @@ class Consumer(Thread):
         applabel=None,
         heartbeat=False,  # True to also get the Pulse heartbeat message
         durable=False,  # True to keep queue after shutdown
-        serializer="json",
-        broker_timezone="GMT",
-        kwargs=None,
+        serializer='json',
+        broker_timezone='GMT',
+        kwargs=None
     ):
         global count
         count = coalesce(start, 0)
 
         self.target_queue = target_queue
         self.pulse_target = target
-        if (target_queue == None and target == None) or (
-            target_queue != None and target != None
-        ):
-            Log.error(
-                "Expecting a queue (for fast digesters) or a target (for slow digesters)"
-            )
+        if (target_queue == None and target == None) or (target_queue != None and target != None):
+            Log.error("Expecting a queue (for fast digesters) or a target (for slow digesters)")
 
-        Thread.__init__(
-            self, name="Pulse consumer for " + kwargs.exchange, target=self._worker
-        )
+        Thread.__init__(self, name="Pulse consumer for " + kwargs.exchange, target=self._worker)
         self.settings = kwargs
         kwargs.callback = self._got_result
         kwargs.user = coalesce(kwargs.user, kwargs.username)
@@ -82,9 +74,7 @@ class Consumer(Thread):
 
         data = wrap(data)
         with count_locker:
-            Log.note(
-                "{{count}} from {{exchange}}", count=count, exchange=self.pulse.exchange
-            )
+            Log.note("{{count}} from {{exchange}}", count=count, exchange=self.pulse.exchange)
             data._meta.count = count
             data._meta.exchange = self.pulse.exchange
             count += 1
@@ -97,20 +87,14 @@ class Consumer(Thread):
                 message.ack()
             except Exception as e:
                 e = Except.wrap(e)
-                if (
-                    not self.target_queue.closed
-                ):  # EXPECTED TO HAPPEN, THIS THREAD MAY HAVE BEEN AWAY FOR A WHILE
+                if not self.target_queue.closed:  # EXPECTED TO HAPPEN, THIS THREAD MAY HAVE BEEN AWAY FOR A WHILE
                     raise e
         else:
             try:
                 self.pulse_target(data)
                 message.ack()
             except Exception as e:
-                Log.warning(
-                    "Problem processing pulse (see `data` in structured log)",
-                    data=data,
-                    cause=e,
-                )
+                Log.warning("Problem processing pulse (see `data` in structured log)", data=data, cause=e)
 
     def _worker(self, please_stop):
         def disconnect():
@@ -121,18 +105,16 @@ class Consumer(Thread):
             self.pulse.disconnect()
             Log.note("pulse listener was given a disconnect()")
 
-        please_stop.on_go(disconnect)
+        please_stop.then(disconnect)
 
         while not please_stop:
             try:
                 self.pulse.listen()
             except Exception as e:
                 if not please_stop:
-                    Log.warning(
-                        "Pulse had problem (Have you set your Pulse permissions correctly?",
-                        e,
-                    )
+                    Log.warning("Pulse had problem (Have you set your Pulse permissions correctly?", e)
         Log.note("pulse listener is done")
+
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         Log.note("clean pulse exit")
@@ -157,7 +139,7 @@ class Publisher(object):
     def __init__(
         self,
         exchange,  # name of the Pulse exchange
-        host="pulse.mozilla.org",  # url to connect,
+        host='pulse.mozilla.org',  # url to connect,
         port=5671,  # tcp port
         user=None,
         password=None,
@@ -167,9 +149,9 @@ class Publisher(object):
         applabel=None,
         heartbeat=False,  # True to also get the Pulse heartbeat message
         durable=False,  # True to keep queue after shutdown
-        serializer="json",
-        broker_timezone="GMT",
-        kwargs=None,
+        serializer='json',
+        broker_timezone='GMT',
+        kwargs=None
     ):
         self.settings = kwargs
         self.connection = None
@@ -183,7 +165,7 @@ class Publisher(object):
                 userid=self.settings.user,
                 password=self.settings.password,
                 virtual_host=self.settings.vhost,
-                ssl=self.settings.ssl,
+                ssl=self.settings.ssl
             )
 
     def disconnect(self):
@@ -204,26 +186,21 @@ class Publisher(object):
 
         producer = Producer(
             channel=self.connection,
-            exchange=Exchange(self.settings.exchange, type="topic"),
-            routing_key=topic,
+            exchange=Exchange(self.settings.exchange, type='topic'),
+            routing_key=topic
         )
 
         # The message is actually a simple envelope format with a payload and
         # some metadata.
         final_data = Data(
             payload=message.data,
-            _meta=set_default(
-                {
-                    "exchange": self.settings.exchange,
-                    "routing_key": message.routing_key,
-                    "serializer": self.settings.serializer,
-                    "sent": time_to_string(
-                        datetime.datetime.now(timezone(self.settings.broker_timezone))
-                    ),
-                    "count": self.count,
-                },
-                message.metadata,
-            ),
+            _meta=set_default({
+                'exchange': self.settings.exchange,
+                'routing_key': message.routing_key,
+                'serializer': self.settings.serializer,
+                'sent': time_to_string(datetime.datetime.now(timezone(self.settings.broker_timezone))),
+                'count': self.count
+            }, message.metadata)
         )
 
         producer.publish(jsons.scrub(final_data), serializer=self.settings.serializer)
@@ -236,11 +213,7 @@ class ModifiedGenericConsumer(GenericConsumer):
             try:
                 self.connection.drain_events(timeout=self.timeout)
             except socket_timeout as e:
-                Log.warning(
-                    "timeout! Restarting {{name}} pulse consumer.",
-                    name=self.exchange,
-                    cause=e,
-                )
+                Log.warning("timeout! Restarting {{name}} pulse consumer.", name=self.exchange, cause=e)
                 try:
                     self.disconnect()
                 except Exception as f:

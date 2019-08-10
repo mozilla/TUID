@@ -7,14 +7,13 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
-import mo_json
+from mo_future import is_text, is_binary
 from jx_python import jx
-from mo_dots import Data, Null, unwrap, wrap
+from mo_dots import Data, Null, is_list, unwrap, wrap
 from mo_files import File
+import mo_json
 from mo_kwargs import override
 from mo_logs import Log
 from pyLibrary.env.elasticsearch import Cluster
@@ -30,10 +29,18 @@ def make_test_instance(name, filename=None, kwargs=None):
 @override
 def open_test_instance(name, filename=None, es=None, kwargs=None):
     if filename != None:
-        Log.note("Using {{filename}} as {{type}}", filename=filename, type=name)
+        Log.note(
+            "Using {{filename}} as {{type}}",
+            filename=filename,
+            type=name
+        )
         return FakeES(filename=filename)
     else:
-        Log.note("Using ES cluster at {{host}} as {{type}}", host=es.host, type=name)
+        Log.note(
+            "Using ES cluster at {{host}} as {{type}}",
+            host=es.host,
+            type=name
+        )
         cluster = Cluster(es)
         try:
             old_index = cluster.get_index(es)
@@ -42,20 +49,18 @@ def open_test_instance(name, filename=None, es=None, kwargs=None):
             if "Can not find index" not in e:
                 Log.error("unexpected", cause=e)
 
-        output = cluster.create_index(
-            limit_replicas=True, limit_replicas_warning=False, kwargs=es
-        )
+        output = cluster.create_index(limit_replicas=True, limit_replicas_warning=False, kwargs=es)
         output.delete_all_but_self()
         output.add_alias(es.index)
         return output
 
 
-class FakeES:
+class FakeES():
     @override
     def __init__(self, filename, host="fake", index="fake", kwargs=None):
         self.settings = kwargs
         self.file = File(filename)
-        self.cluster = Null
+        self.cluster= Null
         try:
             self.data = mo_json.json2value(self.file.read())
         except Exception as e:
@@ -64,26 +69,9 @@ class FakeES:
     def search(self, query):
         query = wrap(query)
         f = jx.get(query.query.filtered.filter)
-        filtered = wrap(
-            [{"_id": i, "_source": d} for i, d in self.data.items() if f(d)]
-        )
+        filtered = wrap([{"_id": i, "_source": d} for i, d in self.data.items() if f(d)])
         if query.fields:
-            return wrap(
-                {
-                    "hits": {
-                        "total": len(filtered),
-                        "hits": [
-                            {
-                                "_id": d._id,
-                                "fields": unwrap(
-                                    jx.select([unwrap(d._source)], query.fields)[0]
-                                ),
-                            }
-                            for d in filtered
-                        ],
-                    }
-                }
-            )
+            return wrap({"hits": {"total": len(filtered), "hits": [{"_id": d._id, "fields": unwrap(jx.select([unwrap(d._source)], query.fields)[0])} for d in filtered]}})
         else:
             return wrap({"hits": {"total": len(filtered), "hits": filtered}})
 
@@ -92,16 +80,21 @@ class FakeES:
         JUST SO WE MODEL A Queue
         """
         records = {
-            v["id"]: v["value"] if "value" in v else mo_json.json2value(v["json"])
+            v["id"]: v["value"] if "value" in v else mo_json.json2value(v['json'])
             for v in records
         }
+        for r in records.values():
+            try:
+                del r['etl']
+            except Exception:
+                pass
 
         unwrap(self.data).update(records)
         self.refresh()
         Log.note("{{num}} documents added", num=len(records))
 
     def add(self, record):
-        if isinstance(record, list):
+        if is_list(record):
             Log.error("no longer accepting lists, use extend()")
         return self.extend([record])
 
@@ -113,5 +106,7 @@ class FakeES:
         data_as_json = mo_json.value2json(self.data, pretty=True)
         self.file.write(data_as_json)
 
+
     def set_refresh_interval(self, seconds):
         pass
+

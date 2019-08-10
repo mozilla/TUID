@@ -8,27 +8,25 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
+from mo_future import is_text, is_binary
+from datetime import date, datetime
 import json as _json
-from datetime import datetime, date
 
-from mo_future import text_type, PY3
+from mo_future import PY3
 
 
 def unix2datetime(u):
     try:
         if u == None:
             return None
-        if u == 9999999999:  # PYPY BUG https://bugs.pypy.org/issue1697
+        if u == 9999999999: # PYPY BUG https://bugs.pypy.org/issue1697
             return datetime(2286, 11, 20, 17, 46, 39)
         return datetime.utcfromtimestamp(u)
     except Exception as e:
         from mo_logs import Log
-
-        Log.error("Can not convert {{value}} to datetime", value=u, cause=e)
+        Log.error("Can not convert {{value}} to datetime",  value= u, cause=e)
 
 
 def milli2datetime(u):
@@ -42,13 +40,7 @@ def datetime2string(value, format="%Y-%m-%d %H:%M:%S"):
         return value.strftime(format)
     except Exception as e:
         from mo_logs import Log
-
-        Log.error(
-            "Can not format {{value}} with {{format}}",
-            value=value,
-            format=format,
-            cause=e,
-        )
+        Log.error("Can not format {{value}} with {{format}}", value=value, format=format, cause=e)
 
 
 def datetime2unix(d):
@@ -61,16 +53,12 @@ def datetime2unix(d):
             epoch = date(1970, 1, 1)
         else:
             from mo_logs import Log
-
-            raise Log.error(
-                "Can not convert {{value}} of type {{type}}", value=d, type=d.__class__
-            )
+            raise Log.error("Can not convert {{value}} of type {{type}}", value=d, type=d.__class__)
 
         diff = d - epoch
         return float(diff.total_seconds())
     except Exception as e:
         from mo_logs import Log
-
         Log.error("Can not convert {{value}}", value=d, cause=e)
 
 
@@ -79,28 +67,11 @@ def int2hex(value, size):
 
 
 if PY3:
-    _map2url = {chr(i).encode("latin1"): chr(i) for i in range(32, 256)}
-    for c in [
-        b" ",
-        b"{",
-        b"}",
-        b"<",
-        b">",
-        b";",
-        b"/",
-        b"?",
-        b":",
-        b"@",
-        b"&",
-        b"=",
-        b"+",
-        b"$",
-        b",",
-        b"%",
-    ]:
-        _map2url[c] = "%" + int2hex(ord(c.decode("latin1")), 2)
+    _map2url = {chr(i).encode('latin1'): chr(i) for i in range(32, 256)}
+    for c in [b" ", b"{", b"}", b"<", b">", b";", b"/", b"?", b":", b"@", b"&", b"=", b"+", b"$", b",", b"%"]:
+        _map2url[c] = "%" + int2hex(ord(c.decode('latin1')), 2)
 else:
-    _map2url = {chr(i): chr(i).decode("latin1") for i in range(32, 256)}
+    _map2url = {chr(i): chr(i).decode('latin1') for i in range(32, 256)}
     for c in b" {}<>;/?:@&=+$,%":
         _map2url[c] = "%" + int2hex(ord(c), 2)
 
@@ -112,3 +83,4 @@ def value2json(value):
 def unicode2latin1(value):
     output = value.encode("latin1")
     return output
+

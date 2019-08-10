@@ -7,13 +7,10 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
 import json
 import sys
-
 
 PY3 = sys.version_info[0] == 3
 PY2 = sys.version_info[0] == 2
@@ -21,10 +18,9 @@ PY2 = sys.version_info[0] == 2
 PYPY = False
 try:
     import __pypy__ as _
-
-    PYPY = True
+    PYPY=True
 except Exception:
-    PYPY = False
+    PYPY=False
 
 
 none_type = type(None)
@@ -33,9 +29,11 @@ boolean_type = type(True)
 if PY3:
     import itertools
     import collections
-    from functools import cmp_to_key
+    from collections import Callable
+    from functools import cmp_to_key, reduce, update_wrapper
     from configparser import ConfigParser
     from itertools import zip_longest
+    import builtins as __builtin__
 
     izip = zip
     zip_longest = itertools.zip_longest
@@ -43,13 +41,12 @@ if PY3:
     text_type = str
     string_types = str
     binary_type = bytes
-    integer_types = int
+    integer_types = (int, )
     number_types = (int, float)
     long = int
     unichr = chr
 
     xrange = range
-
     def _gen():
         yield
 
@@ -58,6 +55,7 @@ if PY3:
         type(filter(lambda x: True, [])),
         type({}.items()),
         type({}.values()),
+        type(map(lambda: 0, []))
     )
     unichr = chr
 
@@ -81,7 +79,7 @@ if PY3:
         return func.__name__
 
     def get_function_arguments(func):
-        return func.__code__.co_varnames[: func.__code__.co_argcount]
+        return func.__code__.co_varnames[:func.__code__.co_argcount]
 
     def get_function_code(func):
         return func.__code__
@@ -95,21 +93,35 @@ if PY3:
     def sort_using_key(data, key):
         return sorted(data, key=key)
 
+    def first(values):
+        try:
+            return iter(values).__next__()
+        except StopIteration:
+            return None
+
+    def is_text(t):
+        return t.__class__ is str
+
+    def is_binary(b):
+        return b.__class__ is bytes
+
     utf8_json_encoder = json.JSONEncoder(
         skipkeys=False,
         ensure_ascii=False,  # DIFF FROM DEFAULTS
         check_circular=True,
         allow_nan=True,
         indent=None,
-        separators=(",", ":"),
+        separators=(',', ':'),
         default=None,
-        sort_keys=True,  # <-- IMPORTANT!  sort_keys==True
+        sort_keys=True   # <-- IMPORTANT!  sort_keys==True
     ).encode
 
     UserDict = collections.UserDict
 
 else:
     import collections
+    from collections import Callable
+
     import __builtin__
     from types import GeneratorType
     from ConfigParser import ConfigParser
@@ -117,6 +129,7 @@ else:
     from __builtin__ import zip as transpose
     from itertools import izip
 
+    reduce = __builtin__.reduce
     text_type = __builtin__.unicode
     string_types = (str, unicode)
     binary_type = str
@@ -146,7 +159,7 @@ else:
         return func.func_name
 
     def get_function_arguments(func):
-        return func.func_code.co_varnames[: func.func_code.co_argcount]
+        return func.func_code.co_varnames[:func.func_code.co_argcount]
 
     def get_function_code(func):
         return func.func_code
@@ -164,17 +177,30 @@ else:
         #     lambda a, b: (1 if (a[0]>b[0]) else (-1 if (a[0]<b[0]) else 0))
         # )
 
+    def first(values):
+        try:
+            return iter(values).next()
+        except StopIteration:
+            return None
+
+    def is_text(t):
+        return t.__class__ is unicode
+
+    def is_binary(b):
+        return b.__class__ is str
+
     utf8_json_encoder = json.JSONEncoder(
         skipkeys=False,
         ensure_ascii=False,  # DIFF FROM DEFAULTS
         check_circular=True,
         allow_nan=True,
         indent=None,
-        separators=(",", ":"),
-        encoding="utf-8",  # DIFF FROM DEFAULTS
+        separators=(',', ':'),
+        encoding='utf-8',  # DIFF FROM DEFAULTS
         default=None,
-        sort_keys=True,  # <-- IMPORTANT!  sort_keys==True
+        sort_keys=True   # <-- IMPORTANT!  sort_keys==True
     ).encode
+
 
     # COPIED FROM Python's collections.UserDict (copied July 2018)
     class UserDict(collections.MutableMapping):
@@ -182,23 +208,18 @@ else:
         # Start by filling-out the abstract methods
         def __init__(*args, **kwargs):
             if not args:
-                raise TypeError(
-                    "descriptor '__init__' of 'UserDict' object " "needs an argument"
-                )
+                raise TypeError("descriptor '__init__' of 'UserDict' object "
+                                "needs an argument")
             self, args = args[0], args[1:]
             if len(args) > 1:
-                raise TypeError("expected at most 1 arguments, got %d" % len(args))
+                raise TypeError('expected at most 1 arguments, got %d' % len(args))
             if args:
                 dict = args[0]
-            elif "dict" in kwargs:
-                dict = kwargs.pop("dict")
+            elif 'dict' in kwargs:
+                dict = kwargs.pop('dict')
                 import warnings
-
-                warnings.warn(
-                    "Passing 'dict' as keyword argument is deprecated",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
+                warnings.warn("Passing 'dict' as keyword argument is deprecated",
+                              DeprecationWarning, stacklevel=2)
             else:
                 dict = None
             self.data = {}
@@ -206,23 +227,15 @@ else:
                 self.update(dict)
             if len(kwargs):
                 self.update(kwargs)
-
-        def __len__(self):
-            return len(self.data)
-
+        def __len__(self): return len(self.data)
         def __getitem__(self, key):
             if key in self.data:
                 return self.data[key]
             if hasattr(self.__class__, "__missing__"):
                 return self.__class__.__missing__(self, key)
             raise KeyError(key)
-
-        def __setitem__(self, key, item):
-            self.data[key] = item
-
-        def __delitem__(self, key):
-            del self.data[key]
-
+        def __setitem__(self, key, item): self.data[key] = item
+        def __delitem__(self, key): del self.data[key]
         def __iter__(self):
             return iter(self.data)
 
@@ -231,14 +244,11 @@ else:
             return key in self.data
 
         # Now, add the methods in dicts but not in MutableMapping
-        def __repr__(self):
-            return repr(self.data)
-
+        def __repr__(self): return repr(self.data)
         def copy(self):
             if self.__class__ is UserDict:
                 return UserDict(self.data.copy())
             import copy
-
             data = self.data
             try:
                 self.data = {}
@@ -247,10 +257,26 @@ else:
                 self.data = data
             c.update(self)
             return c
-
         @classmethod
         def fromkeys(cls, iterable, value=None):
             d = cls()
             for key in iterable:
                 d[key] = value
             return d
+
+
+class decorate(object):
+
+    def __init__(self, func):
+        self.func = func
+
+    def __call__(self, caller):
+        """
+        IT IS EXPECTED THE caller WILL CALL func
+        :param caller:
+        :return:
+        """
+        return update_wrapper(caller, self.func)
+
+
+_keep_imports = (ConfigParser, zip_longest, reduce, transpose, izip, HTMLParser, urlparse, StringIO, BytesIO, allocate_lock, get_ident, start_new_thread, interrupt_main)

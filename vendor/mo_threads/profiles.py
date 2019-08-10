@@ -7,13 +7,12 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
+from mo_future import is_text, is_binary
 import cProfile
-import pstats
 from datetime import datetime
+import pstats
 
 from mo_future import iteritems
 from mo_logs import Log
@@ -66,7 +65,6 @@ def enable_profilers(filename):
 
     from mo_threads.threads import ALL_LOCK, ALL, Thread
     from mo_threads.queues import Queue
-
     cprofiler_stats = Queue("cprofiler stats")
 
     current_thread = Thread.current()
@@ -78,10 +76,7 @@ def enable_profilers(filename):
             Log.note("starting cprofile for thread {{name}}", name=t.name)
             t.cprofiler.__enter__()
         else:
-            Log.note(
-                "cprofiler not started for thread {{name}} (already running)",
-                name=t.name,
-            )
+            Log.note("cprofiler not started for thread {{name}} (already running)", name=t.name)
 
 
 def write_profiles(main_thread_profile):
@@ -108,12 +103,10 @@ def write_profiles(main_thread_profile):
             "total_time_per_call": d[3] / d[1],
             "file": (f[0] if f[0] != "~" else "").replace("\\", "/"),
             "line": f[1],
-            "method": f[2].lstrip("<").rstrip(">"),
+            "method": f[2].lstrip("<").rstrip(">")
         }
         for f, d, in iteritems(acc.stats)
     ]
-    stats_file = File(
-        FILENAME, suffix=convert.datetime2string(datetime.now(), "_%Y%m%d_%H%M%S")
-    )
+    stats_file = File(FILENAME, suffix=convert.datetime2string(datetime.now(), "_%Y%m%d_%H%M%S"))
     stats_file.write(convert.list2tab(stats))
     Log.note("profile written to {{filename}}", filename=stats_file.abspath)

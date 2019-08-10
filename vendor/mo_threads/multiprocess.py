@@ -6,30 +6,27 @@
 #
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
+from mo_future import is_text, is_binary
 import os
 import subprocess
 
-from mo_dots import set_default, NullType
+from mo_dots import NullType, set_default
 from mo_future import none_type
 from mo_logs import Log, strings
 from mo_logs.exceptions import Except
 from mo_threads.lock import Lock
 from mo_threads.queues import Queue
 from mo_threads.signal import Signal
-from mo_threads.threads import Thread, THREAD_STOP
+from mo_threads.threads import THREAD_STOP, Thread
 from mo_threads.till import Till
 
 DEBUG = False
 
 
 class Process(object):
-    def __init__(
-        self, name, params, cwd=None, env=None, debug=False, shell=False, bufsize=-1
-    ):
+    def __init__(self, name, params, cwd=None, env=None, debug=False, shell=False, bufsize=-1):
         self.name = name
         self.service_stopped = Signal("stopped signal for " + strings.quote(name))
         self.stdin = Queue("stdin for process " + strings.quote(name), silent=True)
@@ -46,49 +43,22 @@ class Process(object):
                 bufsize=bufsize,
                 cwd=cwd if isinstance(cwd, (str, NullType, none_type)) else cwd.abspath,
                 env={str(k): str(v) for k, v in set_default(env, os.environ).items()},
-                shell=shell,
+                shell=shell
             )
 
             self.please_stop = Signal()
-            self.please_stop.on_go(self._kill)
+            self.please_stop.then(self._kill)
             self.thread_locker = Lock()
             self.children = [
-                Thread.run(
-                    self.name + " stdin",
-                    self._writer,
-                    service.stdin,
-                    self.stdin,
-                    please_stop=self.service_stopped,
-                    parent_thread=self,
-                ),
-                Thread.run(
-                    self.name + " stdout",
-                    self._reader,
-                    "stdout",
-                    service.stdout,
-                    self.stdout,
-                    please_stop=self.service_stopped,
-                    parent_thread=self,
-                ),
-                Thread.run(
-                    self.name + " stderr",
-                    self._reader,
-                    "stderr",
-                    service.stderr,
-                    self.stderr,
-                    please_stop=self.service_stopped,
-                    parent_thread=self,
-                ),
+                Thread.run(self.name + " stdin", self._writer, service.stdin, self.stdin, please_stop=self.service_stopped, parent_thread=self),
+                Thread.run(self.name + " stdout", self._reader, "stdout", service.stdout, self.stdout, please_stop=self.service_stopped, parent_thread=self),
+                Thread.run(self.name + " stderr", self._reader, "stderr", service.stderr, self.stderr, please_stop=self.service_stopped, parent_thread=self),
                 Thread.run(self.name + " waiter", self._monitor, parent_thread=self),
             ]
         except Exception as e:
             Log.error("Can not call", e)
 
-        self.debug and Log.note(
-            "{{process}} START: {{command}}",
-            process=self.name,
-            command=" ".join(map(strings.quote, params)),
-        )
+        self.debug and Log.note("{{process}} START: {{command}}", process=self.name, command=" ".join(map(strings.quote, params)))
 
     def __enter__(self):
         return self
@@ -111,7 +81,7 @@ class Process(object):
                 "{{process}} FAIL: returncode={{code}}\n{{stderr}}",
                 process=self.name,
                 code=self.service.returncode,
-                stderr=list(self.stderr),
+                stderr=list(self.stderr)
             )
         return self
 
@@ -132,11 +102,7 @@ class Process(object):
 
     def _monitor(self, please_stop):
         self.service.wait()
-        self.debug and Log.note(
-            "{{process}} STOP: returncode={{returncode}}",
-            process=self.name,
-            returncode=self.service.returncode,
-        )
+        self.debug and Log.note("{{process}} STOP: returncode={{returncode}}", process=self.name, returncode=self.service.returncode)
         self.service_stopped.go()
         please_stop.go()
 
@@ -146,12 +112,7 @@ class Process(object):
                 line = pipe.readline().rstrip()
                 if line:
                     receive.add(line)
-                    self.debug and Log.note(
-                        "{{process}} ({{name}}): {{line}}",
-                        name=name,
-                        process=self.name,
-                        line=line,
-                    )
+                    self.debug and Log.note("{{process}} ({{name}}): {{line}}", name=name, process=self.name, line=line)
                     continue
 
                 # GRAB A FEW MORE LINES
@@ -160,12 +121,7 @@ class Process(object):
                         line = pipe.readline().rstrip()
                         if line:
                             receive.add(line)
-                            self.debug and Log.note(
-                                "{{process}} ({{name}}): {{line}}",
-                                name=name,
-                                process=self.name,
-                                line=line,
-                            )
+                            self.debug and Log.note("{{process}} ({{name}}): {{line}}", name=name, process=self.name, line=line)
                             break
                     except Exception:
                         break
@@ -180,21 +136,14 @@ class Process(object):
                     if line:
                         max = 100
                         receive.add(line)
-                        self.debug and Log.note(
-                            "{{process}} ({{name}}): {{line}}",
-                            name=name,
-                            process=self.name,
-                            line=line,
-                        )
+                        self.debug and Log.note("{{process}} ({{name}}): {{line}}", name=name, process=self.name, line=line)
                     else:
                         max -= 1
                 except Exception:
                     break
         finally:
             pipe.close()
-        self.debug and Log.note(
-            "{{process}} ({{name}} is closed)", name=name, process=self.name
-        )
+        self.debug and Log.note("{{process}} ({{name}} is closed)", name=name, process=self.name)
 
         receive.add(THREAD_STOP)
 
@@ -206,12 +155,8 @@ class Process(object):
                 break
 
             if line:
-                self.debug and Log.note(
-                    "{{process}} (stdin): {{line}}",
-                    process=self.name,
-                    line=line.rstrip(),
-                )
-                pipe.write(line.encode("utf8") + b"\n")
+                self.debug and Log.note("{{process}} (stdin): {{line}}", process=self.name, line=line.rstrip())
+                pipe.write(line.encode('utf8') + b"\n")
                 pipe.flush()
 
     def _kill(self):
@@ -220,11 +165,11 @@ class Process(object):
             Log.note("Service was successfully terminated.")
         except Exception as e:
             ee = Except.wrap(e)
-            if "The operation completed successfully" in ee:
+            if 'The operation completed successfully' in ee:
                 return
-            if "No such process" in ee:
+            if 'No such process' in ee:
                 return
 
-            Log.warning(
-                "Failure to kill process {{process|quote}}", process=self.name, cause=ee
-            )
+            Log.warning("Failure to kill process {{process|quote}}", process=self.name, cause=ee)
+
+

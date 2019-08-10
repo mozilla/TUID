@@ -7,46 +7,22 @@
 #
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
-import time
-from collections import Mapping
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from json.encoder import encode_basestring
+import time
 
-from mo_dots import (
-    Data,
-    FlatList,
-    NullType,
-    join_field,
-    split_field,
-    _get,
-    SLOT,
-    DataObject,
-)
-from mo_future import (
-    text_type,
-    binary_type,
-    sort_using_key,
-    long,
-    PY2,
-    none_type,
-    generator_types,
-)
-from mo_json import ESCAPE_DCT, float2json
-from mo_json.encoder import (
-    UnicodeBuilder,
-    COLON,
-    COMMA,
-    problem_serializing,
-    json_encoder,
-)
+from mo_dots import CLASS, Data, DataObject, FlatList, NullType, SLOT, _get, is_data, join_field, split_field
+from mo_dots.objects import OBJ
+from mo_future import binary_type, generator_types, integer_types, is_binary, is_text, sort_using_key, text_type
 from mo_logs import Log
 from mo_logs.strings import quote, utf82unicode
 from mo_times import Date, Duration
+
+from mo_json import BOOLEAN, ESCAPE_DCT, EXISTS, INTEGER, NESTED, NUMBER, STRING, float2json, python_type_to_json_type
+from mo_json.encoder import COLON, COMMA, UnicodeBuilder, json_encoder, problem_serializing
 
 
 def encode_property(name):
@@ -61,28 +37,26 @@ def untype_path(encoded):
     if encoded.startswith(".."):
         remainder = encoded.lstrip(".")
         back = len(encoded) - len(remainder) - 1
-        return ("." * back) + join_field(
-            decode_property(c)
-            for c in split_field(remainder)
-            if not c.startswith(TYPE_PREFIX)
-        )
+        return ("." * back) + join_field(decode_property(c) for c in split_field(remainder) if not c.startswith(TYPE_PREFIX))
     else:
-        return join_field(
-            decode_property(c)
-            for c in split_field(encoded)
-            if not c.startswith(TYPE_PREFIX)
-        )
+        return join_field(decode_property(c) for c in split_field(encoded) if not c.startswith(TYPE_PREFIX))
 
 
 def unnest_path(encoded):
     if encoded.startswith(".."):
-        encoded = encoded.lstrip(".")
-        if not encoded:
-            encoded = "."
+        remainder = encoded.lstrip(".")
+        back = len(encoded) - len(remainder)
+        return ("." * back) + unnest_path(remainder)
 
-    return join_field(
-        decode_property(c) for c in split_field(encoded) if c != NESTED_TYPE
-    )
+    path = split_field(encoded)
+    if not path:
+        return "."
+    if path[-1] == NESTED_TYPE:
+        path = path[:-1]
+        if not path:
+            return "."
+
+    return join_field([decode_property(c) for c in path[:-1] if not c.startswith(TYPE_PREFIX)] + [decode_property(path[-1])])
 
 
 def untyped(value):
@@ -90,7 +64,7 @@ def untyped(value):
 
 
 def _untype_list(value):
-    if any(isinstance(v, Mapping) for v in value):
+    if any(is_data(v) for v in value):
         # MAY BE MORE TYPED OBJECTS IN THIS LIST
         output = [_untype_value(v) for v in value]
     else:
@@ -124,7 +98,7 @@ def _untype_dict(value):
 
 
 def _untype_value(value):
-    _type = _get(value, "__class__")
+    _type = _get(value, CLASS)
     if _type is Data:
         return _untype_dict(_get(value, SLOT))
     elif _type is dict:
@@ -136,7 +110,7 @@ def _untype_value(value):
     elif _type is NullType:
         return None
     elif _type is DataObject:
-        return _untype_value(_get(value, "_obj"))
+        return _untype_value(_get(value, OBJ))
     elif _type in generator_types:
         return _untype_list(value)
     else:
@@ -145,7 +119,13 @@ def _untype_value(value):
 
 def encode(value):
     buffer = UnicodeBuilder(1024)
-    typed_encode(value, sub_schema={}, path=[], net_new_properties=[], buffer=buffer)
+    typed_encode(
+        value,
+        sub_schema={},
+        path=[],
+        net_new_properties=[],
+        buffer=buffer
+    )
     return buffer.build()
 
 
@@ -160,79 +140,68 @@ def typed_encode(value, sub_schema, path, net_new_properties, buffer):
     """
     try:
         # from jx_base import Column
-        if sub_schema.__class__.__name__ == "Column":
+        if sub_schema.__class__.__name__=='Column':
             value_json_type = python_type_to_json_type[value.__class__]
             column_json_type = es_type_to_json_type[sub_schema.es_type]
 
             if value_json_type == column_json_type:
                 pass  # ok
-            elif value_json_type == NESTED and all(
-                python_type_to_json_type[v.__class__] == column_json_type
-                for v in value
-                if v != None
-            ):
+            elif value_json_type == NESTED and all(python_type_to_json_type[v.__class__] == column_json_type for v in value if v != None):
                 pass  # empty arrays can be anything
             else:
                 from mo_logs import Log
 
-                Log.error(
-                    "Can not store {{value}} in {{column|quote}}",
-                    value=value,
-                    column=sub_schema.names["."],
-                )
+                Log.error("Can not store {{value}} in {{column|quote}}", value=value, column=sub_schema.name)
 
             sub_schema = {json_type_to_inserter_type[value_json_type]: sub_schema}
 
         if value == None:
             from mo_logs import Log
-
             Log.error("can not encode null (missing) values")
         elif value is True:
             if BOOLEAN_TYPE not in sub_schema:
                 sub_schema[BOOLEAN_TYPE] = {}
                 net_new_properties.append(path + [BOOLEAN_TYPE])
-            append(buffer, "{")
+            append(buffer, '{')
             append(buffer, QUOTED_BOOLEAN_TYPE)
-            append(buffer, "true}")
+            append(buffer, 'true}')
             return
         elif value is False:
             if BOOLEAN_TYPE not in sub_schema:
                 sub_schema[BOOLEAN_TYPE] = {}
                 net_new_properties.append(path + [BOOLEAN_TYPE])
-            append(buffer, "{")
+            append(buffer, '{')
             append(buffer, QUOTED_BOOLEAN_TYPE)
-            append(buffer, "false}")
+            append(buffer, 'false}')
             return
 
         _type = value.__class__
         if _type in (dict, Data):
-            if sub_schema.__class__.__name__ == "Column":
+            if sub_schema.__class__.__name__ == 'Column':
                 from mo_logs import Log
-
                 Log.error("Can not handle {{column|json}}", column=sub_schema)
 
             if NESTED_TYPE in sub_schema:
                 # PREFER NESTED, WHEN SEEN BEFORE
                 if value:
-                    append(buffer, "{")
+                    append(buffer, '{')
                     append(buffer, QUOTED_NESTED_TYPE)
-                    append(buffer, "[")
-                    _dict2json(
-                        value,
-                        sub_schema[NESTED_TYPE],
-                        path + [NESTED_TYPE],
-                        net_new_properties,
-                        buffer,
-                    )
-                    append(buffer, "]" + COMMA)
+                    append(buffer, '[')
+                    _dict2json(value, sub_schema[NESTED_TYPE], path + [NESTED_TYPE], net_new_properties, buffer)
+                    append(buffer, ']' + COMMA)
                     append(buffer, QUOTED_EXISTS_TYPE)
                     append(buffer, text_type(len(value)))
-                    append(buffer, "}")
+                    append(buffer, '}')
                 else:
-                    # SINGLETON LISTS OF null SHOULD NOT EXIST
-                    from mo_logs import Log
-
-                    Log.error("should not happen")
+                    # SINGLETON LIST
+                    append(buffer, '{')
+                    append(buffer, QUOTED_NESTED_TYPE)
+                    append(buffer, '[{')
+                    append(buffer, QUOTED_EXISTS_TYPE)
+                    append(buffer, '1}]')
+                    append(buffer, COMMA)
+                    append(buffer, QUOTED_EXISTS_TYPE)
+                    append(buffer, '1}')
             else:
                 if EXISTS_TYPE not in sub_schema:
                     sub_schema[EXISTS_TYPE] = {}
@@ -241,14 +210,14 @@ def typed_encode(value, sub_schema, path, net_new_properties, buffer):
                 if value:
                     _dict2json(value, sub_schema, path, net_new_properties, buffer)
                 else:
-                    append(buffer, "{")
+                    append(buffer, '{')
                     append(buffer, QUOTED_EXISTS_TYPE)
-                    append(buffer, "0}")
+                    append(buffer, '1}')
         elif _type is binary_type:
             if STRING_TYPE not in sub_schema:
                 sub_schema[STRING_TYPE] = True
                 net_new_properties.append(path + [STRING_TYPE])
-            append(buffer, "{")
+            append(buffer, '{')
             append(buffer, QUOTED_STRING_TYPE)
             append(buffer, '"')
             try:
@@ -263,148 +232,126 @@ def typed_encode(value, sub_schema, path, net_new_properties, buffer):
             if STRING_TYPE not in sub_schema:
                 sub_schema[STRING_TYPE] = True
                 net_new_properties.append(path + [STRING_TYPE])
-            append(buffer, "{")
+            append(buffer, '{')
             append(buffer, QUOTED_STRING_TYPE)
             append(buffer, '"')
             for c in value:
                 append(buffer, ESCAPE_DCT.get(c, c))
             append(buffer, '"}')
-        elif _type in (int, long):
+        elif _type in integer_types:
             if NUMBER_TYPE not in sub_schema:
                 sub_schema[NUMBER_TYPE] = True
                 net_new_properties.append(path + [NUMBER_TYPE])
 
-            append(buffer, "{")
+            append(buffer, '{')
             append(buffer, QUOTED_NUMBER_TYPE)
             append(buffer, text_type(value))
-            append(buffer, "}")
+            append(buffer, '}')
         elif _type in (float, Decimal):
             if NUMBER_TYPE not in sub_schema:
                 sub_schema[NUMBER_TYPE] = True
                 net_new_properties.append(path + [NUMBER_TYPE])
-            append(buffer, "{")
+            append(buffer, '{')
             append(buffer, QUOTED_NUMBER_TYPE)
             append(buffer, float2json(value))
-            append(buffer, "}")
+            append(buffer, '}')
         elif _type in (set, list, tuple, FlatList):
             if len(value) == 0:
-                append(buffer, "{")
-                append(buffer, QUOTED_NESTED_TYPE)
-                append(buffer, "[]}")
-            elif any(
-                isinstance(v, (Mapping, set, list, tuple, FlatList)) for v in value
-            ):
-                if NESTED_TYPE not in sub_schema:
-                    sub_schema[NESTED_TYPE] = {}
-                    net_new_properties.append(path + [NESTED_TYPE])
-                append(buffer, "{")
-                append(buffer, QUOTED_NESTED_TYPE)
-                _list2json(
-                    value,
-                    sub_schema[NESTED_TYPE],
-                    path + [NESTED_TYPE],
-                    net_new_properties,
-                    buffer,
-                )
-                append(buffer, "}")
+                append(buffer, '{')
+                append(buffer, QUOTED_EXISTS_TYPE)
+                append(buffer, '0}')
+            elif any(v.__class__ in (Data, dict, set, list, tuple, FlatList) for v in value):
+                # THIS IS NOT DONE BECAUSE
+                if len(value) == 1:
+                    if NESTED_TYPE in sub_schema:
+                        append(buffer, '{')
+                        append(buffer, QUOTED_NESTED_TYPE)
+                        _list2json(value, sub_schema[NESTED_TYPE], path + [NESTED_TYPE], net_new_properties, buffer)
+                        append(buffer, '}')
+                    else:
+                        # NO NEED TO NEST, SO DO NOT DO IT
+                        typed_encode(value[0], sub_schema, path, net_new_properties, buffer)
+                else:
+                    if NESTED_TYPE not in sub_schema:
+                        sub_schema[NESTED_TYPE] = {}
+                        net_new_properties.append(path + [NESTED_TYPE])
+                    append(buffer, '{')
+                    append(buffer, QUOTED_NESTED_TYPE)
+                    _list2json(value, sub_schema[NESTED_TYPE], path + [NESTED_TYPE], net_new_properties, buffer)
+                    append(buffer, '}')
             else:
                 # ALLOW PRIMITIVE MULTIVALUES
                 value = [v for v in value if v != None]
-                types = list(
-                    set(
-                        json_type_to_inserter_type[
-                            python_type_to_json_type[v.__class__]
-                        ]
-                        for v in value
-                    )
-                )
+                types = list(set(json_type_to_inserter_type[python_type_to_json_type[v.__class__]] for v in value))
                 if len(types) == 0:  # HANDLE LISTS WITH Nones IN THEM
-                    append(buffer, "{")
+                    append(buffer, '{')
                     append(buffer, QUOTED_NESTED_TYPE)
-                    append(buffer, "[]}")
+                    append(buffer, '[]}')
                 elif len(types) > 1:
-                    _list2json(
-                        value,
-                        sub_schema,
-                        path + [NESTED_TYPE],
-                        net_new_properties,
-                        buffer,
-                    )
+                    _list2json(value, sub_schema, path + [NESTED_TYPE], net_new_properties, buffer)
                 else:
                     element_type = types[0]
                     if element_type not in sub_schema:
                         sub_schema[element_type] = True
                         net_new_properties.append(path + [element_type])
-                    append(buffer, "{")
+                    append(buffer, '{')
                     append(buffer, quote(element_type))
                     append(buffer, COLON)
-                    _multivalue2json(
-                        value,
-                        sub_schema[element_type],
-                        path + [element_type],
-                        net_new_properties,
-                        buffer,
-                    )
-                    append(buffer, "}")
+                    _multivalue2json(value, sub_schema[element_type], path + [element_type], net_new_properties, buffer)
+                    append(buffer, '}')
         elif _type is date:
             if NUMBER_TYPE not in sub_schema:
                 sub_schema[NUMBER_TYPE] = True
                 net_new_properties.append(path + [NUMBER_TYPE])
-            append(buffer, "{")
+            append(buffer, '{')
             append(buffer, QUOTED_NUMBER_TYPE)
             append(buffer, float2json(time.mktime(value.timetuple())))
-            append(buffer, "}")
+            append(buffer, '}')
         elif _type is datetime:
             if NUMBER_TYPE not in sub_schema:
                 sub_schema[NUMBER_TYPE] = True
                 net_new_properties.append(path + [NUMBER_TYPE])
-            append(buffer, "{")
+            append(buffer, '{')
             append(buffer, QUOTED_NUMBER_TYPE)
             append(buffer, float2json(time.mktime(value.timetuple())))
-            append(buffer, "}")
+            append(buffer, '}')
         elif _type is Date:
             if NUMBER_TYPE not in sub_schema:
                 sub_schema[NUMBER_TYPE] = True
                 net_new_properties.append(path + [NUMBER_TYPE])
-            append(buffer, "{")
+            append(buffer, '{')
             append(buffer, QUOTED_NUMBER_TYPE)
             append(buffer, float2json(value.unix))
-            append(buffer, "}")
+            append(buffer, '}')
         elif _type is timedelta:
             if NUMBER_TYPE not in sub_schema:
                 sub_schema[NUMBER_TYPE] = True
                 net_new_properties.append(path + [NUMBER_TYPE])
-            append(buffer, "{")
+            append(buffer, '{')
             append(buffer, QUOTED_NUMBER_TYPE)
             append(buffer, float2json(value.total_seconds()))
-            append(buffer, "}")
+            append(buffer, '}')
         elif _type is Duration:
             if NUMBER_TYPE not in sub_schema:
                 sub_schema[NUMBER_TYPE] = True
                 net_new_properties.append(path + [NUMBER_TYPE])
-            append(buffer, "{")
+            append(buffer, '{')
             append(buffer, QUOTED_NUMBER_TYPE)
             append(buffer, float2json(value.seconds))
-            append(buffer, "}")
+            append(buffer, '}')
         elif _type is NullType:
-            append(buffer, "null")
-        elif hasattr(value, "__data__"):
+            append(buffer, 'null')
+        elif hasattr(value, '__data__'):
             typed_encode(value.__data__(), sub_schema, path, net_new_properties, buffer)
-        elif hasattr(value, "__iter__"):
+        elif hasattr(value, '__iter__'):
             if NESTED_TYPE not in sub_schema:
                 sub_schema[NESTED_TYPE] = {}
                 net_new_properties.append(path + [NESTED_TYPE])
 
-            append(buffer, "{")
+            append(buffer, '{')
             append(buffer, QUOTED_NESTED_TYPE)
-            _iter2json(
-                value,
-                sub_schema[NESTED_TYPE],
-                path + [NESTED_TYPE],
-                net_new_properties,
-                buffer,
-            )
-            append(buffer, "}")
+            _iter2json(value, sub_schema[NESTED_TYPE], path + [NESTED_TYPE], net_new_properties, buffer)
+            append(buffer, '}')
         else:
             from mo_logs import Log
 
@@ -417,14 +364,14 @@ def typed_encode(value, sub_schema, path, net_new_properties, buffer):
 
 def _list2json(value, sub_schema, path, net_new_properties, buffer):
     if not value:
-        append(buffer, "[]")
+        append(buffer, '[]')
     else:
-        sep = "["
+        sep = '['
         for v in value:
             append(buffer, sep)
             sep = COMMA
             typed_encode(v, sub_schema, path, net_new_properties, buffer)
-        append(buffer, "]")
+        append(buffer, ']')
         append(buffer, COMMA)
         append(buffer, QUOTED_EXISTS_TYPE)
         append(buffer, text_type(len(value)))
@@ -432,43 +379,43 @@ def _list2json(value, sub_schema, path, net_new_properties, buffer):
 
 def _multivalue2json(value, sub_schema, path, net_new_properties, buffer):
     if not value:
-        append(buffer, "[]")
+        append(buffer, '[]')
     elif len(value) == 1:
         append(buffer, json_encoder(value[0]))
     else:
-        sep = "["
+        sep = '['
         for v in value:
             append(buffer, sep)
             sep = COMMA
             append(buffer, json_encoder(v))
-        append(buffer, "]")
+        append(buffer, ']')
 
 
 def _iter2json(value, sub_schema, path, net_new_properties, buffer):
-    append(buffer, "[")
-    sep = ""
+    append(buffer, '[')
+    sep = ''
     count = 0
     for v in value:
         append(buffer, sep)
         sep = COMMA
         typed_encode(v, sub_schema, path, net_new_properties, buffer)
         count += 1
-    append(buffer, "]")
+    append(buffer, ']')
     append(buffer, COMMA)
     append(buffer, QUOTED_EXISTS_TYPE)
     append(buffer, text_type(count))
 
 
 def _dict2json(value, sub_schema, path, net_new_properties, buffer):
-    prefix = "{"
+    prefix = '{'
     for k, v in sort_using_key(value.items(), lambda r: r[0]):
-        if v == None or v == "":
+        if v == None or v == '':
             continue
         append(buffer, prefix)
         prefix = COMMA
-        if isinstance(k, binary_type):
+        if is_binary(k):
             k = utf82unicode(k)
-        if not isinstance(k, text_type):
+        if not is_text(k):
             Log.error("Expecting property name to be a string")
         if k not in sub_schema:
             sub_schema[k] = {}
@@ -479,47 +426,11 @@ def _dict2json(value, sub_schema, path, net_new_properties, buffer):
     if prefix is COMMA:
         append(buffer, COMMA)
         append(buffer, QUOTED_EXISTS_TYPE)
-        append(buffer, "1}")
+        append(buffer, '1}')
     else:
-        append(buffer, "{")
+        append(buffer, '{')
         append(buffer, QUOTED_EXISTS_TYPE)
-        append(buffer, "1}")
-
-
-IS_NULL = "0"
-BOOLEAN = "boolean"
-INTEGER = "integer"
-NUMBER = "number"
-STRING = "string"
-OBJECT = "object"
-NESTED = "nested"
-EXISTS = "exists"
-
-JSON_TYPES = [BOOLEAN, INTEGER, NUMBER, STRING, OBJECT]
-PRIMITIVE = [EXISTS, BOOLEAN, INTEGER, NUMBER, STRING]
-STRUCT = [EXISTS, OBJECT, NESTED]
-
-
-python_type_to_json_type = {
-    int: NUMBER,
-    text_type: STRING,
-    float: NUMBER,
-    None: OBJECT,
-    bool: BOOLEAN,
-    NullType: OBJECT,
-    none_type: OBJECT,
-    Data: OBJECT,
-    dict: OBJECT,
-    object: OBJECT,
-    Mapping: OBJECT,
-    list: NESTED,
-    FlatList: NESTED,
-    Date: NUMBER,
-}
-
-if PY2:
-    python_type_to_json_type[str] = STRING
-    python_type_to_json_type[long] = NUMBER
+        append(buffer, '1}')
 
 
 TYPE_PREFIX = "~"  # u'\u0442\u0443\u0440\u0435-'  # "туре"
@@ -537,13 +448,19 @@ QUOTED_STRING_TYPE = quote(STRING_TYPE) + COLON
 QUOTED_NESTED_TYPE = quote(NESTED_TYPE) + COLON
 QUOTED_EXISTS_TYPE = quote(EXISTS_TYPE) + COLON
 
+inserter_type_to_json_type = {
+    BOOLEAN_TYPE: BOOLEAN,
+    NUMBER_TYPE: NUMBER,
+    STRING_TYPE: STRING
+}
+
 json_type_to_inserter_type = {
     BOOLEAN: BOOLEAN_TYPE,
     INTEGER: NUMBER_TYPE,
     NUMBER: NUMBER_TYPE,
     STRING: STRING_TYPE,
     NESTED: NESTED_TYPE,
-    EXISTS: EXISTS_TYPE,
+    EXISTS: EXISTS_TYPE
 }
 
 es_type_to_json_type = {
@@ -557,5 +474,5 @@ es_type_to_json_type = {
     "nested": "nested",
     "source": "json",
     "boolean": "boolean",
-    "exists": "exists",
+    "exists": "exists"
 }

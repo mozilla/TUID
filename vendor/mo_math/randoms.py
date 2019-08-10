@@ -1,10 +1,9 @@
 # encoding: utf-8
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
+from mo_future import is_text, is_binary
 import random
 import string
 
@@ -19,18 +18,18 @@ class Random(object):
 
     @staticmethod
     def string(length, alphabet=SIMPLE_ALPHABET):
-        result = ""
+        result = ''
         for i in range(length):
             result += SEED.choice(alphabet)
         return result
 
     @staticmethod
     def hex(length):
-        return Random.string(length, string.digits + "ABCDEF")
+        return Random.string(length, string.digits + 'ABCDEF')
 
     @staticmethod
     def base64(length):
-        return Random.string(length, SIMPLE_ALPHABET + "+/")
+        return Random.string(length, SIMPLE_ALPHABET + '+/')
 
     @staticmethod
     def int(*args):
@@ -43,7 +42,7 @@ class Random(object):
     @staticmethod
     def float(*args):
         if args:
-            return SEED.random() * args[0]
+            return SEED.random()*args[0]
         else:
             return SEED.random()
 
@@ -58,7 +57,7 @@ class Random(object):
         data = list(data)
         num = len(data)
         for i in range(num):
-            n = Random.int(num - i)
+            n = Random.int(num-i)
             output.append(data[n])
             del data[n]
         return output

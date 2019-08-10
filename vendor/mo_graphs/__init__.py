@@ -36,9 +36,14 @@ class BaseGraph(object):
         raise NotImplementedError()
 
     def get_edges(self, node):
-        return {(node, child) for child in self.get_children(node)} | {
-            (parent, node) for parent in self.get_parents(node)
-        }
+        return {
+                   (node, child)
+                   for child in self.get_children(node)
+               } | {
+                   (parent, node)
+                   for parent in self.get_parents(node)
+               }
 
     def get_family(self, node):
         return self.get_children(node) | self.get_parents(node)
+

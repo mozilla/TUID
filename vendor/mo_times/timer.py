@@ -7,9 +7,7 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
 from datetime import timedelta
 from time import time
@@ -56,17 +54,9 @@ class Timer(object):
         self.param.duration = timedelta(seconds=self.interval)
         if not self.silent:
             if self.too_long == 0:
-                Log.note(
-                    "Timer end  : " + self.template + " (took {{duration}})",
-                    default_params=self.param,
-                    stack_depth=1,
-                )
+                Log.note("Timer end  : " + self.template + " (took {{duration}})", default_params=self.param, stack_depth=1)
             elif self.interval >= self.too_long:
-                Log.note(
-                    "Time too long: " + self.template + " ({{duration}})",
-                    default_params=self.param,
-                    stack_depth=1,
-                )
+                Log.note("Time too long: " + self.template + " ({{duration}})", default_params=self.param, stack_depth=1)
 
     @property
     def duration(self):
