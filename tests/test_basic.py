@@ -40,20 +40,24 @@ def service(config, new_db):
 
 def insert_to_lfm(service, file, revision):
     with service.conn.transaction() as t:
-        t.execute("DELETE FROM latestFileMod")
+        # t.execute("DELETE FROM latestFileMod")
         t.execute(
             "INSERT OR REPLACE INTO latestFileMod (revision, file) VALUES"
-            + quote_list((revision, file))
+            + quote_list((revision, file.lstrip("/")))
         )
 
 
 def test_transactions(service):
     # This should pass
-    old = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838")
-    new = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62")
+    old_revision = "6162f89a4838"
+    new_revision = "06b1a22c5e62"
+    file = "/testing/geckodriver/CONTRIBUTING.md"
+    service.clogger.initialize_to_range(old_revision, new_revision)
+    old = service.get_tuids(file, old_revision)
+    insert_to_lfm(service, file, old_revision)
+    new = service.get_tuids_from_files([file], new_revision)[0]
 
     assert len(old) == len(new)
-
     # listed_inserts = [None] * 100
     listed_inserts = [("test" + str(count), str(count)) for count, entry in enumerate(range(100))]
     listed_inserts.append("hello world")  # This should cause a transaction failure
@@ -218,6 +222,7 @@ def test_multithread_tuid_uniqueness(service):
     assert len(tuidlist) == len(set(tuidlist))
 
 
+"""
 def test_multithread_service(service):
     num_tests = 10
     timeout_seconds = 60
@@ -266,16 +271,17 @@ def test_multithread_service(service):
         if mapping.tuid is None:  # Use first result
             # All lines should have a mapping
             assert False
+"""
 
 
 def test_new_then_old(service):
     old_rev = "6162f89a4838"
     new_rev = "06b1a22c5e62"
-    file = "testing/geckodriver/CONTRIBUTING.md"
+    file = "/testing/geckodriver/CONTRIBUTING.md"
     service.clogger.initialize_to_range(old_rev, new_rev)
     # delete database then run this test
-    insert_to_lfm(service, file, old_rev)
     old = service.get_tuids(file, old_rev)
+    insert_to_lfm(service, file, old_rev)
     new = service.get_tuids_from_files([file], new_rev)[0]
     assert len(old) == len(new)
     for i in range(0, len(old)):
@@ -285,7 +291,7 @@ def test_new_then_old(service):
 def test_tuids_on_changed_file(service):
     rev1 = "a6fdd6eae583"
     rev2 = "a0bd70eac827"
-    file = "taskcluster/ci/test/tests.yml"
+    file = "/taskcluster/ci/test/tests.yml"
     # https://hg.mozilla.org/integration/mozilla-inbound/file/a6fdd6eae583/taskcluster/ci/test/tests.yml
     old_lines = service.get_tuids(file, rev1)  # 2205 lines
     service.clogger.initialize_to_range(rev1, rev2)
@@ -319,11 +325,10 @@ def test_remove_file(service):
     assert 0 == len(entries[0][1])
 
 
-"""
-It is taking too much time. So
+# It is taking too much time.
 def test_generic_1(service):
-    # old_rev = "a5a2ae162869"
-    old_rev = "7d799a93ed72"
+    old_rev = "a5a2ae162869"
+    # old_rev = "7d799a93ed72"
     new_rev = "3acb30b37718"
     file = "gfx/ipc/GPUParent.cpp"
     service.clogger.initialize_to_range(old_rev, new_rev)
@@ -335,7 +340,6 @@ def test_generic_1(service):
     print(old, new)
     for i in range(1, 207):
         assert old[i] == new[i]
-"""
 
 
 def test_parallel_get_tuids(service):
@@ -352,14 +356,14 @@ def test_500_file(service):
     assert len(tuids[0][1]) == 0
 
 
-"""
-This is taking too much time
+# This is taking too much time
 def test_file_with_line_replacement(service):
     file = "python/mozbuild/mozbuild/action/test_archive.py"
     old_rev = "c730f942ce30"
     new_rev = "e3f24e165618"
     service.clogger.initialize_to_range(old_rev, new_rev)
     new = service.get_tuids(file, new_rev)
+    insert_to_lfm(service, file, new_rev)
     old = service.get_tuids_from_files([file], old_rev)[0]
     new = new[0][1]
     old = old[0][1]
@@ -370,7 +374,6 @@ def test_file_with_line_replacement(service):
             assert old[i] != new[i]
         else:
             assert old[i] == new[i]
-"""
 
 
 def test_distant_rev(service):
@@ -400,8 +403,9 @@ def test_bad_date_file(service):
     # https://hg.mozilla.org/mozilla-central/rev/07fad8b0b417d9ae8580f23d697172a3735b546b
     service.clogger.initialize_to_range("0451fe123f5b", "7a6bc227dc03")
     file = "dom/media/MediaManager.cpp"
-    change_one = service.get_tuids(file, "07fad8b0b417d9ae8580f23d697172a3735b546b")[0][1]
-
+    change_rev = "07fad8b0b417d9ae8580f23d697172a3735b546b"
+    change_one = service.get_tuids(file, change_rev)[0][1]
+    insert_to_lfm(service, file, change_rev[:12])
     # Insert a change in between these dates to throw us off.
     # https://hg.mozilla.org/mozilla-central/rev/0451fe123f5b
     change_two = service.get_tuids_from_files([file], "0451fe123f5b")
@@ -420,7 +424,6 @@ def test_bad_date_file(service):
         assert change_one[i] == earliest_rev[i]
 
 
-"""
 # What should be the revision range?
 def test_multi_parent_child_changes(service):
     # For this file: toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp
@@ -430,20 +433,22 @@ def test_multi_parent_child_changes(service):
         "0ef34a9ec4fbfccd03ee0cfb26b182c03e28133a",
     )[0][1]
 
+    insert_to_lfm(
+        service, "toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp", "0ef34a9ec4fb"
+    )
     # A past revision: https://hg.mozilla.org/mozilla-central/rev/bb6db24a20dd
-    past_rev = service.get_tuids(
-        "toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp", "bb6db24a20dd"
+    past_rev = service.get_tuids_from_files(
+        ["toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp"], "bb6db24a20dd"
     )[0][1]
 
     # Check it on the child which doesn't modify it: https://hg.mozilla.org/mozilla-central/rev/39717163c6c9
-    next_rev = service.get_tuids(
-        "toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp", "39717163c6c9"
+    next_rev = service.get_tuids_from_files(
+        ["toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp"], "39717163c6c9"
     )[0][1]
 
     assert len(earliest_rev) == len(next_rev)
     for i in range(0, len(earliest_rev)):
         assert next_rev[i] == earliest_rev[i]
-"""
 
 
 def test_get_tuids_from_revision(service):
@@ -690,8 +695,9 @@ def test_one_http_call_required(service):
     )  # Useful in testing
 
     with service.conn.transaction() as t:
-        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(proc_files))
-        filter = {"terms": {"file": proc_files}}
+        temp = [i.lstrip("/") for i in proc_files]
+        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(temp))
+        filter = {"terms": {"file": temp}}
         delete(service.annotations, filter)
 
     Log.note("Number of files to process: {{flen}}", flen=len(files))

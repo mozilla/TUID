@@ -371,9 +371,7 @@ class TUIDService:
                     line_count = 0
                     for i in response.iter_lines():
                         line_count += 1
-                    annotated_files[
-                        thread_num
-                    ] = line_count  # response.iter_lines().all_content.decode("UTF-8").count("\n")
+                    annotated_files[thread_num] = line_count
                 else:
                     annotated_files[thread_num] = -1
             except Exception as e:
