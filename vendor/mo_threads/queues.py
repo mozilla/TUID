@@ -138,13 +138,14 @@ class Queue(object):
                         self.queue.append(v)
         return self
 
-    def _wait_for_queue_space(self, timeout=DEFAULT_WAIT_TIME):
+    def _wait_for_queue_space(self, timeout=None):
         """
         EXPECT THE self.lock TO BE HAD, WAITS FOR self.queue TO HAVE A LITTLE SPACE
 
         :param timeout:  IN SECONDS
         """
         wait_time = 5
+        timeout = coalesce(timeout, DEFAULT_WAIT_TIME)
 
         (DEBUG and len(self.queue) > 1 * 1000 * 1000) and Log.warning("Queue {{name}} has over a million items")
 
