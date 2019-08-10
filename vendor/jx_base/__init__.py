@@ -7,14 +7,15 @@
 #
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
 from uuid import uuid4
 
-from mo_dots import wrap, coalesce, listwrap
-from mo_future import text_type
+from jx_base.expressions import jx_expression
+from jx_python.expressions import Literal, Python
+from mo_dots import coalesce, listwrap, wrap
+from mo_dots.datas import register_data
+from mo_future import is_text, text_type
 from mo_json import value2json
 from mo_logs import Log
 from mo_logs.strings import expand_template, quote
@@ -72,12 +73,10 @@ def DataClass(name, columns, constraint=None):
     :return: The class that has been created
     """
 
-    from jx_python.expressions import jx_expression
-
     columns = wrap(
         [
             {"name": c, "required": True, "nulls": False, "type": object}
-            if isinstance(c, text_type)
+            if is_text(c)
             else c
             for c in columns
         ]
@@ -88,11 +87,12 @@ def DataClass(name, columns, constraint=None):
     ).name
     nulls = wrap(filter(lambda c: c.nulls, columns)).name
     defaults = {c.name: coalesce(c.default, None) for c in columns}
-    types = {c.name: coalesce(c.type, object) for c in columns}
+    types = {c.name: coalesce(c.jx_type, object) for c in columns}
 
     code = expand_template(
         """
 from __future__ import unicode_literals
+from mo_future import is_text, is_binary
 from collections import Mapping
 
 meta = None
@@ -179,7 +179,7 @@ class {{class_name}}(Mapping):
             "slots": "(" + (", ".join(quote(s) for s in slots)) + ")",
             "required": "{" + (", ".join(quote(s) for s in required)) + "}",
             "nulls": "{" + (", ".join(quote(s) for s in nulls)) + "}",
-            "defaults": jx_expression({"literal": defaults}).to_python(),
+            "defaults": Literal(defaults).to_python(),
             "len_slots": len(slots),
             "dict": "{" + (", ".join(quote(s) + ": self." + s for s in slots)) + "}",
             "assign": "; ".join(
@@ -188,48 +188,55 @@ class {{class_name}}(Mapping):
             "types": "{"
             + (",".join(quote(k) + ": " + v.__name__ for k, v in types.items()))
             + "}",
-            "constraint_expr": jx_expression(constraint).to_python(),
+            "constraint_expr": Python[jx_expression(constraint)].to_python(),
             "constraint": value2json(constraint),
         },
     )
 
-    return _exec(code, name)
+    output = _exec(code, name)
+    register_data(output)
+    return output
 
 
-class TableDesc(
-    DataClass(
-        "Table",
-        ["name", "url", "query_path", "timestamp"],
-        constraint={"and": [{"eq": [{"last": "query_path"}, {"literal": "."}]}]},
-    )
-):
-    @property
-    def columns(self):
-        raise NotImplementedError()
-        # return singlton.get_columns(table_name=self.name)
+TableDesc = DataClass(
+    "Table",
+    [
+        "name",
+        "url",
+        "query_path",
+        {"name": "last_updated", "nulls": False},
+        "columns"
+    ],
+    constraint={"and": [
+        {"eq": [{"last": "query_path"}, {"literal": "."}]}
+    ]}
+)
 
 
 Column = DataClass(
     "Column",
     [
-        # "table",
-        "names",  # MAP FROM TABLE NAME TO COLUMN NAME (ONE COLUMN CAN HAVE MULTIPLE NAMES)
+        "name",
         "es_column",
         "es_index",
         "es_type",
-        {"name": "jx_type", "nulls": True},
+        "jx_type",
         {"name": "useSource", "default": False},
-        {
-            "name": "nested_path",
-            "nulls": True,
-        },  # AN ARRAY OF PATHS (FROM DEEPEST TO SHALLOWEST) INDICATING THE JSON SUB-ARRAYS
+        "nested_path",  # AN ARRAY OF PATHS (FROM DEEPEST TO SHALLOWEST) INDICATING THE JSON SUB-ARRAYS
         {"name": "count", "nulls": True},
         {"name": "cardinality", "nulls": True},
         {"name": "multi", "nulls": True},
         {"name": "partitions", "nulls": True},
-        {"name": "last_updated", "nulls": True},
+        "last_updated",
     ],
-    constraint={"and": [{"eq": [{"last": "nested_path"}, {"literal": "."}]}]},
+    constraint={
+        "and": [
+            {"not": {"find": {"es_column": "null"}}},
+            {"not": {"eq": {"es_column": "string"}}},
+            {"not": {"eq": {"es_type": "object", "jx_type": "exists"}}},
+            {"eq": [{"last": "nested_path"}, {"literal": "."}]},
+        ]
+    },
 )
 
 

@@ -7,57 +7,27 @@
 #
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
 import itertools
-from collections import Mapping
 from numbers import Number
-
-from mo_future import text_type
 
 from jx_base.expressions import jx_expression
 from mo_collections.unique_index import UniqueIndex
-from mo_dots import coalesce, Data, set_default, Null, listwrap
-from mo_dots import wrap
-from mo_dots.lists import FlatList
+from mo_dots import Data, FlatList, Null, coalesce, is_container, is_data, listwrap, set_default, unwrap, wrap
+from mo_future import text_type
 from mo_logs import Log
 from mo_math import MAX, MIN
 from mo_times.dates import Date
 from mo_times.durations import Duration
 
-ALGEBRAIC = {
-    "time",
-    "duration",
-    "numeric",
-    "count",
-    "datetime",
-}  # DOMAINS THAT HAVE ALGEBRAIC OPERATIONS DEFINED
-KNOWN = {
-    "set",
-    "boolean",
-    "duration",
-    "time",
-    "numeric",
-}  # DOMAINS THAT HAVE A KNOWN NUMBER FOR PARTS AT QUERY TIME
+ALGEBRAIC = {"time", "duration", "numeric", "count", "datetime"}  # DOMAINS THAT HAVE ALGEBRAIC OPERATIONS DEFINED
+KNOWN = {"set", "boolean", "duration", "time", "numeric"}  # DOMAINS THAT HAVE A KNOWN NUMBER FOR PARTS AT QUERY TIME
 PARTITION = {"uid", "set", "boolean"}  # DIMENSIONS WITH CLEAR PARTS
 
 
 class Domain(object):
-    __slots__ = [
-        "name",
-        "type",
-        "value",
-        "key",
-        "label",
-        "end",
-        "isFacet",
-        "where",
-        "dimension",
-        "primitive",
-        "limit",
-    ]
+    __slots__ = ["name", "type", "value", "key", "label", "end", "isFacet", "where", "dimension", "primitive", "limit"]
 
     def __new__(cls, **desc):
         if cls == Domain:
@@ -65,11 +35,7 @@ class Domain(object):
             try:
                 return name_to_type[type_name](**desc)
             except Exception as e:
-                Log.error(
-                    'Problem with {"domain":{"type":{{type|quote}}}}',
-                    type=type_name,
-                    cause=e,
-                )
+                Log.error("Problem with {\"domain\":{\"type\":{{type|quote}}}}", type=type_name, cause=e)
         else:
             return object.__new__(cls)
 
@@ -92,6 +58,7 @@ class Domain(object):
         for b in cls.__bases__:
             self._set_slots_to_null(b)
 
+
     def __copy__(self):
         return self.__class__(**self.__data__())
 
@@ -99,24 +66,22 @@ class Domain(object):
         return self.__class__(**self.__data__())
 
     def __data__(self):
-        return wrap(
-            {
-                "name": self.name,
-                "type": self.type,
-                "value": self.value,
-                "key": self.key,
-                "isFacet": self.isFacet,
-                "where": self.where,
-                "dimension": self.dimension,
-            }
-        )
+        return wrap({
+            "name": self.name,
+            "type": self.type,
+            "value": self.value,
+            "key": self.key,
+            "isFacet": self.isFacet,
+            "where": self.where,
+            "dimension": self.dimension
+        })
 
     @property
     def __all_slots__(self):
         return self._all_slots(self.__class__)
 
     def _all_slots(self, cls):
-        output = set(getattr(cls, "__slots__", []))
+        output = set(getattr(cls, '__slots__', []))
         for b in cls.__bases__:
             output |= self._all_slots(b)
         return output
@@ -127,18 +92,13 @@ class Domain(object):
     def verify_attributes_not_null(self, attribute_names):
         for name in attribute_names:
             if getattr(self, name) == None:
-                Log.error(
-                    "{{type}} domain expects a {{name|quote}} parameter",
-                    type=self.type,
-                    name=name,
-                )
+                Log.error('{{type}} domain expects a {{name|quote}} parameter', type=self.type, name=name)
 
 
 class UnitDomain(Domain):
     """
     REPRESENT A ZERO-DIMENSIONAL EDGE
     """
-
     def compare(self, a, b):
         return 0
 
@@ -192,7 +152,7 @@ class DefaultDomain(Domain):
         self.partitions = FlatList()
         self.map = dict()
         self.map[None] = self.NULL
-        self.limit = desc.get("limit")
+        self.limit = desc.get('limit')
         self.sort = 1
 
     def compare(self, a, b):
@@ -212,8 +172,16 @@ class DefaultDomain(Domain):
         self.map[key] = canonical
         return canonical
 
-    # def getIndexByKey(self, key):
-    #     return self.map.get(key).dataIndex;
+    def getIndexByKey(self, key):
+        canonical = self.map.get(key)
+        if canonical:
+            return canonical.dataIndex
+
+        index = len(self.partitions)
+        canonical = Data(name=key, value=key, dataIndex=index)
+        self.partitions.append(canonical)
+        self.map[key] = canonical
+        return index
 
     def getKey(self, part):
         return part.value
@@ -236,7 +204,12 @@ class SimpleSetDomain(Domain):
     DOMAIN IS A LIST OF OBJECTS, EACH WITH A value PROPERTY
     """
 
-    __slots__ = ["NULL", "partitions", "map", "order"]
+    __slots__ = [
+        "NULL",       # THE value FOR NULL
+        "partitions", # LIST OF {name, value, dataIndex} dicts
+        "map",        # MAP FROM value TO name
+        "order"       # MAP FROM value TO dataIndex
+    ]
 
     def __init__(self, **desc):
         Domain.__init__(self, **desc)
@@ -251,10 +224,7 @@ class SimpleSetDomain(Domain):
         if isinstance(self.key, set):
             Log.error("problem")
 
-        if not desc.key and (
-            len(desc.partitions) == 0
-            or isinstance(desc.partitions[0], (text_type, Number, tuple))
-        ):
+        if not desc.key and (len(desc.partitions)==0 or isinstance(desc.partitions[0], (text_type, Number, tuple))):
             # ASSUME PARTS ARE STRINGS, CONVERT TO REAL PART OBJECTS
             self.key = "value"
             self.map = {}
@@ -275,15 +245,18 @@ class SimpleSetDomain(Domain):
         if desc.partitions and desc.dimension.fields and len(desc.dimension.fields) > 1:
             self.key = desc.key
             self.map = UniqueIndex(keys=desc.dimension.fields)
-        elif desc.partitions and isinstance(desc.key, (list, set)):
+        elif desc.partitions and is_container(desc.key):
             # TODO: desc.key CAN BE MUCH LIKE A SELECT, WHICH UniqueIndex CAN NOT HANDLE
             self.key = desc.key
             self.map = UniqueIndex(keys=desc.key)
-        elif desc.partitions and isinstance(desc.partitions[0][desc.key], Mapping):
+        elif desc.partitions and is_data(desc.partitions[0][desc.key]):
+            # LOOKS LIKE OBJECTS
+            # sorted = desc.partitions[desc.key]
+
             self.key = desc.key
             self.map = UniqueIndex(keys=desc.key)
-            # self.key = UNION(set(d[desc.key].keys()) for d in desc.partitions)
-            # self.map = UniqueIndex(keys=self.key)
+            self.order = {p[self.key]: p.dataIndex for p in desc.partitions}
+            self.partitions = desc.partitions
         elif len(desc.partitions) == 0:
             # CREATE AN EMPTY DOMAIN
             self.key = "value"
@@ -292,11 +265,7 @@ class SimpleSetDomain(Domain):
             self.label = coalesce(self.label, "name")
             return
         elif desc.key == None:
-            if (
-                desc.partitions
-                and all(desc.partitions.where)
-                or all(desc.partitions.esfilter)
-            ):
+            if desc.partitions and all(desc.partitions.where) or all(desc.partitions.esfilter):
                 if not all(desc.partitions.name):
                     Log.error("Expecting all partitions to have a name")
                 self.key = "name"
@@ -304,19 +273,15 @@ class SimpleSetDomain(Domain):
                 self.map[None] = self.NULL
                 self.order[None] = len(desc.partitions)
                 for i, p in enumerate(desc.partitions):
-                    self.partitions.append(
-                        {
-                            "where": jx_expression(coalesce(p.where, p.esfilter)),
-                            "name": p.name,
-                            "dataIndex": i,
-                        }
-                    )
+                    self.partitions.append({
+                        "where": jx_expression(coalesce(p.where, p.esfilter)),
+                        "name": p.name,
+                        "dataIndex": i
+                    })
                     self.map[p.name] = p
                     self.order[p.name] = i
                 return
-            elif desc.partitions and len(set(desc.partitions.value) - {None}) == len(
-                desc.partitions
-            ):
+            elif desc.partitions and len(set(desc.partitions.value)-{None}) == len(desc.partitions):
                 # TRY A COMMON KEY CALLED "value".  IT APPEARS UNIQUE
                 self.key = "value"
                 self.map = dict()
@@ -361,6 +326,7 @@ class SimpleSetDomain(Domain):
             return output
         except Exception as e:
             Log.error("problem", e)
+
 
     def getPartByKey(self, key):
         try:
@@ -421,16 +387,14 @@ class SetDomain(Domain):
                 self.partitions.append(part)
                 self.map[p] = part
                 self.order[p] = i
-        elif (
-            desc.partitions and desc.dimension.fields and len(desc.dimension.fields) > 1
-        ):
+        elif desc.partitions and desc.dimension.fields and len(desc.dimension.fields) > 1:
             self.key = desc.key
             self.map = UniqueIndex(keys=desc.dimension.fields)
-        elif desc.partitions and isinstance(desc.key, (list, set)):
+        elif desc.partitions and is_container(desc.key):
             # TODO: desc.key CAN BE MUCH LIKE A SELECT, WHICH UniqueIndex CAN NOT HANDLE
             self.key = desc.key
             self.map = UniqueIndex(keys=desc.key)
-        elif desc.partitions and isinstance(desc.partitions[0][desc.key], Mapping):
+        elif desc.partitions and is_data(desc.partitions[0][desc.key]):
             self.key = desc.key
             self.map = UniqueIndex(keys=desc.key)
             # self.key = UNION(set(d[desc.key].keys()) for d in desc.partitions)
@@ -469,6 +433,7 @@ class SetDomain(Domain):
             return output
         except Exception as e:
             Log.error("problem", e)
+
 
     def getPartByKey(self, key):
         try:
@@ -524,12 +489,10 @@ class TimeDomain(Domain):
 
         self.verify_attributes_not_null(["min", "max", "interval"])
         self.key = "min"
-        self.partitions = wrap(
-            [
-                {"min": v, "max": v + self.interval, "dataIndex": i}
-                for i, v in enumerate(Date.range(self.min, self.max, self.interval))
-            ]
-        )
+        self.partitions = wrap([
+            {"min": v, "max": v + self.interval, "dataIndex": i}
+            for i, v in enumerate(Date.range(self.min, self.max, self.interval))
+        ])
 
     def compare(self, a, b):
         return value_compare(a, b)
@@ -589,12 +552,7 @@ class DurationDomain(Domain):
             Log.error("Can not handle missing parameter")
 
         self.key = "min"
-        self.partitions = wrap(
-            [
-                {"min": v, "max": v + self.interval, "dataIndex": i}
-                for i, v in enumerate(Duration.range(self.min, self.max, self.interval))
-            ]
-        )
+        self.partitions = wrap([{"min": v, "max": v + self.interval, "dataIndex":i} for i, v in enumerate(Duration.range(self.min, self.max, self.interval))])
 
     def compare(self, a, b):
         return value_compare(a, b)
@@ -630,19 +588,20 @@ class DurationDomain(Domain):
         return output
 
 
+
 class NumericDomain(Domain):
     __slots__ = ["max", "min"]
 
     def __new__(cls, **desc):
-        if not desc.get("partitions") and not desc.get("interval"):
+        if not desc.get('partitions') and not desc.get('interval'):
             return object.__new__(cls)
         else:
             return object.__new__(RangeDomain)
 
     def __init__(self, **desc):
         Domain.__init__(self, **desc)
-        self.min = desc.get("min")
-        self.max = desc.get("max")
+        self.min = desc.get('min')
+        self.max = desc.get('max')
 
     def compare(self, a, b):
         return value_compare(a, b)
@@ -654,9 +613,9 @@ class NumericDomain(Domain):
         return key
 
     def getPartByKey(self, key):
-        if self.min != None and key < self.min:
+        if self.min!=None and key < self.min:
             return self.NULL
-        if self.max != None and key >= self.max:
+        if self.max!=None and key >= self.max:
             return self.NULL
         return key
 
@@ -706,38 +665,28 @@ class RangeDomain(Domain):
             if not self.key:
                 Log.error("Must have a key value")
 
-            parts = list(listwrap(self.partitions))
+            parts =listwrap(self.partitions)
             for i, p in enumerate(parts):
                 self.min = MIN([self.min, p.min])
                 self.max = MAX([self.max, p.max])
                 if p.dataIndex != None and p.dataIndex != i:
-                    Log.error(
-                        "Expecting `dataIndex` to agree with the order of the parts"
-                    )
+                    Log.error("Expecting `dataIndex` to agree with the order of the parts")
                 if p[self.key] == None:
-                    Log.error(
-                        "Expecting all parts to have {{key}} as a property",
-                        key=self.key,
-                    )
+                    Log.error("Expecting all parts to have {{key}} as a property", key=self.key)
                 p.dataIndex = i
 
             # VERIFY PARTITIONS DO NOT OVERLAP, HOLES ARE FINE
             for p, q in itertools.product(parts, parts):
-                if p is not q and p.min <= q.min and q.min < p.max:
+                if p.min <= q.min and q.min < p.max and unwrap(p) is not unwrap(q):
                     Log.error("partitions overlap!")
 
-            self.partitions = parts
+            self.partitions = wrap(parts)
             return
         elif any([self.min == None, self.max == None, self.interval == None]):
             Log.error("Can not handle missing parameter")
 
         self.key = "min"
-        self.partitions = wrap(
-            [
-                {"min": v, "max": v + self.interval, "dataIndex": i}
-                for i, v in enumerate(frange(self.min, self.max, self.interval))
-            ]
-        )
+        self.partitions = wrap([{"min": v, "max": v + self.interval, "dataIndex": i} for i, v in enumerate(frange(self.min, self.max, self.interval))])
 
     def compare(self, a, b):
         return value_compare(a, b)
@@ -805,5 +754,6 @@ name_to_type = {
     "duration": DurationDomain,
     "range": NumericDomain,
     "uid": UniqueDomain,
-    "numeric": NumericDomain,
+    "numeric": NumericDomain
 }
+

@@ -7,17 +7,12 @@
 #
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
-from collections import Mapping
-
+from jx_base.domains import ALGEBRAIC, Domain, KNOWN
+from mo_dots import Data, FlatList, Null, coalesce, is_data, is_list, join_field, listwrap, split_field, wrap
 import mo_dots as dot
-from jx_base.domains import Domain, ALGEBRAIC, KNOWN
-from mo_dots import Null, coalesce, join_field, split_field, Data
-from mo_dots import wrap, listwrap
-from mo_dots.lists import FlatList
+from mo_future import transpose
 from mo_logs import Log
 from mo_math import SUM
 from mo_times.timer import Timer
@@ -26,33 +21,20 @@ DEFAULT_QUERY_LIMIT = 20
 
 
 class Dimension(object):
-    __slots__ = [
-        "name",
-        "full_name",
-        "where",
-        "type",
-        "limit",
-        "index",
-        "parent",
-        "edges",
-        "partitions",
-        "fields",
-    ]
+    __slots__ = ["name", "full_name", "where", "type", "limit", "index", "parent", "edges", "partitions", "fields"]
 
     def __init__(self, dim, parent, jx):
         dim = wrap(dim)
 
         self.name = dim.name
         self.parent = coalesce(parent)
-        self.full_name = join_field(split_field(self.parent.full_name) + [self.name])
+        self.full_name = join_field(split_field(self.parent.full_name)+[self.name])
         self.edges = None  # FOR NOW
         dot.set_default(self, dim)
         self.where = dim.where
         self.type = coalesce(dim.type, "set")
         self.limit = coalesce(dim.limit, DEFAULT_QUERY_LIMIT)
-        self.index = coalesce(
-            dim.index, coalesce(parent, Null).index, jx.settings.index
-        )
+        self.index = coalesce(dim.index, coalesce(parent, Null).index, jx.settings.index)
 
         if not self.index:
             Log.error("Expecting an index name")
@@ -69,22 +51,12 @@ class Dimension(object):
         fields = coalesce(dim.field, dim.fields)
         if not fields:
             return  # NO FIELDS TO SEARCH
-        elif isinstance(fields, Mapping):
+        elif is_data(fields):
             self.fields = wrap(fields)
-            edges = wrap(
-                [
-                    {"name": k, "value": v, "allowNulls": False}
-                    for k, v in self.fields.items()
-                ]
-            )
+            edges = wrap([{"name": k, "value": v, "allowNulls": False} for k, v in self.fields.items()])
         else:
             self.fields = listwrap(fields)
-            edges = wrap(
-                [
-                    {"name": f, "value": f, "index": i, "allowNulls": False}
-                    for i, f in enumerate(self.fields)
-                ]
-            )
+            edges = wrap([{"name": f, "value": f, "index": i, "allowNulls": False} for i, f in enumerate(self.fields)])
 
         if dim.partitions:
             return  # ALREADY HAVE PARTS
@@ -93,16 +65,14 @@ class Dimension(object):
 
         jx.get_columns()
         with Timer("Get parts of {{name}}", {"name": self.name}):
-            parts = jx.query(
-                {
-                    "from": self.index,
-                    "select": {"name": "count", "aggregate": "count"},
-                    "edges": edges,
-                    "where": self.where,
-                    "limit": self.limit,
-                }
-            )
-            Log.note("{{name}} has {{num}} parts", name=self.name, num=len(parts))
+            parts = jx.query({
+                "from": self.index,
+                "select": {"name": "count", "aggregate": "count"},
+                "edges": edges,
+                "where": self.where,
+                "limit": self.limit
+            })
+            Log.note("{{name}} has {{num}} parts",  name= self.name,  num= len(parts))
 
         d = parts.edges[0].domain
 
@@ -113,58 +83,54 @@ class Dimension(object):
             temp = Data(partitions=[])
             for i, count in enumerate(parts):
                 a = dim.path(d.getEnd(d.partitions[i]))
-                if not isinstance(a, list):
-                    Log.error(
-                        "The path function on "
-                        + dim.name
-                        + " must return an ARRAY of parts"
-                    )
-                addParts(temp, dim.path(d.getEnd(d.partitions[i])), count, 0)
+                if not is_list(a):
+                    Log.error("The path function on " + dim.name + " must return an ARRAY of parts")
+                addParts(
+                    temp,
+                    dim.path(d.getEnd(d.partitions[i])),
+                    count,
+                    0
+                )
             self.value = coalesce(dim.value, "name")
             self.partitions = temp.partitions
-        elif isinstance(fields, Mapping):
+        elif is_data(fields):
             self.value = "name"  # USE THE "name" ATTRIBUTE OF PARTS
 
             partitions = FlatList()
             for g, p in parts.groupby(edges):
                 if p:
-                    partitions.append(
-                        {
-                            "value": g,
-                            "where": {
-                                "and": [{"term": {e.value: g[e.name]}} for e in edges]
-                            },
-                            "count": int(p),
-                        }
-                    )
+                    partitions.append({
+                        "value": g,
+                        "where": {"and": [
+                            {"term": {e.value: g[e.name]}}
+                            for e in edges
+                        ]},
+                        "count": int(p)
+                    })
             self.partitions = partitions
         elif len(edges) == 1:
             self.value = "name"  # USE THE "name" ATTRIBUTE OF PARTS
 
             # SIMPLE LIST OF PARTS RETURNED, BE SURE TO INTERRELATE THEM
-            self.partitions = wrap(
-                [
-                    {
-                        "name": str(d.partitions[i].name),  # CONVERT TO STRING
-                        "value": d.getEnd(d.partitions[i]),
-                        "where": {"term": {edges[0].value: d.partitions[i].value}},
-                        "count": count,
-                    }
-                    for i, count in enumerate(parts)
-                ]
-            )
+            self.partitions = wrap([
+                {
+                    "name": str(d.partitions[i].name),  # CONVERT TO STRING
+                    "value": d.getEnd(d.partitions[i]),
+                    "where": {"term": {edges[0].value: d.partitions[i].value}},
+                    "count": count
+                }
+                for i, count in enumerate(parts)
+            ])
             self.order = {p.value: i for i, p in enumerate(self.partitions)}
         elif len(edges) == 2:
             self.value = "name"  # USE THE "name" ATTRIBUTE OF PARTS
             d2 = parts.edges[1].domain
 
             # SIMPLE LIST OF PARTS RETURNED, BE SURE TO INTERRELATE THEM
-            array = parts.data.values()[
-                0
-            ].cube  # DIG DEEP INTO RESULT (ASSUME SINGLE VALUE CUBE, WITH NULL AT END)
+            array = parts.data.values()[0].cube  # DIG DEEP INTO RESULT (ASSUME SINGLE VALUE CUBE, WITH NULL AT END)
 
             def edges2value(*values):
-                if isinstance(fields, Mapping):
+                if is_data(fields):
                     output = Data()
                     for e, v in transpose(edges, values):
                         output[e.name] = v
@@ -172,43 +138,28 @@ class Dimension(object):
                 else:
                     return tuple(values)
 
-            self.partitions = wrap(
-                [
-                    {
-                        "name": str(d.partitions[i].name),  # CONVERT TO STRING
-                        "value": d.getEnd(d.partitions[i]),
-                        "where": {"term": {edges[0].value: d.partitions[i].value}},
-                        "count": SUM(subcube),
-                        "partitions": [
-                            {
-                                "name": str(d2.partitions[j].name),  # CONVERT TO STRING
-                                "value": edges2value(
-                                    d.getEnd(d.partitions[i]),
-                                    d2.getEnd(d2.partitions[j]),
-                                ),
-                                "where": {
-                                    "and": [
-                                        {
-                                            "term": {
-                                                edges[0].value: d.partitions[i].value
-                                            }
-                                        },
-                                        {
-                                            "term": {
-                                                edges[1].value: d2.partitions[j].value
-                                            }
-                                        },
-                                    ]
-                                },
-                                "count": count2,
-                            }
-                            for j, count2 in enumerate(subcube)
-                            if count2 > 0  # ONLY INCLUDE PROPERTIES THAT EXIST
-                        ],
-                    }
-                    for i, subcube in enumerate(array)
-                ]
-            )
+            self.partitions = wrap([
+                {
+                    "name": str(d.partitions[i].name),  # CONVERT TO STRING
+                    "value": d.getEnd(d.partitions[i]),
+                    "where": {"term": {edges[0].value: d.partitions[i].value}},
+                    "count": SUM(subcube),
+                    "partitions": [
+                        {
+                            "name": str(d2.partitions[j].name),  # CONVERT TO STRING
+                            "value": edges2value(d.getEnd(d.partitions[i]), d2.getEnd(d2.partitions[j])),
+                            "where": {"and": [
+                                {"term": {edges[0].value: d.partitions[i].value}},
+                                {"term": {edges[1].value: d2.partitions[j].value}}
+                            ]},
+                            "count": count2
+                        }
+                        for j, count2 in enumerate(subcube)
+                        if count2 > 0  # ONLY INCLUDE PROPERTIES THAT EXIST
+                    ]
+                }
+                for i, subcube in enumerate(array)
+            ])
         else:
             Log.error("Not supported")
 
@@ -221,7 +172,7 @@ class Dimension(object):
         """
         RETURN CHILD EDGE OR PARTITION BY NAME
         """
-        # TODO: IGNORE THE STANDARD DIMENSION PROPERTIES TO AVOID ACCIDENTAL SELECTION OF EDGE OR PART
+        #TODO: IGNORE THE STANDARD DIMENSION PROPERTIES TO AVOID ACCIDENTAL SELECTION OF EDGE OR PART
         if key in Dimension.__slots__:
             return None
 
@@ -236,10 +187,7 @@ class Dimension(object):
     def getDomain(self, **kwargs):
         # kwargs.depth IS MEANT TO REACH INTO SUB-PARTITIONS
         kwargs = wrap(kwargs)
-        kwargs.depth = coalesce(
-            kwargs.depth,
-            len(self.fields) - 1 if isinstance(self.fields, list) else None,
-        )
+        kwargs.depth = coalesce(kwargs.depth, len(self.fields)-1 if is_list(self.fields) else None)
 
         if not self.partitions and self.edges:
             # USE EACH EDGE AS A PARTITION, BUT isFacet==True SO IT ALLOWS THE OVERLAP
@@ -249,7 +197,7 @@ class Dimension(object):
                     "value": v.name,
                     "where": v.where,
                     "style": v.style,
-                    "weight": v.weight,  # YO! WHAT DO WE *NOT* COPY?
+                    "weight": v.weight  # YO! WHAT DO WE *NOT* COPY?
                 }
                 for i, v in enumerate(self.edges)
                 if i < coalesce(self.limit, DEFAULT_QUERY_LIMIT) and v.where
@@ -260,27 +208,24 @@ class Dimension(object):
             for i, part in enumerate(self.partitions):
                 if i >= coalesce(self.limit, DEFAULT_QUERY_LIMIT):
                     break
-                partitions.append(
-                    {
-                        "name": part.name,
-                        "value": part.value,
-                        "where": part.where,
-                        "style": coalesce(part.style, part.parent.style),
-                        "weight": part.weight,  # YO!  WHAT DO WE *NOT* COPY?
-                    }
-                )
+                partitions.append({
+                    "name":part.name,
+                    "value":part.value,
+                    "where":part.where,
+                    "style":coalesce(part.style, part.parent.style),
+                    "weight":part.weight   # YO!  WHAT DO WE *NOT* COPY?
+                })
         elif kwargs.depth == 0:
             partitions = [
                 {
-                    "name": v.name,
-                    "value": v.value,
-                    "where": v.where,
-                    "style": v.style,
-                    "weight": v.weight,  # YO!  WHAT DO WE *NOT* COPY?
+                    "name":v.name,
+                    "value":v.value,
+                    "where":v.where,
+                    "style":v.style,
+                    "weight":v.weight   # YO!  WHAT DO WE *NOT* COPY?
                 }
                 for i, v in enumerate(self.partitions)
-                if i < coalesce(self.limit, DEFAULT_QUERY_LIMIT)
-            ]
+                if i < coalesce(self.limit, DEFAULT_QUERY_LIMIT)]
         elif kwargs.depth == 1:
             partitions = FlatList()
             rownum = 0
@@ -290,17 +235,13 @@ class Dimension(object):
                 rownum += 1
                 try:
                     for j, subpart in enumerate(part.partitions):
-                        partitions.append(
-                            {
-                                "name": join_field(
-                                    split_field(subpart.parent.name) + [subpart.name]
-                                ),
-                                "value": subpart.value,
-                                "where": subpart.where,
-                                "style": coalesce(subpart.style, subpart.parent.style),
-                                "weight": subpart.weight,  # YO!  WHAT DO WE *NOT* COPY?
-                            }
-                        )
+                        partitions.append({
+                            "name":join_field(split_field(subpart.parent.name) + [subpart.name]),
+                            "value":subpart.value,
+                            "where":subpart.where,
+                            "style":coalesce(subpart.style, subpart.parent.style),
+                            "weight":subpart.weight   # YO!  WHAT DO WE *NOT* COPY?
+                        })
                 except Exception as e:
                     Log.error("", e)
         else:
@@ -320,6 +261,7 @@ class Dimension(object):
             # OVERRIDES EVERYTHING AND IS EXPLICIT.  - NOT A GOOD SOLUTION BECAUSE
             # end() IS USED BOTH TO INDICATE THE QUERY PARTITIONS *AND* DISPLAY
             # COORDINATES ON CHARTS
+
             # PLEASE SPLIT end() INTO value() (replacing the string value) AND
             # label() (for presentation)
             value="name" if not self.value and self.partitions else self.value,
@@ -327,15 +269,23 @@ class Dimension(object):
             label=coalesce(self.label, (self.type == "set" and self.name)),
             end=coalesce(self.end, (self.type == "set" and self.name)),
             isFacet=self.isFacet,
-            dimension=self,
+            dimension=self
         )
 
     def getSelect(self, **kwargs):
         if self.fields:
             if len(self.fields) == 1:
-                return Data(name=self.full_name, value=self.fields[0], aggregate="none")
+                return Data(
+                    name=self.full_name,
+                    value=self.fields[0],
+                    aggregate="none"
+                )
             else:
-                return Data(name=self.full_name, value=self.fields, aggregate="none")
+                return Data(
+                    name=self.full_name,
+                    value=self.fields,
+                    aggregate="none"
+                )
 
         domain = self.getDomain(**kwargs)
         if not domain.getKey:
@@ -343,8 +293,11 @@ class Dimension(object):
         if not domain.NULL:
             Log.error("Should not happen")
 
-        return Data(name=self.full_name, domain=domain, aggregate="none")
-
+        return Data(
+            name=self.full_name,
+            domain=domain,
+            aggregate="none"
+        )
 
 def addParts(parentPart, childPath, count, index):
     """
@@ -372,18 +325,16 @@ def addParts(parentPart, childPath, count, index):
 def parse_partition(part):
     for p in part.partitions:
         if part.index:
-            p.index = part.index  # COPY INDEX DOWN
+            p.index = part.index   # COPY INDEX DOWN
         parse_partition(p)
         p.value = coalesce(p.value, p.name)
         p.parent = part
 
     if not part.where:
         if len(part.partitions) > 100:
-            Log.error(
-                "Must define an where on {{name}} there are too many partitions ({{num_parts}})",
-                name=part.name,
-                num_parts=len(part.partitions),
-            )
+            Log.error("Must define an where on {{name}} there are too many partitions ({{num_parts}})",
+                name= part.name,
+                num_parts= len(part.partitions))
 
         # DEFAULT where IS THE UNION OF ALL CHILD FILTERS
         if part.partitions:
