@@ -368,7 +368,12 @@ class TUIDService:
                 if response.status_code == 200:
                     # TODO: What if code has '\n' test
                     # Also I presume every file will have a trailing empty line
-                    annotated_files[thread_num] = response.all_content.decode("UTF-8").count("\n")
+                    line_count = 0
+                    for i in response.iter_lines():
+                        line_count += 1
+                    annotated_files[
+                        thread_num
+                    ] = line_count  # response.iter_lines().all_content.decode("UTF-8").count("\n")
                 else:
                     annotated_files[thread_num] = -1
             except Exception as e:
@@ -1558,9 +1563,6 @@ class TUIDService:
         )
         return new_lines, existing_tuids
 
-    def give_tuids(self, length):
-        return [TuidMap(self.tuid(), i + 1) for i in range(0, length)]
-
     def is_file_exists(self, file):
         query = {
             "_source": {"includes": ["revision"]},
@@ -1599,13 +1601,6 @@ class TUIDService:
                     results.append((file, self.destringify_tuids(tmp_ann)))
                     continue
 
-                # Just for testing purpose
-                # curr_frontier = self.is_file_exists(file)
-                # if curr_frontier:
-                #     temp = self._update_file_frontiers([(file, curr_frontier)], revision)
-                #     results.append(temp)
-                #     continue
-
                 # If it's not defined at this revision, we need to add it in
                 if file_length == -1:
                     Log.warning(
@@ -1619,51 +1614,12 @@ class TUIDService:
                     self.insert_annotate_dummy(revision, file)
                     results.append((file, []))
                     continue
-                #
-                # # Gather all missing csets and the
-                # # corresponding lines.
-                # line_origins = []
-                # for node in annotated_object["annotate"]:
-                #     cset_len12 = node["node"][:12]
-                #
-                #     # If the line added by `cset_len12` is not known
-                #     # add it. Use the 'abspath' field to determine the
-                #     # name of the file it was created in (in case it was
-                #     # changed). Copy to make sure we don't create a reference
-                #     # here.
-                #     line_origins.append(
-                #         copy.deepcopy((node["abspath"], cset_len12, int(node["targetline"])))
-                #     )
-                #
-                # # Update DB with any revisions found in annotated
-                # # object that are not in the DB.
-                # new_line_origins = {}
-                # new_lines, existing_tuids = self.get_new_lines(line_origins)
-                # if len(new_lines) > 0:
-                #     try:
-                #         new_line_origins = self.insert_tuids_with_duplicates(
-                #             file, revision, new_lines, line_origins
-                #         )
-                #
-                #         # Format so we don't have to use [0] to get at the tuids
-                #         for linenum in new_line_origins:
-                #             new_line_origins[linenum] = new_line_origins[linenum][0]
-                #     except Exception as e:
-                #         # Something broke for this file, ignore it and go to the
-                #         # next one.
-                #         Log.note("Failed to insert new tuids {{cause}}", cause=e)
-                #         continue
-                #
-                # tuids = []
-                # for line_ind, line_origin in enumerate(line_origins):
-                #     line_num = line_ind + 1
-                #     if line_num in existing_tuids:
-                #         tuids.append(TuidMap(existing_tuids[line_num], line_num))
-                #     else:
-                #         tuids.append(TuidMap(new_line_origins[line_num], line_num))
-                #
-                tuids = self.give_tuids(file_length)
-                str_tuids = self.stringify_tuids(tuids)
+
+                tuids = []
+                str_tuids = []
+                for i in range(0, file_length):
+                    str_tuids.append(self.tuid())
+                    tuids.append(TuidMap(self.tuid(), i + 1))
                 entry = [(revision, file, str_tuids)]
 
                 self.insert_annotations(entry)

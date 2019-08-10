@@ -42,11 +42,8 @@ def insert_to_lfm(service, file, revision):
     with service.conn.transaction() as t:
         t.execute("DELETE FROM latestFileMod")
         t.execute(
-            "INSERT OR REPLACE INTO latestFileMod (revision, file) VALUES ('"
-            + revision
-            + "', '"
-            + file
-            + "')"
+            "INSERT OR REPLACE INTO latestFileMod (revision, file) VALUES"
+            + quote_list((revision, file))
         )
 
 
@@ -279,7 +276,7 @@ def test_new_then_old(service):
     # delete database then run this test
     insert_to_lfm(service, file, old_rev)
     old = service.get_tuids(file, old_rev)
-    new = service.get_tuids_from_files(["testing/geckodriver/CONTRIBUTING.md"], new_rev)[0]
+    new = service.get_tuids_from_files([file], new_rev)[0]
     assert len(old) == len(new)
     for i in range(0, len(old)):
         assert old[i] == new[i]
@@ -310,8 +307,8 @@ def test_removed_lines(service):
     # THE FILE HAS FOUR LINES REMOVED
     # https://hg.mozilla.org/integration/mozilla-inbound/rev/c8dece9996b7
     # https://hg.mozilla.org/integration/mozilla-inbound/file/c8dece9996b7/taskcluster/ci/test/tests.yml
-    old_lines = service.get_tuids("taskcluster/ci/test/tests.yml", old_rev)  # 2205 lines
-    new_lines = service.get_tuids("taskcluster/ci/test/tests.yml", new_rev)  # 2201 lines
+    old_lines = service.get_tuids("/taskcluster/ci/test/tests.yml", old_rev)  # 2205 lines
+    new_lines = service.get_tuids("/taskcluster/ci/test/tests.yml", new_rev)  # 2201 lines
 
     # EXPECTING
     assert len(new_lines[0][1]) == len(old_lines[0][1]) - 4
@@ -323,15 +320,19 @@ def test_remove_file(service):
 
 
 """
+It is taking too much time. So
 def test_generic_1(service):
-    old_rev = "a5a2ae162869"
-    new_rev = "a5a2ae162869"
+    # old_rev = "a5a2ae162869"
+    old_rev = "7d799a93ed72"
+    new_rev = "3acb30b37718"
     file = "gfx/ipc/GPUParent.cpp"
     service.clogger.initialize_to_range(old_rev, new_rev)
     old = service.get_tuids(file, old_rev)[0][1]
+    insert_to_lfm(service, file, old_rev)
     new = service.get_tuids_from_files([file], new_rev)[0][0][1]
     assert len(old) == 467
     assert len(new) == 476
+    print(old, new)
     for i in range(1, 207):
         assert old[i] == new[i]
 """
@@ -352,6 +353,7 @@ def test_500_file(service):
 
 
 """
+This is taking too much time
 def test_file_with_line_replacement(service):
     file = "python/mozbuild/mozbuild/action/test_archive.py"
     old_rev = "c730f942ce30"
@@ -392,17 +394,13 @@ def test_new_file(service):
     assert len(rev[0][1]) == 636
 
 
-"""
-# What is this?
 def test_bad_date_file(service):
     # The following changeset is dated February 14, 2018 but was pushed to mozilla-central
     # on March 8, 2018. It modifies the file: dom/media/MediaManager.cpp
     # https://hg.mozilla.org/mozilla-central/rev/07fad8b0b417d9ae8580f23d697172a3735b546b
     service.clogger.initialize_to_range("0451fe123f5b", "7a6bc227dc03")
     file = "dom/media/MediaManager.cpp"
-    change_one = service.get_tuids(
-       file , "07fad8b0b417d9ae8580f23d697172a3735b546b"
-    )[0][1]
+    change_one = service.get_tuids(file, "07fad8b0b417d9ae8580f23d697172a3735b546b")[0][1]
 
     # Insert a change in between these dates to throw us off.
     # https://hg.mozilla.org/mozilla-central/rev/0451fe123f5b
@@ -422,6 +420,7 @@ def test_bad_date_file(service):
         assert change_one[i] == earliest_rev[i]
 
 
+"""
 # What should be the revision range?
 def test_multi_parent_child_changes(service):
     # For this file: toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp
