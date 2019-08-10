@@ -8,18 +8,17 @@
 #
 from __future__ import unicode_literals
 
-import jx_elasticsearch
 from bs4 import BeautifulSoup
 
+import jx_elasticsearch
 from mo_collections import UniqueIndex
-from mo_dots import Data, set_default, FlatList
+from mo_dots import Data, set_default
 from mo_hg.hg_mozilla_org import DEFAULT_LOCALE
 from mo_kwargs import override
-from mo_logs import Log, Except
-from mo_logs import startup, constants
+from mo_logs import Except, Log, constants, startup
 from mo_math import MAX
 from mo_times.dates import Date
-from mo_times.durations import SECOND, DAY
+from mo_times.durations import DAY, SECOND
 from pyLibrary.env import elasticsearch, http
 
 EXTRA_WAIT_TIME = 20 * SECOND  # WAIT TIME TO SEND TO AWS, IF WE wait_forever
@@ -34,23 +33,17 @@ def get_branches(hg, branches, kwargs=None):
     try:
         es = cluster.get_index(kwargs=branches, read_only=False)
         esq = jx_elasticsearch.new_instance(branches)
-        found_branches = esq.query(
-            {"from": "branches", "format": "list", "limit": 10000}
-        ).data
+        found_branches = esq.query({"from": "branches", "format": "list", "limit": 10000}).data
 
         # IF IT IS TOO OLD, THEN PULL FROM HG
         oldest = Date(MAX(found_branches.etl.timestamp))
         if oldest == None or Date.now() - oldest > OLD_BRANCH:
             found_branches = _get_branches_from_hg(hg)
-            es.extend(
-                {"id": b.name + " " + b.locale, "value": b} for b in found_branches
-            )
+            es.extend({"id": b.name + " " + b.locale, "value": b} for b in found_branches)
             es.flush()
 
         try:
-            return UniqueIndex(
-                ["name", "locale"], data=found_branches, fail_on_dup=False
-            )
+            return UniqueIndex(["name", "locale"], data=found_branches, fail_on_dup=False)
         except Exception as e:
             Log.error("Bad branch in ES index", cause=e)
     except Exception as e:
@@ -79,9 +72,7 @@ def _get_branches_from_hg(kwarg):
 
     # branches.add(set_default({"name": "release-mozilla-beta"}, branches["mozilla-beta", DEFAULT_LOCALE]))
     for b in list(branches["mozilla-beta",]):
-        branches.add(
-            set_default({"name": "release-mozilla-beta"}, b)
-        )  # THIS IS THE l10n "name"
+        branches.add(set_default({"name": "release-mozilla-beta"}, b))  # THIS IS THE l10n "name"
         b.url = "https://hg.mozilla.org/releases/mozilla-beta"  # THIS IS THE
 
     for b in list(branches["mozilla-release",]):
@@ -95,9 +86,7 @@ def _get_branches_from_hg(kwarg):
 
     for b in list(branches):
         if b.name.startswith("mozilla-esr"):
-            branches.add(
-                set_default({"name": "release-" + b.name}, b)
-            )  # THIS IS THE l10n "name"
+            branches.add(set_default({"name": "release-" + b.name}, b))  # THIS IS THE l10n "name"
             b.url = "https://hg.mozilla.org/releases/" + b.name
 
     # CHECKS
@@ -195,9 +184,7 @@ def _get_single_branch_from_hg(settings, description, dir):
                 if not found:
                     continue
 
-            Log.note(
-                "Branch {{name}} {{locale}}", name=detail.name, locale=detail.locale
-            )
+            Log.note("Branch {{name}} {{locale}}", name=detail.name, locale=detail.locale)
             output.append(detail)
         except Exception as e:
             Log.warning("branch digestion problem", cause=e)

@@ -6,9 +6,7 @@
 #
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
 import re
 
@@ -109,11 +107,7 @@ def diff_to_json(unified_diff):
                     Log.warning("bad line {{line|quote}}", line=line, cause=e)
 
         output.append(
-            {
-                "new": {"name": new_file_path},
-                "old": {"name": old_file_path},
-                "changes": changes,
-            }
+            {"new": {"name": new_file_path}, "old": {"name": old_file_path}, "changes": changes}
         )
     return wrap(output)
 
@@ -175,11 +169,7 @@ def diff_to_moves(unified_diff):
                 c = MOVE[d](c)
 
         output.append(
-            {
-                "new": {"name": new_file_path},
-                "old": {"name": old_file_path},
-                "changes": changes,
-            }
+            {"new": {"name": new_file_path}, "old": {"name": old_file_path}, "changes": changes}
         )
     return wrap(output)
 
