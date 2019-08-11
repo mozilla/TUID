@@ -1174,7 +1174,7 @@ class TUIDService:
                 if file in files_to_process:
                     # Process this file using the diffs found
                     tmp_ann = self._get_annotation(old_frontier, file)
-                    if tmp_ann is None or tmp_ann == "" or self.destringify_tuids(tmp_ann) is None:
+                    if tmp_ann == None or tmp_ann == "" or self.destringify_tuids(tmp_ann) is None:
                         Log.warning(
                             "{{file}} has frontier but can't find old annotation for it in {{rev}}, "
                             "restarting it's frontier.",
@@ -1253,7 +1253,7 @@ class TUIDService:
                         )
                 else:
                     old_ann = self._get_annotation(old_frontier, file)
-                    if old_ann is None or (old_ann == "" and file in added_files):
+                    if old_ann == None or (old_ann == "" and file in added_files):
                         # File is new (likely from an error), or re-added - we need to create
                         # a new initial entry for this file.
                         anns_to_get.append(file)
