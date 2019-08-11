@@ -1616,8 +1616,9 @@ class TUIDService:
                 tuids = []
                 str_tuids = []
                 for i in range(0, file_length):
-                    str_tuids.append(self.tuid())
-                    tuids.append(TuidMap(self.tuid(), i + 1))
+                    new_tuid = self.tuid()
+                    str_tuids.append(new_tuid)
+                    tuids.append(TuidMap(new_tuid, i + 1))
                 entry = [(revision, file, str_tuids)]
 
                 self.insert_annotations(entry)

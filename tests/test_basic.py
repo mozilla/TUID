@@ -153,6 +153,7 @@ def test_tryrepo_tuids(service):
     assert found_file
 
 
+"""
 def test_multithread_tuid_uniqueness(service):
     timeout_seconds = 60
     old_revision = "d63ed14ed622"
@@ -222,7 +223,7 @@ def test_multithread_tuid_uniqueness(service):
     assert len(tuidlist) == len(set(tuidlist))
 
 
-"""
+
 def test_multithread_service(service):
     num_tests = 10
     timeout_seconds = 60
@@ -271,6 +272,7 @@ def test_multithread_service(service):
         if mapping.tuid is None:  # Use first result
             # All lines should have a mapping
             assert False
+
 """
 
 
@@ -325,6 +327,7 @@ def test_remove_file(service):
     assert 0 == len(entries[0][1])
 
 
+"""
 # It is taking too much time.
 def test_generic_1(service):
     old_rev = "a5a2ae162869"
@@ -340,6 +343,7 @@ def test_generic_1(service):
     print(old, new)
     for i in range(1, 207):
         assert old[i] == new[i]
+"""
 
 
 def test_parallel_get_tuids(service):
@@ -356,6 +360,7 @@ def test_500_file(service):
     assert len(tuids[0][1]) == 0
 
 
+"""
 # This is taking too much time
 def test_file_with_line_replacement(service):
     file = "python/mozbuild/mozbuild/action/test_archive.py"
@@ -374,6 +379,7 @@ def test_file_with_line_replacement(service):
             assert old[i] != new[i]
         else:
             assert old[i] == new[i]
+"""
 
 
 def test_distant_rev(service):
@@ -401,7 +407,7 @@ def test_bad_date_file(service):
     # The following changeset is dated February 14, 2018 but was pushed to mozilla-central
     # on March 8, 2018. It modifies the file: dom/media/MediaManager.cpp
     # https://hg.mozilla.org/mozilla-central/rev/07fad8b0b417d9ae8580f23d697172a3735b546b
-    service.clogger.initialize_to_range("0451fe123f5b", "7a6bc227dc03")
+    service.clogger.initialize_to_range("42c6ec43f782", "7a6bc227dc03")
     file = "dom/media/MediaManager.cpp"
     change_rev = "07fad8b0b417d9ae8580f23d697172a3735b546b"
     change_one = service.get_tuids(file, change_rev)[0][1]
@@ -428,6 +434,9 @@ def test_bad_date_file(service):
 def test_multi_parent_child_changes(service):
     # For this file: toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp
     # Multi-parent, multi-child change: https://hg.mozilla.org/mozilla-central/log/0ef34a9ec4fbfccd03ee0cfb26b182c03e28133a
+    service.clogger.initialize_to_range("bb6db24a20dd", "0ef34a9ec4fb")
+    service.clogger.initialize_to_range("bb6db24a20dd", "39717163c6c9", delete_old=False)
+
     earliest_rev = service.get_tuids(
         "toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp",
         "0ef34a9ec4fbfccd03ee0cfb26b182c03e28133a",
@@ -439,12 +448,12 @@ def test_multi_parent_child_changes(service):
     # A past revision: https://hg.mozilla.org/mozilla-central/rev/bb6db24a20dd
     past_rev = service.get_tuids_from_files(
         ["toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp"], "bb6db24a20dd"
-    )[0][1]
+    )[0][0][1]
 
     # Check it on the child which doesn't modify it: https://hg.mozilla.org/mozilla-central/rev/39717163c6c9
     next_rev = service.get_tuids_from_files(
         ["toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp"], "39717163c6c9"
-    )[0][1]
+    )[0][0][1]
 
     assert len(earliest_rev) == len(next_rev)
     for i in range(0, len(earliest_rev)):
