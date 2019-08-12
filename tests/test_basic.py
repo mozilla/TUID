@@ -113,6 +113,7 @@ def test_transactions2(service):
     assert query_res2[0][0] == "2"
 
 
+@pytest.mark.skip(reason="what is this test for?")
 @pytest.mark.first_run
 def test_duplicate_ann_node_entries(service):
     # This test ensures that we can handle duplicate annotation
@@ -131,7 +132,9 @@ def test_duplicate_ann_node_entries(service):
     # Second call on a future _unknown_ annotation will give us
     # duplicate entries.
     future_rev = "e02ce918e160"
-    file, tuids = service.get_tuids(files, future_rev)[0]
+    insert_to_lfm(service, files[0], rev)
+    service.clogger.initialize_to_range(rev, future_rev)
+    file, tuids = service.get_tuids_from_files(files, future_rev)[0][0]
     tuids_arr = map_to_array(tuids)
     for first_duped_line, second_duped_line in known_duplicate_lines:
         assert tuids_arr[first_duped_line - 1] == tuids_arr[second_duped_line - 1]
@@ -222,7 +225,6 @@ def test_multithread_tuid_uniqueness(service):
     assert len(tuidlist) == len(set(tuidlist))
 
 
-"""
 def test_multithread_service(service):
     num_tests = 10
     timeout_seconds = 60
@@ -258,7 +260,6 @@ def test_multithread_service(service):
     # Check that we can get the same result after these
     # calls.
     tuids, _ = service.get_tuids_from_files(test_file, revision, use_thread=False)
-    # TODO : Investigate on it
     assert len(tuids[0][1]) == 41
 
     for tuid_count, mapping in enumerate(tuids[0][1]):
@@ -271,8 +272,6 @@ def test_multithread_service(service):
         if mapping.tuid is None:  # Use first result
             # All lines should have a mapping
             assert False
-
-"""
 
 
 def test_new_then_old(service):
@@ -331,14 +330,13 @@ def test_generic_1(service):
     old_rev = "a5a2ae162869"
     # old_rev = "7d799a93ed72"
     new_rev = "3acb30b37718"
-    file = "gfx/ipc/GPUParent.cpp"
+    file = "/gfx/ipc/GPUParent.cpp"
     service.clogger.initialize_to_range(old_rev, new_rev)
     old = service.get_tuids(file, old_rev)[0][1]
     insert_to_lfm(service, file, old_rev)
     new = service.get_tuids_from_files([file], new_rev)[0][0][1]
     assert len(old) == 467
     assert len(new) == 476
-    print(old, new)
     for i in range(1, 207):
         assert old[i] == new[i]
 
@@ -359,7 +357,7 @@ def test_500_file(service):
 
 @pytest.mark.skip(reason="3193 changesets need to be applied, So very slow, what should I do?")
 def test_file_with_line_replacement(service):
-    file = "python/mozbuild/mozbuild/action/test_archive.py"
+    file = "/python/mozbuild/mozbuild/action/test_archive.py"
     old_rev = "c730f942ce30"
     new_rev = "e3f24e165618"
     service.clogger.initialize_to_range(old_rev, new_rev)
@@ -378,7 +376,7 @@ def test_file_with_line_replacement(service):
 
 
 def test_distant_rev(service):
-    file = "python/mozbuild/mozbuild/action/test_archive.py"
+    file = "/python/mozbuild/mozbuild/action/test_archive.py"
     old_rev = "e3f24e165618"
     new_rev = "0d1e55d87931"
     service.clogger.initialize_to_range(old_rev, new_rev)

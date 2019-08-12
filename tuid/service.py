@@ -366,8 +366,6 @@ class TUIDService:
             try:
                 response = http.get(url, retry=RETRY, stream=True)
                 if response.status_code == 200:
-                    # TODO: What if code has '\n' test
-                    # Also I presume every file will have a trailing empty line
                     line_count = 0
                     for i in response.iter_lines():
                         line_count += 1
