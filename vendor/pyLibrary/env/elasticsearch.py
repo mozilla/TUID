@@ -340,7 +340,9 @@ class Index(Features):
         if not records:
             return
         if isinstance(records, generator_types):
-            Log.error("generators no longer accepted, use lambda to make generator")
+            Log.error("single use generators no longer accepted")
+        if not hasattr(records, "__iter__"):
+            Log.error("records must have __iter__")
 
         try:
             with Timer("Add {{num}} documents to {{index}}", {"num": "unknown", "index": self.settings.index}, silent=not self.debug):

@@ -39,7 +39,7 @@ def get_branches(hg, branches, kwargs=None):
         oldest = Date(MAX(found_branches.etl.timestamp))
         if oldest == None or Date.now() - oldest > OLD_BRANCH:
             found_branches = _get_branches_from_hg(hg)
-            es.extend({"id": b.name + " " + b.locale, "value": b} for b in found_branches)
+            es.extend([{"id": b.name + " " + b.locale, "value": b} for b in found_branches])
             es.flush()
 
         try:
