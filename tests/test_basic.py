@@ -153,7 +153,6 @@ def test_tryrepo_tuids(service):
     assert found_file
 
 
-"""
 def test_multithread_tuid_uniqueness(service):
     timeout_seconds = 60
     old_revision = "d63ed14ed622"
@@ -223,7 +222,7 @@ def test_multithread_tuid_uniqueness(service):
     assert len(tuidlist) == len(set(tuidlist))
 
 
-
+"""
 def test_multithread_service(service):
     num_tests = 10
     timeout_seconds = 60
@@ -327,8 +326,7 @@ def test_remove_file(service):
     assert 0 == len(entries[0][1])
 
 
-"""
-# It is taking too much time.
+@pytest.mark.skip(reason="730 changesets need to be applied, So very slow, what should I do?")
 def test_generic_1(service):
     old_rev = "a5a2ae162869"
     # old_rev = "7d799a93ed72"
@@ -343,7 +341,6 @@ def test_generic_1(service):
     print(old, new)
     for i in range(1, 207):
         assert old[i] == new[i]
-"""
 
 
 def test_parallel_get_tuids(service):
@@ -360,8 +357,7 @@ def test_500_file(service):
     assert len(tuids[0][1]) == 0
 
 
-"""
-# This is taking too much time
+@pytest.mark.skip(reason="3193 changesets need to be applied, So very slow, what should I do?")
 def test_file_with_line_replacement(service):
     file = "python/mozbuild/mozbuild/action/test_archive.py"
     old_rev = "c730f942ce30"
@@ -379,7 +375,6 @@ def test_file_with_line_replacement(service):
             assert old[i] != new[i]
         else:
             assert old[i] == new[i]
-"""
 
 
 def test_distant_rev(service):
@@ -430,7 +425,6 @@ def test_bad_date_file(service):
         assert change_one[i] == earliest_rev[i]
 
 
-# What should be the revision range?
 def test_multi_parent_child_changes(service):
     # For this file: toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp
     # Multi-parent, multi-child change: https://hg.mozilla.org/mozilla-central/log/0ef34a9ec4fbfccd03ee0cfb26b182c03e28133a
