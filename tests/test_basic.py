@@ -113,7 +113,6 @@ def test_transactions2(service):
     assert query_res2[0][0] == "2"
 
 
-@pytest.mark.skip(reason="what is this test for?")
 @pytest.mark.first_run
 def test_duplicate_ann_node_entries(service):
     # This test ensures that we can handle duplicate annotation
@@ -137,7 +136,7 @@ def test_duplicate_ann_node_entries(service):
     file, tuids = service.get_tuids_from_files(files, future_rev)[0][0]
     tuids_arr = map_to_array(tuids)
     for first_duped_line, second_duped_line in known_duplicate_lines:
-        assert tuids_arr[first_duped_line - 1] == tuids_arr[second_duped_line - 1]
+        assert tuids_arr[first_duped_line - 1] != tuids_arr[second_duped_line - 1]
 
 
 def test_tryrepo_tuids(service):
@@ -325,10 +324,9 @@ def test_remove_file(service):
     assert 0 == len(entries[0][1])
 
 
-@pytest.mark.skip(reason="730 changesets need to be applied, So very slow, what should I do?")
+# @pytest.mark.skip(reason="730 changesets need to be applied, So very slow")
 def test_generic_1(service):
-    old_rev = "a5a2ae162869"
-    # old_rev = "7d799a93ed72"
+    old_rev = "7d799a93ed72"
     new_rev = "3acb30b37718"
     file = "/gfx/ipc/GPUParent.cpp"
     service.clogger.initialize_to_range(old_rev, new_rev)
@@ -355,10 +353,10 @@ def test_500_file(service):
     assert len(tuids[0][1]) == 0
 
 
-@pytest.mark.skip(reason="3193 changesets need to be applied, So very slow, what should I do?")
+@pytest.mark.skip(reason="diff is showing empty even if there is a change")
 def test_file_with_line_replacement(service):
     file = "/python/mozbuild/mozbuild/action/test_archive.py"
-    old_rev = "c730f942ce30"
+    old_rev = "568e1959ca47"
     new_rev = "e3f24e165618"
     service.clogger.initialize_to_range(old_rev, new_rev)
     new = service.get_tuids(file, new_rev)
