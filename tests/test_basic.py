@@ -353,15 +353,15 @@ def test_500_file(service):
     assert len(tuids[0][1]) == 0
 
 
-@pytest.mark.skip(reason="diff is showing empty even if there is a change")
 def test_file_with_line_replacement(service):
     file = "/python/mozbuild/mozbuild/action/test_archive.py"
     old_rev = "568e1959ca47"
     new_rev = "e3f24e165618"
+    # new_rev = "d027c2da35f0"
     service.clogger.initialize_to_range(old_rev, new_rev)
-    new = service.get_tuids(file, new_rev)
-    insert_to_lfm(service, file, new_rev)
-    old = service.get_tuids_from_files([file], old_rev)[0]
+    old = service.get_tuids(file, old_rev)
+    insert_to_lfm(service, file, old_rev)
+    new = service.get_tuids_from_files([file], new_rev)[0]
     new = new[0][1]
     old = old[0][1]
     assert 653 == len(new)
