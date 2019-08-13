@@ -109,11 +109,7 @@ def diff_to_json(unified_diff):
                     Log.warning("bad line {{line|quote}}", line=line, cause=e)
 
         output.append(
-            {
-                "new": {"name": new_file_path},
-                "old": {"name": old_file_path},
-                "changes": changes,
-            }
+            {"new": {"name": new_file_path}, "old": {"name": old_file_path}, "changes": changes}
         )
     return wrap(output)
 
@@ -175,11 +171,7 @@ def diff_to_moves(unified_diff):
                 c = MOVE[d](c)
 
         output.append(
-            {
-                "new": {"name": new_file_path},
-                "old": {"name": old_file_path},
-                "changes": changes,
-            }
+            {"new": {"name": new_file_path}, "old": {"name": old_file_path}, "changes": changes}
         )
     return wrap(output)
 
