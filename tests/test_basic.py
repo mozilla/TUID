@@ -331,7 +331,6 @@ def test_file_with_line_replacement(service):
     old = service.get_tuids_from_files(
         ["/python/mozbuild/mozbuild/action/test_archive.py"], old_rev
     )[0]
-
     new = new[0][1]
     old = old[0][1]
     assert 653 == len(new)
