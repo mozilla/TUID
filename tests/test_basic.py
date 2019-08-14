@@ -323,12 +323,15 @@ def test_file_with_line_replacement(service):
     old_rev = "568e1959ca478a998f309bb5c57974bac9afbb8a"[:12]
     new_rev = "e3f24e165618"
     service.clogger.initialize_to_range(old_rev, new_rev)
-    old = service.get_tuids_from_files(
-        ["/python/mozbuild/mozbuild/action/test_archive.py"], old_rev
-    )[0]
+
     new = service.get_tuids_from_files(
         ["/python/mozbuild/mozbuild/action/test_archive.py"], new_rev
     )[0]
+
+    old = service.get_tuids_from_files(
+        ["/python/mozbuild/mozbuild/action/test_archive.py"], old_rev
+    )[0]
+
     new = new[0][1]
     old = old[0][1]
     assert 653 == len(new)

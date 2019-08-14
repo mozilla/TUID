@@ -1206,7 +1206,8 @@ class TUIDService:
                         # either the requested revision if we are going
                         # backwards or the current frontier, if we are
                         # going forward.
-                        csets_to_proc = csets_to_proc[1:]
+                        if not backwards:
+                            csets_to_proc = csets_to_proc[1:]
 
                         # Apply the diffs
                         for diff_count, (_, rev) in enumerate(csets_to_proc):
