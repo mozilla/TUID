@@ -29,10 +29,14 @@ _service = None
 def service(config, new_db):
     global _service
     if new_db == "yes":
-        return TUIDService(database=Null, start_workers=False, kwargs=config.tuid)
+        _service = TUIDService(database=Null, start_workers=False, kwargs=config.tuid)
+        with _service.conn.transaction() as t:
+            t.execute("DELETE FROM latestFileMod")
     elif new_db == "no":
         if _service is None:
             _service = TUIDService(kwargs=config.tuid, start_workers=False)
+            with _service.conn.transaction() as t:
+                t.execute("DELETE FROM latestFileMod")
         return _service
     else:
         Log.error("expecting 'yes' or 'no'")
