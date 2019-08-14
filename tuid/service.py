@@ -372,6 +372,7 @@ class TUIDService:
                     annotated_files[thread_num] = line_count
                 else:
                     annotated_files[thread_num] = -1
+                    Log.warning("Failed to get the raw file data for the {{url}}", url=url)
             except Exception as e:
                 Log.warning(
                     "Unexpected error while trying to get annotate for {{url}}", url=url, cause=e
@@ -1599,13 +1600,11 @@ class TUIDService:
 
                 # If it's not defined at this revision, we need to add it in
                 if file_length == -1:
-                    Log.warning(
-                        "{{file}} does not exist in the revision={{cset}} branch={{branch_name}}",
-                        branch_name=repo,
-                        cset=revision,
+                    Log.note(
+                        "Inserting dummy entry for file={{file}} revision={{cset}}",
                         file=file,
+                        cset=revision,
                     )
-                    Log.note("Inserting dummy entry...")
                     self.insert_tuid_dummy(revision, file)
                     self.insert_annotate_dummy(revision, file)
                     results.append((file, []))
@@ -1613,7 +1612,7 @@ class TUIDService:
 
                 tuids = []
                 str_tuids = []
-                for i in range(0, file_length):
+                for i in range(file_length):
                     new_tuid = self.tuid()
                     str_tuids.append(new_tuid)
                     tuids.append(TuidMap(new_tuid, i + 1))

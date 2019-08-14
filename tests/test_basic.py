@@ -38,24 +38,14 @@ def service(config, new_db):
         Log.error("expecting 'yes' or 'no'")
 
 
-def insert_to_lfm(service, file, revision):
-    with service.conn.transaction() as t:
-        # t.execute("DELETE FROM latestFileMod")
-        t.execute(
-            "INSERT OR REPLACE INTO latestFileMod (revision, file) VALUES"
-            + quote_list((revision, file.lstrip("/")))
-        )
-
-
 def test_transactions(service):
     # This should pass
     old_revision = "6162f89a4838"
     new_revision = "06b1a22c5e62"
-    file = "/testing/geckodriver/CONTRIBUTING.md"
+    file = ["/testing/geckodriver/CONTRIBUTING.md"]
     service.clogger.initialize_to_range(old_revision, new_revision)
-    old = service.get_tuids(file, old_revision)
-    insert_to_lfm(service, file, old_revision)
-    new = service.get_tuids_from_files([file], new_revision)[0]
+    old = service.get_tuids_from_files(file, old_revision)[0]
+    new = service.get_tuids_from_files(file, new_revision)[0]
 
     assert len(old) == len(new)
     # listed_inserts = [None] * 100
@@ -122,7 +112,7 @@ def test_duplicate_ann_node_entries(service):
     # file we should have no duplicate tuids.
     rev = "8eab40c27903"
     files = ["browser/base/content/browser.xul"]
-    file, tuids = service.get_tuids(files, rev)[0]
+    file, tuids = service.get_tuids_from_files(files, rev)[0][0]
     tuids_arr = map_to_array(tuids)
     known_duplicate_lines = [[650, 709], [651, 710]]
     for first_duped_line, second_duped_line in known_duplicate_lines:
@@ -131,7 +121,6 @@ def test_duplicate_ann_node_entries(service):
     # Second call on a future _unknown_ annotation will give us
     # duplicate entries.
     future_rev = "e02ce918e160"
-    insert_to_lfm(service, files[0], rev)
     service.clogger.initialize_to_range(rev, future_rev)
     file, tuids = service.get_tuids_from_files(files, future_rev)[0][0]
     tuids_arr = map_to_array(tuids)
@@ -276,12 +265,11 @@ def test_multithread_service(service):
 def test_new_then_old(service):
     old_rev = "6162f89a4838"
     new_rev = "06b1a22c5e62"
-    file = "/testing/geckodriver/CONTRIBUTING.md"
+    file = ["/testing/geckodriver/CONTRIBUTING.md"]
     service.clogger.initialize_to_range(old_rev, new_rev)
     # delete database then run this test
-    old = service.get_tuids(file, old_rev)
-    insert_to_lfm(service, file, old_rev)
-    new = service.get_tuids_from_files([file], new_rev)[0]
+    old = service.get_tuids_from_files(file, old_rev)[0]
+    new = service.get_tuids_from_files(file, new_rev)[0]
     assert len(old) == len(new)
     for i in range(0, len(old)):
         assert old[i] == new[i]
@@ -290,16 +278,14 @@ def test_new_then_old(service):
 def test_tuids_on_changed_file(service):
     rev1 = "a6fdd6eae583"
     rev2 = "a0bd70eac827"
-    file = "/taskcluster/ci/test/tests.yml"
+    file = ["/taskcluster/ci/test/tests.yml"]
     # https://hg.mozilla.org/integration/mozilla-inbound/file/a6fdd6eae583/taskcluster/ci/test/tests.yml
-    old_lines = service.get_tuids(file, rev1)  # 2205 lines
+    old_lines = service.get_tuids_from_files(file, rev1)[0]  # 2205 lines
     service.clogger.initialize_to_range(rev1, rev2)
-
-    insert_to_lfm(service, file, rev1)
 
     # THE FILE HAS NOT CHANGED, SO WE EXPECT THE SAME SET OF TUIDs AND LINES TO BE RETURNED
     # https://hg.mozilla.org/integration/mozilla-inbound/file/a0bd70eac827/taskcluster/ci/test/tests.yml
-    same_lines = service.get_tuids_from_files([file], rev2)[0]  # 2201 lines
+    same_lines = service.get_tuids_from_files(file, rev2)[0]  # 2201 lines
 
     # assertAlmostEqual PERFORMS A STRUCURAL COMPARISION
     assert same_lines == old_lines
@@ -324,15 +310,13 @@ def test_remove_file(service):
     assert 0 == len(entries[0][1])
 
 
-# @pytest.mark.skip(reason="730 changesets need to be applied, So very slow")
 def test_generic_1(service):
     old_rev = "7d799a93ed72"
     new_rev = "3acb30b37718"
-    file = "/gfx/ipc/GPUParent.cpp"
+    file = ["/gfx/ipc/GPUParent.cpp"]
     service.clogger.initialize_to_range(old_rev, new_rev)
-    old = service.get_tuids(file, old_rev)[0][1]
-    insert_to_lfm(service, file, old_rev)
-    new = service.get_tuids_from_files([file], new_rev)[0][0][1]
+    old = service.get_tuids_from_files(file, old_rev)[0][0][1]
+    new = service.get_tuids_from_files(file, new_rev)[0][0][1]
     assert len(old) == 467
     assert len(new) == 476
     for i in range(1, 207):
@@ -354,14 +338,13 @@ def test_500_file(service):
 
 
 def test_file_with_line_replacement(service):
-    file = "/python/mozbuild/mozbuild/action/test_archive.py"
+    file = ["/python/mozbuild/mozbuild/action/test_archive.py"]
     old_rev = "568e1959ca47"
     new_rev = "e3f24e165618"
     # new_rev = "d027c2da35f0"
     service.clogger.initialize_to_range(old_rev, new_rev)
-    old = service.get_tuids(file, old_rev)
-    insert_to_lfm(service, file, old_rev)
-    new = service.get_tuids_from_files([file], new_rev)[0]
+    old = service.get_tuids_from_files(file, old_rev)[0]
+    new = service.get_tuids_from_files(file, new_rev)[0]
     new = new[0][1]
     old = old[0][1]
     assert 653 == len(new)
@@ -374,13 +357,12 @@ def test_file_with_line_replacement(service):
 
 
 def test_distant_rev(service):
-    file = "/python/mozbuild/mozbuild/action/test_archive.py"
+    file = ["/python/mozbuild/mozbuild/action/test_archive.py"]
     old_rev = "e3f24e165618"
     new_rev = "0d1e55d87931"
     service.clogger.initialize_to_range(old_rev, new_rev)
-    old = service.get_tuids(file, old_rev)
-    insert_to_lfm(service, file, old_rev)
-    new = service.get_tuids_from_files([file], new_rev)[0]
+    old = service.get_tuids_from_files(file, old_rev)[0]
+    new = service.get_tuids_from_files(file, new_rev)[0]
     new = new[0][1]
     old = old[0][1]
     assert len(old) == 653
@@ -399,22 +381,21 @@ def test_bad_date_file(service):
     # on March 8, 2018. It modifies the file: dom/media/MediaManager.cpp
     # https://hg.mozilla.org/mozilla-central/rev/07fad8b0b417d9ae8580f23d697172a3735b546b
     service.clogger.initialize_to_range("42c6ec43f782", "7a6bc227dc03")
-    file = "dom/media/MediaManager.cpp"
+    file = ["dom/media/MediaManager.cpp"]
     change_rev = "07fad8b0b417d9ae8580f23d697172a3735b546b"
-    change_one = service.get_tuids(file, change_rev)[0][1]
-    insert_to_lfm(service, file, change_rev[:12])
+    change_one = service.get_tuids_from_files(file, change_rev)[0][0][1]
     # Insert a change in between these dates to throw us off.
     # https://hg.mozilla.org/mozilla-central/rev/0451fe123f5b
-    change_two = service.get_tuids_from_files([file], "0451fe123f5b")
+    change_two = service.get_tuids_from_files(file, "0451fe123f5b")
 
     # Add the file just before these changes.
     # https://hg.mozilla.org/mozilla-central/rev/42c6ec43f782
-    change_prev = service.get_tuids_from_files([file], "42c6ec43f782")
+    change_prev = service.get_tuids_from_files(file, "42c6ec43f782")
 
     # First revision (07fad8b0b417d9ae8580f23d697172a3735b546b) should be equal to the
     # tuids for it's child dated March 6.
     # https://hg.mozilla.org/mozilla-central/rev/7a6bc227dc03
-    earliest_rev = service.get_tuids_from_files([file], "7a6bc227dc03")[0][0][1]
+    earliest_rev = service.get_tuids_from_files(file, "7a6bc227dc03")[0][0][1]
 
     assert len(change_one) == len(earliest_rev)
     for i in range(0, len(change_one)):
@@ -427,14 +408,11 @@ def test_multi_parent_child_changes(service):
     service.clogger.initialize_to_range("bb6db24a20dd", "0ef34a9ec4fb")
     service.clogger.initialize_to_range("bb6db24a20dd", "39717163c6c9", delete_old=False)
 
-    earliest_rev = service.get_tuids(
-        "toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp",
+    earliest_rev = service.get_tuids_from_files(
+        ["toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp"],
         "0ef34a9ec4fbfccd03ee0cfb26b182c03e28133a",
-    )[0][1]
+    )[0][0][1]
 
-    insert_to_lfm(
-        service, "toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp", "0ef34a9ec4fb"
-    )
     # A past revision: https://hg.mozilla.org/mozilla-central/rev/bb6db24a20dd
     past_rev = service.get_tuids_from_files(
         ["toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp"], "bb6db24a20dd"
