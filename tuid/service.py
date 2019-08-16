@@ -1193,23 +1193,21 @@ class TUIDService:
                         )
 
                         backwards = False
-                        if len(csets_to_proc) >= 1 and revision == csets_to_proc[0][1]:
-                            backwards = True
+                        if len(csets_to_proc) >= 1:
+                            if revision == csets_to_proc[0][1]:
+                                backwards = True
 
-                            # Reverse the list, we apply the frontier
-                            # diff first when going backwards.
-                            csets_to_proc = csets_to_proc[::-1]
-                            Log.note("Applying diffs backwards...")
-
-                        # Going either forward or backwards requires
-                        # us to remove the first revision, which is
-                        # either the requested revision if we are going
-                        # backwards or the current frontier, if we are
-                        # going forward.
-                        if len(csets_to_proc) == 2 and backwards:
-                            pass
-                        else:
-                            csets_to_proc = csets_to_proc[1:]
+                                # Reverse the list, we apply the frontier
+                                # diff first when going backwards.
+                                csets_to_proc = csets_to_proc[::-1][:-1]
+                                Log.note("Applying diffs backwards...")
+                            else:
+                                # Going either forward or backwards requires
+                                # us to remove the first revision, which is
+                                # either the requested revision if we are going
+                                # backwards or the current frontier, if we are
+                                # going forward.
+                                csets_to_proc = csets_to_proc[1:]
 
                         # Apply the diffs
                         for diff_count, (_, rev) in enumerate(csets_to_proc):
