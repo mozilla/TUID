@@ -167,7 +167,7 @@ def diff_to_moves(unified_diff):
                     break
                 d = line[0]
                 if d != " ":
-                    changes.append({"line": int(c[0]), "action": d})
+                    changes.append(Action(line=int(c[0]), action=d))
                 c = MOVE[d](c)
 
         output.append(
