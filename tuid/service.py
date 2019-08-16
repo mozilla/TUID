@@ -1321,7 +1321,7 @@ class TUIDService:
                         tmp_ann = self._get_annotation(rev, filename)
                         if not tmp_ann and tmp_ann != "":
                             recomputed_inserts.append((rev, filename, string_tuids))
-                        else:
+                        elif rev == revision:
                             anns_added_by_other_thread[filename] = self.destringify_tuids(tmp_ann)
 
                     if len(recomputed_inserts) <= 0:
@@ -1341,6 +1341,7 @@ class TUIDService:
 
         for f in tmp_results:
             tuids = tmp_results[f]
+            # [tup for tup in a if tup[0] == 1]
             if f in anns_added_by_other_thread:
                 tuids = anns_added_by_other_thread[f]
             result.append((copy.deepcopy(f), copy.deepcopy(tuids)))
