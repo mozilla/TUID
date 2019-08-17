@@ -1196,17 +1196,15 @@ class TUIDService:
                         if len(csets_to_proc) >= 1:
                             if revision == csets_to_proc[0][1]:
                                 backwards = True
-
                                 # Reverse the list, we apply the frontier
                                 # diff first when going backwards.
+                                # Also we remove the target revision.
                                 csets_to_proc = csets_to_proc[::-1][:-1]
                                 Log.note("Applying diffs backwards...")
                             else:
-                                # Going either forward or backwards requires
-                                # us to remove the first revision, which is
-                                # either the requested revision if we are going
-                                # backwards or the current frontier, if we are
-                                # going forward.
+                                # Going forward requires us to remove
+                                # the first revision, which is
+                                # the current frontier.
                                 csets_to_proc = csets_to_proc[1:]
 
                         # Apply the diffs
@@ -1341,7 +1339,6 @@ class TUIDService:
 
         for f in tmp_results:
             tuids = tmp_results[f]
-            # [tup for tup in a if tup[0] == 1]
             if f in anns_added_by_other_thread:
                 tuids = anns_added_by_other_thread[f]
             result.append((copy.deepcopy(f), copy.deepcopy(tuids)))
