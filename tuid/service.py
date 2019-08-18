@@ -168,24 +168,9 @@ class TUIDService:
         query = {"size": 0, "query": {"terms": terms}}
         return query
 
-    def _dummy_tuid_exists(self, file_name, rev):
-        # True if dummy, false if not.
-        # None means there is no entry.
-        query = {
-            "_source": {"includes": ["tuid"]},
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"file": file_name}},
-                        {"term": {"revision": rev}},
-                        {"term": {"line": 0}},
-                    ]
-                }
-            },
-            "size": 0,
-        }
-        temp = self.temporal.search(query).hits.total
-        return 0 != temp
+    def _insert_max_tuid(self):
+        record = {"value": {"_id": 0, "tuid": self.next_tuid}}
+        self.temporal.add(record)
 
     def _dummy_annotate_exists(self, file_name, rev):
         # True if dummy, false if not.
@@ -200,16 +185,6 @@ class TUIDService:
         temp = self.annotations.search(query).hits.total
         return 0 != temp
 
-    def _make_record_temporal(self, tuid, revision, file, line):
-        record = {
-            "_id": revision + file + str(line),
-            "tuid": tuid,
-            "revision": revision,
-            "file": file,
-            "line": line,
-        }
-        return {"value": record}
-
     def _make_record_annotations(self, revision, file, annotation):
         record = {
             "_id": revision + file,
@@ -218,16 +193,6 @@ class TUIDService:
             "annotation": annotation,
         }
         return {"value": record}
-
-    def insert_tuid_dummy(self, rev, file_name):
-        # Inserts a dummy tuid: (-1,rev,file_name,0)
-        if not self._dummy_tuid_exists(file_name, rev):
-            self.temporal.add(self._make_record_temporal(-1, rev[:12], file_name, 0))
-            self.temporal.refresh()
-            while not self._dummy_tuid_exists(file_name, rev[:12]):
-                Till(seconds=0.001).wait()
-                self.temporal.refresh()
-        return MISSING
 
     def insert_annotate_dummy(self, rev, file_name):
         # Inserts annotation dummy: (rev, file, '')
@@ -269,24 +234,6 @@ class TUIDService:
         }
         r = self.annotations.search(query).hits.hits[0]
         return r._source.annotation
-
-    def _get_one_tuid1(self, cset, path, line):
-        # Returns a single TUID if it exists else None
-        query = {
-            "_source": {"includes": ["tuid"]},
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"file": path}},
-                        {"term": {"revision": cset}},
-                        {"term": {"line": line}},
-                    ]
-                }
-            },
-            "size": 1,
-        }
-        temp = self.temporal.search(query).hits.hits[0]._source.tuid
-        return temp
 
     def _get_one_tuid(self, cset, path, line):
         # Returns a single TUID if it exists else None
@@ -864,13 +811,7 @@ class TUIDService:
             break  # Found the file, exit searching
 
         if len(list_to_insert) > 0:
-            records = wrap(
-                [
-                    self._make_record_temporal(tuid, revision, file, line)
-                    for tuid, file, revision, line in list_to_insert
-                ]
-            )
-            # insert(self.temporal, self._make_record_temporal(latest_tuid, "r", file, 0))
+            self._insert_max_tuid()
 
         return new_ann, file
 
@@ -1515,14 +1456,7 @@ class TUIDService:
         else:
             lines_to_insert = new_line_origins.values()
 
-        records = wrap(
-            [
-                self._make_record_temporal(tuid, revision, file, line)
-                for tuid, file, revision, line in lines_to_insert
-            ]
-        )
-        # insert(self.temporal, records)
-
+        self._insert_max_tuid()
         return new_line_origins
 
     def is_file_exists(self, file):
@@ -1718,12 +1652,7 @@ TEMPORAL_SCHEMA = {
     "mappings": {
         "temporaltype": {
             "_all": {"enabled": False},
-            "properties": {
-                "tuid": {"type": "integer", "store": True},
-                "revision": {"type": "keyword", "store": True},
-                "file": {"type": "keyword", "store": True},
-                "line": {"type": "integer", "store": True},
-            },
+            "properties": {"tuid": {"type": "integer", "store": True}},
         }
     },
 }

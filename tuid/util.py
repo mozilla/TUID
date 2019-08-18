@@ -105,13 +105,8 @@ class AnnotateFile(SourceFile, object):
                     for linenum in insert_lines
                 ]
 
-                records = wrap(
-                    [
-                        self.tuid_service._make_record_temporal(tuid, revision, file, line)
-                        for tuid, file, revision, line in insert_entries
-                    ]
-                )
-                # insert(self.tuid_service.temporal, records)
+                self.tuid_service._insert_max_tuid()
+
             except Exception as e:
                 Log.note(
                     "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
@@ -139,15 +134,6 @@ class AnnotateFile(SourceFile, object):
                 )
                 self.failed_file = True
                 return
-
-
-def insert_into_db_chunked(transaction, data, cmd, sql_chunk_size=500):
-    # For the `cmd` object, we expect something like (don't forget the whitespace at the end):
-    #   "INSERT INTO temporal (tuid, file, revision, line) VALUES "
-    #
-    # `data` must be a list of tuples.
-    for _, inserts_list in jx.groupby(data, size=sql_chunk_size):
-        transaction.execute(cmd + sql_list(quote_set(entry) for entry in inserts_list))
 
 
 def map_to_array(pairs):
