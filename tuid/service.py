@@ -1415,59 +1415,6 @@ class TUIDService:
         gc.collect()
         return results
 
-    def insert_tuids_with_duplicates(self, file, revision, new_lines, line_origins):
-        """
-        Inserts new lines while creating tuids and handles duplicate entries.
-        :param new_lines: A list of new line numbers.
-        :param line_origins: A list of all lines as tuples (file, revision, line)
-        :return:
-        """
-
-        """
-            HG Annotate Bug, Issue #58:
-            Here is where we assign the new tuids for the first
-            time we see duplicate entries - they are left
-            in `new_line_origins` after duplicates are found.
-            We only remove it from the lines to insert. In future
-            requests, the tuid will be duplicated in _get_tuids.
-        """
-
-        new_line_origins = {
-            line_num: (self.tuid(),) + line_origins[line_num - 1] for line_num in new_lines
-        }
-
-        duplicate_lines = {
-            line_num + 1: line
-            for line_num, line in enumerate(line_origins)
-            if line in line_origins[:line_num]
-        }
-        if len(duplicate_lines) > 0:
-            Log.note(
-                "Duplicates found in {{file}} at {{cset}}: {{dupes}}",
-                file=file,
-                cset=revision,
-                dupes=str(duplicate_lines),
-            )
-            lines_to_insert = [
-                line
-                for line_num, line in new_line_origins.items()
-                if line_num not in duplicate_lines
-            ]
-        else:
-            lines_to_insert = new_line_origins.values()
-
-        self._insert_max_tuid()
-        return new_line_origins
-
-    def is_file_exists(self, file):
-        query = {
-            "_source": {"includes": ["revision"]},
-            "query": {"bool": {"must": [{"term": {"file": file}}]}},
-            "size": 1,
-        }
-        r = self.annotations.search(query).hits.hits[0]._source.revision
-        return r
-
     def _get_tuids(self, files, revision, annotated_files, repo=None):
         """
         Returns (TUID, line) tuples for a given file at a given revision.

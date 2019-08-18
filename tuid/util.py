@@ -67,37 +67,8 @@ class AnnotateFile(SourceFile, object):
                 all_new_lines.append(line_obj.line)
             line_origins.append(line_entry)
 
-        # Get the new lines, excluding those that have existing tuids
-        existing_tuids = {}
-        if len(all_new_lines) > 0:
-            try:
-                query = {
-                    "size": 10000,
-                    "_source": {"includes": ["tuid", "file", "revision", "line"]},
-                    "query": {
-                        "bool": {
-                            "filter": [
-                                {"term": {"file": self.filename}},
-                                {"term": {"revision": revision}},
-                                {"terms": {"line": all_new_lines}},
-                            ]
-                        }
-                    },
-                }
-                result = self.tuid_service.temporal.search(query)
-                existing_tuids = {}
-
-                for r in result.hits.hits:
-                    s = r._source
-                    existing_tuids.update({s.line: s.tuid})
-            except Exception as e:
-                # Log takes out important output, use print instead
-                self.failed_file = True
-                print("Trying to find new lines: " + str(all_new_lines))
-                Log.error("Error encountered:", cause=e)
-
         insert_entries = []
-        insert_lines = set(all_new_lines) - set(existing_tuids.keys())
+        insert_lines = set(all_new_lines)
         if len(insert_lines) > 0:
             try:
                 insert_entries = [
@@ -118,11 +89,7 @@ class AnnotateFile(SourceFile, object):
 
         fmt_inserted_lines = {line: tuid for tuid, _, _, line in insert_entries}
         for line_obj in self.lines:
-            # If a tuid already exists for this line,
-            # replace, otherwise, use the newly created one.
-            if line_obj.line in existing_tuids:
-                line_obj.tuid = existing_tuids[line_obj.line]
-            elif line_obj.line in fmt_inserted_lines:
+            if line_obj.line in fmt_inserted_lines:
                 line_obj.tuid = fmt_inserted_lines[line_obj.line]
 
             if not line_obj.tuid:
