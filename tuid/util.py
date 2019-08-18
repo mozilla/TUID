@@ -50,9 +50,7 @@ class AnnotateFile(SourceFile, object):
                 new_lines.append(line_obj)
                 continue
             new_line_obj = TuidLine(
-                TuidMap(None, line_obj.line),
-                filename=line_obj.filename,
-                is_new_line=True,
+                TuidMap(None, line_obj.line), filename=line_obj.filename, is_new_line=True
             )
             new_lines.append(new_line_obj)
         self.lines = new_lines
@@ -109,13 +107,11 @@ class AnnotateFile(SourceFile, object):
 
                 records = wrap(
                     [
-                        self.tuid_service._make_record_temporal(
-                            tuid, revision, file, line
-                        )
+                        self.tuid_service._make_record_temporal(tuid, revision, file, line)
                         for tuid, file, revision, line in insert_entries
                     ]
                 )
-                insert(self.tuid_service.temporal, records)
+                # insert(self.tuid_service.temporal, records)
             except Exception as e:
                 Log.note(
                     "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
@@ -183,9 +179,7 @@ def wait_until(index, condition):
 def delete(index, filter):
     index.delete_record(filter)
     index.refresh()
-    wait_until(
-        index, lambda: index.search({"size": 0, "query": filter}).hits.total == 0
-    )
+    wait_until(index, lambda: index.search({"size": 0, "query": filter}).hits.total == 0)
 
 
 def insert(index, records):
