@@ -89,7 +89,7 @@ class TUIDService:
             self.service_threads_running = 0
             query = {"size": 0, "aggs": {"value": {"max": {"field": "tuid"}}}}
             self.next_tuid = int(
-                coalesce(eval(str(self.temporal.search(query).aggregations.value.value)), 0) + 1
+                coalesce(eval(str(self.temporal.search(query).aggregations.value.value)), 1)
             )
             self.total_locker = Lock()
             self.temporal_locker = Lock()
