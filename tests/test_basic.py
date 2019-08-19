@@ -337,11 +337,49 @@ def test_500_file(service):
     assert len(tuids[0][1]) == 0
 
 
+def test_forward_then_backward_diff(service):
+    file = ["python/mozbuild/mozbuild/action/test_archive.py"]
+    rev_curr = "568e1959ca47"
+    revs_next = ["e3f24e165618", "d027c2da35f0"]  # File changed at e3f24e165618
+    service.clogger.initialize_to_range(rev_curr, revs_next[1])
+
+    for n in range(2):
+        filter = {"terms": {"file": file}}
+        delete(service.annotations, filter)
+
+        rev_next = revs_next[n]
+        curr = service.get_tuids_from_files(file, rev_curr)[0][0][1]
+
+        next = service.get_tuids_from_files(file, rev_next)[0][0][1]
+        assert 653 == len(curr)
+        for i in range(0, 600):
+            if i == 374 or i == 376:
+                assert curr[i] != next[i]
+            else:
+                assert curr[i] == next[i]
+
+        filter = {"term": {"revision": rev_curr}}
+        delete(service.annotations, filter)
+        filter = {"terms": {"file": file}}
+        delete(service.temporal, filter)
+
+        curr = service.get_tuids_from_files(file, rev_curr)[0][0][1]
+        assert 653 == len(curr)
+        assert 653 == len(next)
+        for i in range(0, 600):
+            if i == 374 or i == 376:
+                assert curr[i] != next[i]
+            else:
+                assert curr[i] == next[i]
+
+
 def test_file_with_line_replacement(service):
     file = ["/python/mozbuild/mozbuild/action/test_archive.py"]
     old_rev = "568e1959ca47"
     new_rev = "e3f24e165618"
-    # new_rev = "d027c2da35f0"
+    filter = {"term": {"file": file[0]}}
+    delete(service.annotations, filter)
+    delete(service.temporal, filter)
     service.clogger.initialize_to_range(old_rev, new_rev)
     old = service.get_tuids_from_files(file, old_rev)[0]
     new = service.get_tuids_from_files(file, new_rev)[0]
