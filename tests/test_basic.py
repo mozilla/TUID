@@ -428,7 +428,7 @@ def test_bad_date_file(service):
 
     # Add the file just before these changes.
     # https://hg.mozilla.org/mozilla-central/rev/42c6ec43f782
-    change_prev = service.get_tuids_from_files(file, "42c6ec43f782")
+    # change_prev = service.get_tuids_from_files(file, "42c6ec43f782")
 
     # First revision (07fad8b0b417d9ae8580f23d697172a3735b546b) should be equal to the
     # tuids for it's child dated March 6.
