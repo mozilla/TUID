@@ -8,7 +8,6 @@
 #
 from __future__ import absolute_import, division, unicode_literals
 
-from mo_future import is_text, is_binary
 import os
 import subprocess
 
@@ -48,7 +47,7 @@ class Process(object):
 
             self.please_stop = Signal()
             self.please_stop.then(self._kill)
-            self.thread_locker = Lock()
+            self.child_locker = Lock()
             self.children = [
                 Thread.run(self.name + " stdin", self._writer, service.stdin, self.stdin, please_stop=self.service_stopped, parent_thread=self),
                 Thread.run(self.name + " stdout", self._reader, "stdout", service.stdout, self.stdout, please_stop=self.service_stopped, parent_thread=self),
@@ -72,7 +71,7 @@ class Process(object):
 
     def join(self, raise_on_error=False):
         self.service_stopped.wait()
-        with self.thread_locker:
+        with self.child_locker:
             child_threads, self.children = self.children, []
         for c in child_threads:
             c.join()
@@ -86,7 +85,7 @@ class Process(object):
         return self
 
     def remove_child(self, child):
-        with self.thread_locker:
+        with self.child_locker:
             try:
                 self.children.remove(child)
             except Exception:
