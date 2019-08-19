@@ -375,7 +375,7 @@ class TUIDService:
                     Log.warning("Failed to get the raw file data for the {{url}}", url=url)
             except Exception as e:
                 Log.warning(
-                    "Unexpected error while trying to get annotate for {{url}}", url=url, cause=e
+                    "Unexpected error while trying to get raw file for {{url}}", url=url, cause=e
                 )
             finally:
                 with self.request_locker:
@@ -1599,7 +1599,7 @@ class TUIDService:
                     continue
 
                 # If it's not defined at this revision, we need to add it in
-                if file_length == -1:
+                if file_length <= 0:
                     Log.note(
                         "Inserting dummy entry for file={{file}} revision={{cset}}",
                         file=file,
