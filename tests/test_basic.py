@@ -414,6 +414,7 @@ def test_new_file(service):
     assert len(rev[0][1]) == 636
 
 
+@pytest.mark.skip(reason="We have removed the line origin concept")
 def test_bad_date_file(service):
     # The following changeset is dated February 14, 2018 but was pushed to mozilla-central
     # on March 8, 2018. It modifies the file: dom/media/MediaManager.cpp
@@ -428,7 +429,7 @@ def test_bad_date_file(service):
 
     # Add the file just before these changes.
     # https://hg.mozilla.org/mozilla-central/rev/42c6ec43f782
-    # change_prev = service.get_tuids_from_files(file, "42c6ec43f782")
+    change_prev = service.get_tuids_from_files(file, "42c6ec43f782")
 
     # First revision (07fad8b0b417d9ae8580f23d697172a3735b546b) should be equal to the
     # tuids for it's child dated March 6.
@@ -440,6 +441,7 @@ def test_bad_date_file(service):
         assert change_one[i] == earliest_rev[i]
 
 
+@pytest.mark.skip(reason="We have removed the line origin concept")
 def test_multi_parent_child_changes(service):
     # For this file: toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp
     # Multi-parent, multi-child change: https://hg.mozilla.org/mozilla-central/log/0ef34a9ec4fbfccd03ee0cfb26b182c03e28133a
