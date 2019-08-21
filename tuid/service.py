@@ -334,7 +334,7 @@ class TUIDService:
                     Log.warning("Failed to get the raw file data for the {{url}}", url=url)
             except Exception as e:
                 Log.warning(
-                    "Unexpected error while trying to get annotate for {{url}}", url=url, cause=e
+                    "Unexpected error while trying to get raw file for {{url}}", url=url, cause=e
                 )
             finally:
                 with self.request_locker:
@@ -1155,20 +1155,19 @@ class TUIDService:
                         )
 
                         backwards = False
-                        if len(csets_to_proc) >= 1 and revision == csets_to_proc[0][1]:
-                            backwards = True
-
-                            # Reverse the list, we apply the frontier
-                            # diff first when going backwards.
-                            csets_to_proc = csets_to_proc[::-1]
-                            Log.note("Applying diffs backwards...")
-
-                        # Going either forward or backwards requires
-                        # us to remove the first revision, which is
-                        # either the requested revision if we are going
-                        # backwards or the current frontier, if we are
-                        # going forward.
-                        csets_to_proc = csets_to_proc[1:]
+                        if len(csets_to_proc) >= 1:
+                            if revision == csets_to_proc[0][1]:
+                                backwards = True
+                                # Reverse the list, we apply the frontier
+                                # diff first when going backwards.
+                                # Also we remove the target revision.
+                                csets_to_proc = csets_to_proc[::-1][:-1]
+                                Log.note("Applying diffs backwards...")
+                            else:
+                                # Going forward requires us to remove
+                                # the first revision, which is
+                                # the current frontier.
+                                csets_to_proc = csets_to_proc[1:]
 
                         # Apply the diffs
                         for diff_count, (_, rev) in enumerate(csets_to_proc):
@@ -1282,7 +1281,7 @@ class TUIDService:
                         tmp_ann = self._get_annotation(rev, filename)
                         if not tmp_ann and tmp_ann != "":
                             recomputed_inserts.append((rev, filename, string_tuids))
-                        else:
+                        elif rev == revision:
                             anns_added_by_other_thread[filename] = self.destringify_tuids(tmp_ann)
 
                     if len(recomputed_inserts) <= 0:
@@ -1445,7 +1444,7 @@ class TUIDService:
                     continue
 
                 # If it's not defined at this revision, we need to add it in
-                if file_length == -1:
+                if file_length <= 0:
                     Log.note(
                         "Inserting dummy entry for file={{file}} revision={{cset}}",
                         file=file,
