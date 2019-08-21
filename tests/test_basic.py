@@ -360,8 +360,6 @@ def test_forward_then_backward_diff(service):
 
         filter = {"term": {"revision": rev_curr}}
         delete(service.annotations, filter)
-        filter = {"terms": {"file": file}}
-        delete(service.temporal, filter)
 
         curr = service.get_tuids_from_files(file, rev_curr)[0][0][1]
         assert 653 == len(curr)
@@ -379,7 +377,6 @@ def test_file_with_line_replacement(service):
     new_rev = "e3f24e165618"
     filter = {"term": {"file": file[0]}}
     delete(service.annotations, filter)
-    delete(service.temporal, filter)
     service.clogger.initialize_to_range(old_rev, new_rev)
     old = service.get_tuids_from_files(file, old_rev)[0]
     new = service.get_tuids_from_files(file, new_rev)[0]

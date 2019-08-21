@@ -87,10 +87,7 @@ class TUIDService:
             self.num_requests = 0
             self.ann_threads_running = 0
             self.service_threads_running = 0
-            query = {"size": 0, "aggs": {"value": {"max": {"field": "tuid"}}}}
-            self.next_tuid = int(
-                coalesce(eval(str(self.temporal.search(query).aggregations.value.value)), 1)
-            )
+            self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid) FROM temporal")[0], 1)
             self.total_locker = Lock()
             self.temporal_locker = Lock()
             self.total_files_requested = 0
@@ -124,18 +121,6 @@ class TUIDService:
         :return: None
         """
 
-        temporal = self.esconfig.temporal
-        set_default(temporal, {"schema": TEMPORAL_SCHEMA})
-        # what would be the _id here
-        self.temporal = self.es_temporal.get_or_create_index(kwargs=temporal)
-        self.temporal.refresh()
-
-        total = self.temporal.search({"size": 0})
-        while not total.hits:
-            total = self.temporal.search({"size": 0})
-        with suppress_exception:
-            self.temporal.add_alias()
-
         annotations = self.esconfig.annotations
         set_default(annotations, {"schema": ANNOTATIONS_SCHEMA})
         # what would be the _id here
@@ -162,6 +147,15 @@ class TUIDService:
             );"""
             )
 
+            t.execute(
+                """
+            CREATE TABLE temporal (
+                id        INTEGER,
+                tuid      INTEGER,
+                PRIMARY KEY(id)
+            );"""
+            )
+
         Log.note("Tables created successfully")
 
     def _query_result_size(self, terms):
@@ -169,8 +163,11 @@ class TUIDService:
         return query
 
     def _insert_max_tuid(self):
-        record = {"value": {"_id": 0, "tuid": self.next_tuid}}
-        self.temporal.add(record)
+        with self.conn.transaction() as transaction:
+            transaction.execute(
+                "INSERT OR REPLACE INTO temporal (id, tuid) VALUES (?, ?)",
+                (1, quote_value(self.next_tuid)),
+            )
 
     def _dummy_annotate_exists(self, file_name, rev):
         # True if dummy, false if not.
@@ -211,15 +208,6 @@ class TUIDService:
             ]
         )
         insert(self.annotations, records)
-
-    def _annotation_record_exists(self, rev, file):
-        query = {
-            "_source": {"includes": ["revision"]},
-            "query": {"bool": {"must": [{"term": {"revision": rev}}, {"term": {"file": file}}]}},
-            "size": 1,
-        }
-        temp = self.annotations.search(query).hits.hits[0]._source.revision
-        return temp
 
     def _get_annotation(self, rev, file):
         if isinstance(rev, list):
@@ -1574,17 +1562,6 @@ class TUIDService:
 
             if not ran_changesets:
                 (please_stop | Till(seconds=DAEMON_WAIT_AT_NEWEST.seconds)).wait()
-
-
-TEMPORAL_SCHEMA = {
-    "settings": {"index.number_of_replicas": 1, "index.number_of_shards": 1},
-    "mappings": {
-        "temporaltype": {
-            "_all": {"enabled": False},
-            "properties": {"tuid": {"type": "integer", "store": True}},
-        }
-    },
-}
 
 
 ANNOTATIONS_SCHEMA = {
