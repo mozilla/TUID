@@ -158,10 +158,6 @@ class TUIDService:
 
         Log.note("Tables created successfully")
 
-    def _query_result_size(self, terms):
-        query = {"size": 0, "query": {"terms": terms}}
-        return query
-
     def _insert_max_tuid(self):
         with self.conn.transaction() as transaction:
             transaction.execute(
@@ -302,11 +298,13 @@ class TUIDService:
                 response = http.get(url, retry=RETRY, stream=True)
                 if response.status_code == 200:
                     line_count = 0
-                    for i in response.iter_lines():
+                    for line in response.iter_lines():
                         line_count += 1
+                    if not line:
+                        line_count -= 1
                     annotated_files[thread_num] = line_count
                 else:
-                    annotated_files[thread_num] = -1
+                    annotated_files[thread_num] = 0
                     Log.warning("Failed to get the raw file data for the {{url}}", url=url)
             except Exception as e:
                 Log.warning(
@@ -1415,7 +1413,7 @@ class TUIDService:
                     continue
 
                 # If it's not defined at this revision, we need to add it in
-                if file_length <= 0:
+                if file_length == 0:
                     Log.note(
                         "Inserting dummy entry for file={{file}} revision={{cset}}",
                         file=file,
@@ -1437,6 +1435,7 @@ class TUIDService:
                 self.insert_annotations(entry)
                 results.append((copy.deepcopy(file), copy.deepcopy(tuids)))
 
+            self._insert_max_tuid()
         return results
 
     def _daemon(self, please_stop, only_coverage_revisions=False):
