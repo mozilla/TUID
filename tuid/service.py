@@ -235,18 +235,6 @@ class TUIDService:
         r = self.annotations.search(query).hits.hits[0]
         return r._source.annotation
 
-    def _get_one_tuid(self, cset, path, line):
-        # Returns a single TUID if it exists else None
-
-        query = {
-            "_source": {"includes": ["annotation"]},
-            "query": {"bool": {"must": [{"term": {"revision": cset}}, {"term": {"file": path}}]}},
-            "size": 1,
-        }
-        temp = self.annotations.search(query).hits.hits[0]._source.annotation[line - 1]
-
-        return temp
-
     def _get_latest_revision(self, file, transaction):
         # Returns the latest revision that we
         # have information on the requested file.
@@ -798,13 +786,8 @@ class TUIDService:
             f_diff = f_proc["changes"]
             for change in f_diff:
                 if change.action == "+":
-                    tuid_tmp = self._get_one_tuid(cset, file, change.line + 1)
-                    if tuid_tmp == None:
-                        new_tuid = self.tuid()
-                        latest_tuid = new_tuid
-                        list_to_insert.append((new_tuid, cset, file, change.line + 1))
-                    else:
-                        new_tuid = tuid_tmp
+                    new_tuid = self.tuid()
+                    list_to_insert.append((new_tuid, cset, file, change.line + 1))
                     new_ann = add_one(TuidMap(new_tuid, change.line + 1), new_ann)
                 elif change.action == "-":
                     new_ann = remove_one(change.line + 1, new_ann)
