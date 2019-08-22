@@ -29,7 +29,7 @@ There were various challenges throughout the summer. These included Elasticsearc
 ## The Experience
 To get an opportunity like this was daunting but at the same time exhilarating. The experience while coding was joyous and so was the relationship with the mentors. The discussions about the problems were remarkable. It gave me a deep understanding of how to face and solve real-world problems.
 
-Apart from coding, It was a wonderful learning experience. Taking this summer project helped to connect to a great community where people work in serene yet supportive morale and is always ready to help each other.
+Apart from coding, it was a wonderful learning experience. Taking this summer project helped to connect to a great community where people work in serene yet supportive morale and are always ready to help each other.
 
 ## Acknowledgement
 First and foremost I would like to thank my mentors Kyle and Greg. Despite the significant time zone difference, they were always there to answer my questions and provide suggestions. And I can't overstate how wonderful it is to work with the Mozillian-community. Finally, I'd like to thank the GSoC program, which provided me with a platform where I could undertake this project and have a memorable experience in doing so.
