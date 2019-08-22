@@ -87,10 +87,7 @@ class TUIDService:
             self.num_requests = 0
             self.ann_threads_running = 0
             self.service_threads_running = 0
-            query = {"size": 0, "aggs": {"value": {"max": {"field": "tuid"}}}}
-            self.next_tuid = int(
-                coalesce(eval(str(self.temporal.search(query).aggregations.value.value)), 1)
-            )
+            self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid) FROM temporal")[0], 1)
             self.total_locker = Lock()
             self.temporal_locker = Lock()
             self.total_files_requested = 0
@@ -124,18 +121,6 @@ class TUIDService:
         :return: None
         """
 
-        temporal = self.esconfig.temporal
-        set_default(temporal, {"schema": TEMPORAL_SCHEMA})
-        # what would be the _id here
-        self.temporal = self.es_temporal.get_or_create_index(kwargs=temporal)
-        self.temporal.refresh()
-
-        total = self.temporal.search({"size": 0})
-        while not total.hits:
-            total = self.temporal.search({"size": 0})
-        with suppress_exception:
-            self.temporal.add_alias()
-
         annotations = self.esconfig.annotations
         set_default(annotations, {"schema": ANNOTATIONS_SCHEMA})
         # what would be the _id here
@@ -162,15 +147,23 @@ class TUIDService:
             );"""
             )
 
+            t.execute(
+                """
+            CREATE TABLE temporal (
+                id        INTEGER,
+                tuid      INTEGER,
+                PRIMARY KEY(id)
+            );"""
+            )
+
         Log.note("Tables created successfully")
 
-    def _query_result_size(self, terms):
-        query = {"size": 0, "query": {"terms": terms}}
-        return query
-
     def _insert_max_tuid(self):
-        record = {"value": {"_id": 0, "tuid": self.next_tuid}}
-        self.temporal.add(record)
+        with self.conn.transaction() as transaction:
+            transaction.execute(
+                "INSERT OR REPLACE INTO temporal (id, tuid) VALUES (?, ?)",
+                (1, quote_value(self.next_tuid)),
+            )
 
     def _dummy_annotate_exists(self, file_name, rev):
         # True if dummy, false if not.
@@ -212,15 +205,6 @@ class TUIDService:
         )
         insert(self.annotations, records)
 
-    def _annotation_record_exists(self, rev, file):
-        query = {
-            "_source": {"includes": ["revision"]},
-            "query": {"bool": {"must": [{"term": {"revision": rev}}, {"term": {"file": file}}]}},
-            "size": 1,
-        }
-        temp = self.annotations.search(query).hits.hits[0]._source.revision
-        return temp
-
     def _get_annotation(self, rev, file):
         if isinstance(rev, list):
             filter = {"terms": {"revision": rev}}
@@ -234,18 +218,6 @@ class TUIDService:
         }
         r = self.annotations.search(query).hits.hits[0]
         return r._source.annotation
-
-    def _get_one_tuid(self, cset, path, line):
-        # Returns a single TUID if it exists else None
-
-        query = {
-            "_source": {"includes": ["annotation"]},
-            "query": {"bool": {"must": [{"term": {"revision": cset}}, {"term": {"file": path}}]}},
-            "size": 1,
-        }
-        temp = self.annotations.search(query).hits.hits[0]._source.annotation[line - 1]
-
-        return temp
 
     def _get_latest_revision(self, file, transaction):
         # Returns the latest revision that we
@@ -326,15 +298,17 @@ class TUIDService:
                 response = http.get(url, retry=RETRY, stream=True)
                 if response.status_code == 200:
                     line_count = 0
-                    for i in response.iter_lines():
+                    for line in response.iter_lines():
                         line_count += 1
+                    if not line:
+                        line_count -= 1
                     annotated_files[thread_num] = line_count
                 else:
-                    annotated_files[thread_num] = -1
+                    annotated_files[thread_num] = 0
                     Log.warning("Failed to get the raw file data for the {{url}}", url=url)
             except Exception as e:
                 Log.warning(
-                    "Unexpected error while trying to get annotate for {{url}}", url=url, cause=e
+                    "Unexpected error while trying to get raw file for {{url}}", url=url, cause=e
                 )
             finally:
                 with self.request_locker:
@@ -798,13 +772,8 @@ class TUIDService:
             f_diff = f_proc["changes"]
             for change in f_diff:
                 if change.action == "+":
-                    tuid_tmp = self._get_one_tuid(cset, file, change.line + 1)
-                    if tuid_tmp == None:
-                        new_tuid = self.tuid()
-                        latest_tuid = new_tuid
-                        list_to_insert.append((new_tuid, cset, file, change.line + 1))
-                    else:
-                        new_tuid = tuid_tmp
+                    new_tuid = self.tuid()
+                    list_to_insert.append((new_tuid, cset, file, change.line + 1))
                     new_ann = add_one(TuidMap(new_tuid, change.line + 1), new_ann)
                 elif change.action == "-":
                     new_ann = remove_one(change.line + 1, new_ann)
@@ -1155,20 +1124,19 @@ class TUIDService:
                         )
 
                         backwards = False
-                        if len(csets_to_proc) >= 1 and revision == csets_to_proc[0][1]:
-                            backwards = True
-
-                            # Reverse the list, we apply the frontier
-                            # diff first when going backwards.
-                            csets_to_proc = csets_to_proc[::-1]
-                            Log.note("Applying diffs backwards...")
-
-                        # Going either forward or backwards requires
-                        # us to remove the first revision, which is
-                        # either the requested revision if we are going
-                        # backwards or the current frontier, if we are
-                        # going forward.
-                        csets_to_proc = csets_to_proc[1:]
+                        if len(csets_to_proc) >= 1:
+                            if revision == csets_to_proc[0][1]:
+                                backwards = True
+                                # Reverse the list, we apply the frontier
+                                # diff first when going backwards.
+                                # Also we remove the target revision.
+                                csets_to_proc = csets_to_proc[::-1][:-1]
+                                Log.note("Applying diffs backwards...")
+                            else:
+                                # Going forward requires us to remove
+                                # the first revision, which is
+                                # the current frontier.
+                                csets_to_proc = csets_to_proc[1:]
 
                         # Apply the diffs
                         for diff_count, (_, rev) in enumerate(csets_to_proc):
@@ -1282,7 +1250,7 @@ class TUIDService:
                         tmp_ann = self._get_annotation(rev, filename)
                         if not tmp_ann and tmp_ann != "":
                             recomputed_inserts.append((rev, filename, string_tuids))
-                        else:
+                        elif rev == revision:
                             anns_added_by_other_thread[filename] = self.destringify_tuids(tmp_ann)
 
                     if len(recomputed_inserts) <= 0:
@@ -1445,13 +1413,12 @@ class TUIDService:
                     continue
 
                 # If it's not defined at this revision, we need to add it in
-                if file_length == -1:
+                if file_length == 0:
                     Log.note(
                         "Inserting dummy entry for file={{file}} revision={{cset}}",
                         file=file,
                         cset=revision,
                     )
-                    # self.insert_tuid_dummy(revision, file)
                     self.insert_annotate_dummy(revision, file)
                     results.append((file, []))
                     continue
@@ -1467,6 +1434,7 @@ class TUIDService:
                 self.insert_annotations(entry)
                 results.append((copy.deepcopy(file), copy.deepcopy(tuids)))
 
+            self._insert_max_tuid()
         return results
 
     def _daemon(self, please_stop, only_coverage_revisions=False):
@@ -1592,17 +1560,6 @@ class TUIDService:
 
             if not ran_changesets:
                 (please_stop | Till(seconds=DAEMON_WAIT_AT_NEWEST.seconds)).wait()
-
-
-TEMPORAL_SCHEMA = {
-    "settings": {"index.number_of_replicas": 1, "index.number_of_shards": 1},
-    "mappings": {
-        "temporaltype": {
-            "_all": {"enabled": False},
-            "properties": {"tuid": {"type": "integer", "store": True}},
-        }
-    },
-}
 
 
 ANNOTATIONS_SCHEMA = {
