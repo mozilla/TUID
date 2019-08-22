@@ -1419,7 +1419,6 @@ class TUIDService:
                         file=file,
                         cset=revision,
                     )
-                    # self.insert_tuid_dummy(revision, file)
                     self.insert_annotate_dummy(revision, file)
                     results.append((file, []))
                     continue
