@@ -33,6 +33,6 @@ Apart from coding, It was a wonderful learning experience. Taking this summer pr
 First and foremost I would like to thank my mentors Kyle and Greg. Despite the significant time zone difference, they were always there to answer my questions and provide suggestions. And I can't overstate how wonderful it is to work with the Mozillian-community. Finally, I'd like to thank the GSoC program, which provided me with a platform where I could undertake this project and have a memorable experience in doing so.
 
 ## Future Work
-To move the code to production and make it work there.
-Timeout the requests if they take too long to respond.
-Optimize the existing code with the help of better libraries or refactoring.
+* To move the code to production and make it work there.
+* Timeout the requests if they take too long to respond.
+* Optimize the existing code with the help of better libraries or refactoring.
