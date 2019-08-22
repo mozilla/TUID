@@ -87,10 +87,7 @@ class TUIDService:
             self.num_requests = 0
             self.ann_threads_running = 0
             self.service_threads_running = 0
-            query = {"size": 0, "aggs": {"value": {"max": {"field": "tuid"}}}}
-            self.next_tuid = int(
-                coalesce(eval(str(self.temporal.search(query).aggregations.value.value)), 0) + 1
-            )
+            self.next_tuid = coalesce(self.conn.get_one("SELECT max(tuid) FROM temporal")[0], 1)
             self.total_locker = Lock()
             self.temporal_locker = Lock()
             self.total_files_requested = 0
@@ -124,18 +121,6 @@ class TUIDService:
         :return: None
         """
 
-        temporal = self.esconfig.temporal
-        set_default(temporal, {"schema": TEMPORAL_SCHEMA})
-        # what would be the _id here
-        self.temporal = self.es_temporal.get_or_create_index(kwargs=temporal)
-        self.temporal.refresh()
-
-        total = self.temporal.search({"size": 0})
-        while not total.hits:
-            total = self.temporal.search({"size": 0})
-        with suppress_exception:
-            self.temporal.add_alias()
-
         annotations = self.esconfig.annotations
         set_default(annotations, {"schema": ANNOTATIONS_SCHEMA})
         # what would be the _id here
@@ -162,30 +147,23 @@ class TUIDService:
             );"""
             )
 
+            t.execute(
+                """
+            CREATE TABLE temporal (
+                id        INTEGER,
+                tuid      INTEGER,
+                PRIMARY KEY(id)
+            );"""
+            )
+
         Log.note("Tables created successfully")
 
-    def _query_result_size(self, terms):
-        query = {"size": 0, "query": {"terms": terms}}
-        return query
-
-    def _dummy_tuid_exists(self, file_name, rev):
-        # True if dummy, false if not.
-        # None means there is no entry.
-        query = {
-            "_source": {"includes": ["tuid"]},
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"file": file_name}},
-                        {"term": {"revision": rev}},
-                        {"term": {"line": 0}},
-                    ]
-                }
-            },
-            "size": 0,
-        }
-        temp = self.temporal.search(query).hits.total
-        return 0 != temp
+    def _insert_max_tuid(self):
+        with self.conn.transaction() as transaction:
+            transaction.execute(
+                "INSERT OR REPLACE INTO temporal (id, tuid) VALUES (?, ?)",
+                (1, quote_value(self.next_tuid)),
+            )
 
     def _dummy_annotate_exists(self, file_name, rev):
         # True if dummy, false if not.
@@ -200,16 +178,6 @@ class TUIDService:
         temp = self.annotations.search(query).hits.total
         return 0 != temp
 
-    def _make_record_temporal(self, tuid, revision, file, line):
-        record = {
-            "_id": revision + file + str(line),
-            "tuid": tuid,
-            "revision": revision,
-            "file": file,
-            "line": line,
-        }
-        return {"value": record}
-
     def _make_record_annotations(self, revision, file, annotation):
         record = {
             "_id": revision + file,
@@ -218,16 +186,6 @@ class TUIDService:
             "annotation": annotation,
         }
         return {"value": record}
-
-    def insert_tuid_dummy(self, rev, file_name):
-        # Inserts a dummy tuid: (-1,rev,file_name,0)
-        if not self._dummy_tuid_exists(file_name, rev):
-            self.temporal.add(self._make_record_temporal(-1, rev[:12], file_name, 0))
-            self.temporal.refresh()
-            while not self._dummy_tuid_exists(file_name, rev[:12]):
-                Till(seconds=0.001).wait()
-                self.temporal.refresh()
-        return MISSING
 
     def insert_annotate_dummy(self, rev, file_name):
         # Inserts annotation dummy: (rev, file, '')
@@ -247,15 +205,6 @@ class TUIDService:
         )
         insert(self.annotations, records)
 
-    def _annotation_record_exists(self, rev, file):
-        query = {
-            "_source": {"includes": ["revision"]},
-            "query": {"bool": {"must": [{"term": {"revision": rev}}, {"term": {"file": file}}]}},
-            "size": 1,
-        }
-        temp = self.annotations.search(query).hits.hits[0]._source.revision
-        return temp
-
     def _get_annotation(self, rev, file):
         if isinstance(rev, list):
             filter = {"terms": {"revision": rev}}
@@ -269,24 +218,6 @@ class TUIDService:
         }
         r = self.annotations.search(query).hits.hits[0]
         return r._source.annotation
-
-    def _get_one_tuid(self, cset, path, line):
-        # Returns a single TUID if it exists else None
-        query = {
-            "_source": {"includes": ["tuid"]},
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"file": path}},
-                        {"term": {"revision": cset}},
-                        {"term": {"line": line}},
-                    ]
-                }
-            },
-            "size": 1,
-        }
-        temp = self.temporal.search(query).hits.hits[0]._source.tuid
-        return temp
 
     def _get_latest_revision(self, file, transaction):
         # Returns the latest revision that we
@@ -367,8 +298,10 @@ class TUIDService:
                 response = http.get(url, retry=RETRY, stream=True)
                 if response.status_code == 200:
                     line_count = 0
-                    for i in response.iter_lines():
+                    for line in response.iter_lines():
                         line_count += 1
+                    if not line:
+                        line_count -= 1
                     annotated_files[thread_num] = line_count
                 else:
                     annotated_files[thread_num] = 0
@@ -839,25 +772,15 @@ class TUIDService:
             f_diff = f_proc["changes"]
             for change in f_diff:
                 if change.action == "+":
-                    tuid_tmp = self._get_one_tuid(cset, file, change.line + 1)
-                    if tuid_tmp == None:
-                        new_tuid = self.tuid()
-                        list_to_insert.append((new_tuid, cset, file, change.line + 1))
-                    else:
-                        new_tuid = tuid_tmp
+                    new_tuid = self.tuid()
+                    list_to_insert.append((new_tuid, cset, file, change.line + 1))
                     new_ann = add_one(TuidMap(new_tuid, change.line + 1), new_ann)
                 elif change.action == "-":
                     new_ann = remove_one(change.line + 1, new_ann)
             break  # Found the file, exit searching
 
         if len(list_to_insert) > 0:
-            records = wrap(
-                [
-                    self._make_record_temporal(tuid, revision, file, line)
-                    for tuid, file, revision, line in list_to_insert
-                ]
-            )
-            insert(self.temporal, records)
+            self._insert_max_tuid()
 
         return new_ann, file
 
@@ -1460,114 +1383,6 @@ class TUIDService:
         gc.collect()
         return results
 
-    def insert_tuids_with_duplicates(self, file, revision, new_lines, line_origins):
-        """
-        Inserts new lines while creating tuids and handles duplicate entries.
-        :param new_lines: A list of new line numbers.
-        :param line_origins: A list of all lines as tuples (file, revision, line)
-        :return:
-        """
-
-        """
-            HG Annotate Bug, Issue #58:
-            Here is where we assign the new tuids for the first
-            time we see duplicate entries - they are left
-            in `new_line_origins` after duplicates are found.
-            We only remove it from the lines to insert. In future
-            requests, the tuid will be duplicated in _get_tuids.
-        """
-
-        new_line_origins = {
-            line_num: (self.tuid(),) + line_origins[line_num - 1] for line_num in new_lines
-        }
-
-        duplicate_lines = {
-            line_num + 1: line
-            for line_num, line in enumerate(line_origins)
-            if line in line_origins[:line_num]
-        }
-        if len(duplicate_lines) > 0:
-            Log.note(
-                "Duplicates found in {{file}} at {{cset}}: {{dupes}}",
-                file=file,
-                cset=revision,
-                dupes=str(duplicate_lines),
-            )
-            lines_to_insert = [
-                line
-                for line_num, line in new_line_origins.items()
-                if line_num not in duplicate_lines
-            ]
-        else:
-            lines_to_insert = new_line_origins.values()
-
-        records = wrap(
-            [
-                self._make_record_temporal(tuid, revision, file, line)
-                for tuid, file, revision, line in lines_to_insert
-            ]
-        )
-        insert(self.temporal, records)
-
-        return new_line_origins
-
-    def get_new_lines(self, line_origins):
-        """
-        Checks if any lines were already added.
-        :param line_origins:
-        :return:
-        """
-        file_names = list(set([f for f, _, _ in line_origins]))
-        revs_to_find = list(set([rev for _, rev, _ in line_origins]))
-        lines_to_find = list(set([line for _, _, line in line_origins]))
-
-        query = {
-            "size": 10000,
-            "_source": {"includes": ["tuid", "file", "revision", "line"]},
-            "query": {
-                "bool": {
-                    "filter": [
-                        {"terms": {"file": file_names}},
-                        {"terms": {"revision": revs_to_find}},
-                        {"terms": {"line": lines_to_find}},
-                    ]
-                }
-            },
-        }
-        result = self.temporal.search(query)
-        existing_tuids_tmp = {r._id: r._source.tuid for r in result.hits.hits}
-
-        # Explicitly remove reference cycle
-        del file_names
-        del revs_to_find
-        del lines_to_find
-
-        # Recompute existing tuids based on line_origins
-        # entry ordering because we can't order them any other way
-        # since the `line` entry in the `temporal` table is relative
-        # to it's creation date, not the currently requested
-        # annotation.
-        existing_tuids = {}
-        for line_num, ann_entry in enumerate(line_origins):
-            file, rev, line = ann_entry
-            id = rev + file + str(line)
-            if id in existing_tuids_tmp:
-                existing_tuids[line_num + 1] = copy.deepcopy(existing_tuids_tmp[id])
-
-        new_lines = set([line_num + 1 for line_num, _ in enumerate(line_origins)]) - set(
-            existing_tuids.keys()
-        )
-        return new_lines, existing_tuids
-
-    def is_file_exists(self, file):
-        query = {
-            "_source": {"includes": ["revision"]},
-            "query": {"bool": {"must": [{"term": {"file": file}}]}},
-            "size": 1,
-        }
-        r = self.annotations.search(query).hits.hits[0]._source.revision
-        return r
-
     def _get_tuids(self, files, revision, annotated_files, repo=None):
         """
         Returns (TUID, line) tuples for a given file at a given revision.
@@ -1604,7 +1419,6 @@ class TUIDService:
                         file=file,
                         cset=revision,
                     )
-                    self.insert_tuid_dummy(revision, file)
                     self.insert_annotate_dummy(revision, file)
                     results.append((file, []))
                     continue
@@ -1620,6 +1434,7 @@ class TUIDService:
                 self.insert_annotations(entry)
                 results.append((copy.deepcopy(file), copy.deepcopy(tuids)))
 
+            self._insert_max_tuid()
         return results
 
     def _daemon(self, please_stop, only_coverage_revisions=False):
@@ -1745,22 +1560,6 @@ class TUIDService:
 
             if not ran_changesets:
                 (please_stop | Till(seconds=DAEMON_WAIT_AT_NEWEST.seconds)).wait()
-
-
-TEMPORAL_SCHEMA = {
-    "settings": {"index.number_of_replicas": 1, "index.number_of_shards": 1},
-    "mappings": {
-        "temporaltype": {
-            "_all": {"enabled": False},
-            "properties": {
-                "tuid": {"type": "integer", "store": True},
-                "revision": {"type": "keyword", "store": True},
-                "file": {"type": "keyword", "store": True},
-                "line": {"type": "integer", "store": True},
-            },
-        }
-    },
-}
 
 
 ANNOTATIONS_SCHEMA = {
