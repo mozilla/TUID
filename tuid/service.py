@@ -371,7 +371,7 @@ class TUIDService:
                         line_count += 1
                     annotated_files[thread_num] = line_count
                 else:
-                    annotated_files[thread_num] = -1
+                    annotated_files[thread_num] = 0
                     Log.warning("Failed to get the raw file data for the {{url}}", url=url)
             except Exception as e:
                 Log.warning(
@@ -1598,7 +1598,7 @@ class TUIDService:
                     continue
 
                 # If it's not defined at this revision, we need to add it in
-                if file_length <= 0:
+                if file_length == 0:
                     Log.note(
                         "Inserting dummy entry for file={{file}} revision={{cset}}",
                         file=file,
