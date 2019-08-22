@@ -134,3 +134,7 @@ has methods specifically suited for that project; but one method, called
 
 1. [Web-extension for Phabricator](https://github.com/gmierz/web-extensions/tree/master/tuid_annotate). See the README in that repo for installation instructions.
 
+## TUID Service Improvements as part of GSoC 2019
+
+Porting to Elasticsearch from SQLite and caching to make the service faster. Details can be found [here](https://github.com/mozilla/TUID/blob/dev/docs/GSoC_Final_Report_2019.md).
+
