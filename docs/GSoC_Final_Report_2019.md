@@ -15,6 +15,7 @@ Elasticsearch porting was completed, but due to the nature of the project, the p
 Porting the project to use Elasticsearch instead of SQLite was the starting point. Here, the difference between ES and SQLite was considered- the lack of transaction in ES, the way ES writes, the way ES deletes, etc. The recomputation of revnums was removed to allow negative revnums which eliminated unnecessary processing. We changed the structure of the annotations table to save TUID as an ordered list instead of a pair (line:tuid).
 
 The original idea was to incorporate multi-processing with two Flask servers. Due to synchronization issues, the focus shifted to have multiple processes in the service using DB.  One process acts as a tuid generator and others communicate to the generator process via a table to get TUIDs. Work on this was in progress when the synchronization issue again was a blocker. The synchronization issue referred here is that coordination of TUID creation across all the processes, to ensure TUIDs are unique would remove all the speed that was gained with a multi-process service. Also for each file, ordering of application of the changesets had to be ensured (so no parallelism possible). Each changeset may have multiple files, so if the update was done on all the files in a changeset, it had to be ensured that no other process was doing the same. One solution was to assign each file to one process. The issue was co-ordination among processes while the distribution of the same. An important issue that needs to be addressed is what should be the status of the process that was assigned a particular file gets terminated or blocked. The mechanism through which other processes get notified needs to be defined. It should be clear what amount of time other processes should wait for a blocked process. If the original process is resurrected or unblocked, we should define how it behaves with the original file to which it was associated. The problem was not fully understood. There could be other hidden issues which were not obvious.
+
 A decision was made not to have multiple processes. Instead, caching of TUIDs was started before the actual request comes in. A daemon was made to cache whenever ETL requests are not present in the system. To make the service even faster, work was done on the elimination of line origins logic from the service.
 
 The code has not reached production yet and hence the ETL machines do not use the new changes for now.
@@ -27,6 +28,7 @@ There were various challenges throughout the summer. These included Elasticsearc
 
 ## The Experience
 To get an opportunity like this was daunting but at the same time exhilarating. The experience while coding was joyous and so was the relationship with the mentors. The discussions about the problems were remarkable. It gave me a deep understanding of how to face and solve real-world problems.
+
 Apart from coding, It was a wonderful learning experience. Taking this summer project helped to connect to a great community where people work in serene yet supportive morale and is always ready to help each other.
 
 ## Acknowledgement
