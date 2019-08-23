@@ -40,11 +40,14 @@ def service(config, new_db):
 
 def test_transactions(service):
     # This should pass
-    old = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838")
-    new = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62")
+    old_revision = "6162f89a4838"
+    new_revision = "06b1a22c5e62"
+    file = ["/testing/geckodriver/CONTRIBUTING.md"]
+    service.clogger.initialize_to_range(old_revision, new_revision)
+    old = service.get_tuids_from_files(file, old_revision)[0]
+    new = service.get_tuids_from_files(file, new_revision)[0]
 
     assert len(old) == len(new)
-
     # listed_inserts = [None] * 100
     listed_inserts = [("test" + str(count), str(count)) for count, entry in enumerate(range(100))]
     listed_inserts.append("hello world")  # This should cause a transaction failure
@@ -109,7 +112,7 @@ def test_duplicate_ann_node_entries(service):
     # file we should have no duplicate tuids.
     rev = "8eab40c27903"
     files = ["browser/base/content/browser.xul"]
-    file, tuids = service.get_tuids(files, rev)[0]
+    file, tuids = service.get_tuids_from_files(files, rev)[0][0]
     tuids_arr = map_to_array(tuids)
     known_duplicate_lines = [[650, 709], [651, 710]]
     for first_duped_line, second_duped_line in known_duplicate_lines:
@@ -118,10 +121,11 @@ def test_duplicate_ann_node_entries(service):
     # Second call on a future _unknown_ annotation will give us
     # duplicate entries.
     future_rev = "e02ce918e160"
-    file, tuids = service.get_tuids(files, future_rev)[0]
+    service.clogger.initialize_to_range(rev, future_rev)
+    file, tuids = service.get_tuids_from_files(files, future_rev)[0][0]
     tuids_arr = map_to_array(tuids)
     for first_duped_line, second_duped_line in known_duplicate_lines:
-        assert tuids_arr[first_duped_line - 1] == tuids_arr[second_duped_line - 1]
+        assert tuids_arr[first_duped_line - 1] != tuids_arr[second_duped_line - 1]
 
 
 def test_tryrepo_tuids(service):
@@ -259,33 +263,43 @@ def test_multithread_service(service):
 
 
 def test_new_then_old(service):
+    old_rev = "6162f89a4838"
+    new_rev = "06b1a22c5e62"
+    file = ["/testing/geckodriver/CONTRIBUTING.md"]
+    service.clogger.initialize_to_range(old_rev, new_rev)
     # delete database then run this test
-    old = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "6162f89a4838")
-    new = service.get_tuids("/testing/geckodriver/CONTRIBUTING.md", "06b1a22c5e62")
-
+    old = service.get_tuids_from_files(file, old_rev)[0]
+    new = service.get_tuids_from_files(file, new_rev)[0]
     assert len(old) == len(new)
     for i in range(0, len(old)):
         assert old[i] == new[i]
 
 
 def test_tuids_on_changed_file(service):
+    rev1 = "a6fdd6eae583"
+    rev2 = "a0bd70eac827"
+    file = ["/taskcluster/ci/test/tests.yml"]
     # https://hg.mozilla.org/integration/mozilla-inbound/file/a6fdd6eae583/taskcluster/ci/test/tests.yml
-    old_lines = service.get_tuids("/taskcluster/ci/test/tests.yml", "a6fdd6eae583")  # 2205 lines
+    old_lines = service.get_tuids_from_files(file, rev1)[0]  # 2205 lines
+    service.clogger.initialize_to_range(rev1, rev2)
 
     # THE FILE HAS NOT CHANGED, SO WE EXPECT THE SAME SET OF TUIDs AND LINES TO BE RETURNED
     # https://hg.mozilla.org/integration/mozilla-inbound/file/a0bd70eac827/taskcluster/ci/test/tests.yml
-    same_lines = service.get_tuids("/taskcluster/ci/test/tests.yml", "a0bd70eac827")  # 2201 lines
+    same_lines = service.get_tuids_from_files(file, rev2)[0]  # 2201 lines
 
     # assertAlmostEqual PERFORMS A STRUCURAL COMPARISION
     assert same_lines == old_lines
 
 
 def test_removed_lines(service):
+    old_rev = "a6fdd6eae583"
+    new_rev = "c8dece9996b7"
+    service.clogger.initialize_to_range(old_rev, new_rev)
     # THE FILE HAS FOUR LINES REMOVED
     # https://hg.mozilla.org/integration/mozilla-inbound/rev/c8dece9996b7
     # https://hg.mozilla.org/integration/mozilla-inbound/file/c8dece9996b7/taskcluster/ci/test/tests.yml
-    old_lines = service.get_tuids("/taskcluster/ci/test/tests.yml", "a6fdd6eae583")  # 2205 lines
-    new_lines = service.get_tuids("/taskcluster/ci/test/tests.yml", "c8dece9996b7")  # 2201 lines
+    old_lines = service.get_tuids("/taskcluster/ci/test/tests.yml", old_rev)  # 2205 lines
+    new_lines = service.get_tuids("/taskcluster/ci/test/tests.yml", new_rev)  # 2201 lines
 
     # EXPECTING
     assert len(new_lines[0][1]) == len(old_lines[0][1]) - 4
@@ -297,8 +311,12 @@ def test_remove_file(service):
 
 
 def test_generic_1(service):
-    old = service.get_tuids("/gfx/ipc/GPUParent.cpp", "a5a2ae162869")[0][1]
-    new = service.get_tuids("/gfx/ipc/GPUParent.cpp", "3acb30b37718")[0][1]
+    old_rev = "7d799a93ed72"
+    new_rev = "3acb30b37718"
+    file = ["/gfx/ipc/GPUParent.cpp"]
+    service.clogger.initialize_to_range(old_rev, new_rev)
+    old = service.get_tuids_from_files(file, old_rev)[0][0][1]
+    new = service.get_tuids_from_files(file, new_rev)[0][0][1]
     assert len(old) == 467
     assert len(new) == 476
     for i in range(1, 207):
@@ -342,8 +360,6 @@ def test_forward_then_backward_diff(service):
 
         filter = {"term": {"revision": rev_curr}}
         delete(service.annotations, filter)
-        filter = {"terms": {"file": file}}
-        delete(service.temporal, filter)
 
         curr = service.get_tuids_from_files(file, rev_curr)[0][0][1]
         assert 653 == len(curr)
@@ -356,11 +372,14 @@ def test_forward_then_backward_diff(service):
 
 
 def test_file_with_line_replacement(service):
-    filter = {"term": {"file": "python/mozbuild/mozbuild/action/test_archive.py"}}
+    file = ["/python/mozbuild/mozbuild/action/test_archive.py"]
+    old_rev = "568e1959ca47"
+    new_rev = "e3f24e165618"
+    filter = {"term": {"file": file[0]}}
     delete(service.annotations, filter)
-    delete(service.temporal, filter)
-    new = service.get_tuids("/python/mozbuild/mozbuild/action/test_archive.py", "e3f24e165618")
-    old = service.get_tuids("/python/mozbuild/mozbuild/action/test_archive.py", "c730f942ce30")
+    service.clogger.initialize_to_range(old_rev, new_rev)
+    old = service.get_tuids_from_files(file, old_rev)[0]
+    new = service.get_tuids_from_files(file, new_rev)[0]
     new = new[0][1]
     old = old[0][1]
     assert 653 == len(new)
@@ -373,8 +392,12 @@ def test_file_with_line_replacement(service):
 
 
 def test_distant_rev(service):
-    old = service.get_tuids("/python/mozbuild/mozbuild/action/test_archive.py", "e3f24e165618")
-    new = service.get_tuids("/python/mozbuild/mozbuild/action/test_archive.py", "0d1e55d87931")
+    file = ["/python/mozbuild/mozbuild/action/test_archive.py"]
+    old_rev = "e3f24e165618"
+    new_rev = "0d1e55d87931"
+    service.clogger.initialize_to_range(old_rev, new_rev)
+    old = service.get_tuids_from_files(file, old_rev)[0]
+    new = service.get_tuids_from_files(file, new_rev)[0]
     new = new[0][1]
     old = old[0][1]
     assert len(old) == 653
@@ -388,49 +411,54 @@ def test_new_file(service):
     assert len(rev[0][1]) == 636
 
 
+@pytest.mark.skip(reason="We have removed the line origin concept")
 def test_bad_date_file(service):
     # The following changeset is dated February 14, 2018 but was pushed to mozilla-central
     # on March 8, 2018. It modifies the file: dom/media/MediaManager.cpp
     # https://hg.mozilla.org/mozilla-central/rev/07fad8b0b417d9ae8580f23d697172a3735b546b
-    change_one = service.get_tuids(
-        "dom/media/MediaManager.cpp", "07fad8b0b417d9ae8580f23d697172a3735b546b"
-    )[0][1]
-
+    service.clogger.initialize_to_range("42c6ec43f782", "7a6bc227dc03")
+    file = ["dom/media/MediaManager.cpp"]
+    change_rev = "07fad8b0b417d9ae8580f23d697172a3735b546b"
+    change_one = service.get_tuids_from_files(file, change_rev)[0][0][1]
     # Insert a change in between these dates to throw us off.
     # https://hg.mozilla.org/mozilla-central/rev/0451fe123f5b
-    change_two = service.get_tuids("dom/media/MediaManager.cpp", "0451fe123f5b")[0][1]
+    change_two = service.get_tuids_from_files(file, "0451fe123f5b")
 
     # Add the file just before these changes.
     # https://hg.mozilla.org/mozilla-central/rev/42c6ec43f782
-    change_prev = service.get_tuids("dom/media/MediaManager.cpp", "42c6ec43f782")[0][1]
+    change_prev = service.get_tuids_from_files(file, "42c6ec43f782")
 
     # First revision (07fad8b0b417d9ae8580f23d697172a3735b546b) should be equal to the
     # tuids for it's child dated March 6.
     # https://hg.mozilla.org/mozilla-central/rev/7a6bc227dc03
-    earliest_rev = service.get_tuids("dom/media/MediaManager.cpp", "7a6bc227dc03")[0][1]
+    earliest_rev = service.get_tuids_from_files(file, "7a6bc227dc03")[0][0][1]
 
     assert len(change_one) == len(earliest_rev)
     for i in range(0, len(change_one)):
         assert change_one[i] == earliest_rev[i]
 
 
+@pytest.mark.skip(reason="We have removed the line origin concept")
 def test_multi_parent_child_changes(service):
     # For this file: toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp
     # Multi-parent, multi-child change: https://hg.mozilla.org/mozilla-central/log/0ef34a9ec4fbfccd03ee0cfb26b182c03e28133a
-    earliest_rev = service.get_tuids(
-        "toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp",
+    service.clogger.initialize_to_range("bb6db24a20dd", "0ef34a9ec4fb")
+    service.clogger.initialize_to_range("bb6db24a20dd", "39717163c6c9", delete_old=False)
+
+    earliest_rev = service.get_tuids_from_files(
+        ["toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp"],
         "0ef34a9ec4fbfccd03ee0cfb26b182c03e28133a",
-    )[0][1]
+    )[0][0][1]
 
     # A past revision: https://hg.mozilla.org/mozilla-central/rev/bb6db24a20dd
-    past_rev = service.get_tuids(
-        "toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp", "bb6db24a20dd"
-    )[0][1]
+    past_rev = service.get_tuids_from_files(
+        ["toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp"], "bb6db24a20dd"
+    )[0][0][1]
 
     # Check it on the child which doesn't modify it: https://hg.mozilla.org/mozilla-central/rev/39717163c6c9
-    next_rev = service.get_tuids(
-        "toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp", "39717163c6c9"
-    )[0][1]
+    next_rev = service.get_tuids_from_files(
+        ["toolkit/components/printingui/ipc/PrintProgressDialogParent.cpp"], "39717163c6c9"
+    )[0][0][1]
 
     assert len(earliest_rev) == len(next_rev)
     for i in range(0, len(earliest_rev)):
@@ -681,8 +709,9 @@ def test_one_http_call_required(service):
     )  # Useful in testing
 
     with service.conn.transaction() as t:
-        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(proc_files))
-        filter = {"terms": {"file": proc_files}}
+        temp = [i.lstrip("/") for i in proc_files]
+        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(temp))
+        filter = {"terms": {"file": temp}}
         delete(service.annotations, filter)
 
     Log.note("Number of files to process: {{flen}}", flen=len(files))
