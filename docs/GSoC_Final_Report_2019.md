@@ -20,7 +20,7 @@ A decision was made not to have multiple processes. Instead, caching of TUIDs wa
 
 The code has not reached production yet and hence the ETL machines do not use the new changes for now.
 
-Link to the PRs: [Click here](https://github.com/mozilla/TUID/pulls?q=is%3Apr+author%3Aajupazhamayil)
+Link to the PRs: [Click here](https://github.com/mozilla/TUID/pulls?utf8=%E2%9C%93&q=is%3Apr+author%3Aajupazhamayil+created%3A%3C2019-08-25)
 
 
 ## Challenges
