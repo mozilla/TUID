@@ -395,7 +395,7 @@ def _iadd(self, other):
     return self
 
 
-data_types = (Data, dict)  # TYPES TO HOLD DATA
+data_types = (dict, Data)  # TYPES TO HOLD DATA
 
 
 def register_data(type_):
@@ -404,7 +404,8 @@ def register_data(type_):
     :return:
     """
     global data_types
-    data_types = tuple(set(data_types + (type_,)))
+    if type_ not in data_types:
+        data_types = data_types + (type_,)
 
 
 def is_data(d):

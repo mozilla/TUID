@@ -10,6 +10,7 @@
 from __future__ import absolute_import, division, unicode_literals
 
 from mo_dots import Data
+from mo_dots.datas import register_data
 
 
 class Revision(Data):
@@ -23,6 +24,9 @@ class Revision(Data):
             other.branch.name.lower(),
             other.changeset.id[:12],
         )
+
+
+register_data(Revision,)
 
 
 revision_schema = {

@@ -31,6 +31,7 @@ from mo_times import Date, MINUTE, Timer, HOUR
 from pyLibrary.convert import quote2string, value2number
 from pyLibrary.env import http
 
+DEBUG = True
 DEBUG_METADATA_UPDATE = False
 
 ES_STRUCT = ["object", "nested"]
@@ -319,6 +320,10 @@ class Index(Features):
             if '_id' in r or 'value' not in r:  # I MAKE THIS MISTAKE SO OFTEN, I NEED A CHECK
                 Log.error('Expecting {"id":id, "value":document} form.  Not expecting _id')
             id, version, json_bytes = self.encode(r)
+
+            if DEBUG and not json_bytes.startswith('{'):
+                self.encode(r)
+                Log.error("string {{doc}} will not be accepted as a document", doc=json_bytes)
 
             if version:
                 yield unicode2utf8(value2json({"index": {"_id": id, "version": int(version), "version_type": "external_gte"}}))

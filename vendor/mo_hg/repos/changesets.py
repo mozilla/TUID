@@ -10,6 +10,7 @@
 from __future__ import absolute_import, division, unicode_literals
 
 from mo_dots import Data
+from mo_dots.datas import register_data
 
 
 class Changeset(Data):
@@ -20,3 +21,7 @@ class Changeset(Data):
         if other == None:
             return False
         return self.id == other.id
+
+
+register_data(Changeset)
+
