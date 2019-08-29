@@ -38,7 +38,7 @@ def app():
             "TUID app", ["python", "tuid/app.py"], env={str("PYTHONPATH"): pythonpath}, debug=True
         )
         for line in app_process.stderr:
-            if line.startswith(b" * Running on "):
+            if line.startswith(" * Running on "):
                 break
     yield
     app_process.stop()

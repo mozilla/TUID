@@ -50,9 +50,7 @@ class AnnotateFile(SourceFile, object):
                 new_lines.append(line_obj)
                 continue
             new_line_obj = TuidLine(
-                TuidMap(None, line_obj.line),
-                filename=line_obj.filename,
-                is_new_line=True,
+                TuidMap(None, line_obj.line), filename=line_obj.filename, is_new_line=True
             )
             new_lines.append(new_line_obj)
         self.lines = new_lines
@@ -109,9 +107,7 @@ class AnnotateFile(SourceFile, object):
 
                 records = wrap(
                     [
-                        self.tuid_service._make_record_temporal(
-                            tuid, revision, file, line
-                        )
+                        self.tuid_service._make_record_temporal(tuid, revision, file, line)
                         for tuid, file, revision, line in insert_entries
                     ]
                 )
@@ -150,7 +146,7 @@ def insert_into_db_chunked(transaction, data, cmd, sql_chunk_size=500):
     #   "INSERT INTO temporal (tuid, file, revision, line) VALUES "
     #
     # `data` must be a list of tuples.
-    for _, inserts_list in jx.groupby(data, size=sql_chunk_size):
+    for _, inserts_list in jx.chunk(data, size=sql_chunk_size):
         transaction.execute(cmd + sql_list(quote_set(entry) for entry in inserts_list))
 
 
@@ -183,9 +179,7 @@ def wait_until(index, condition):
 def delete(index, filter):
     index.delete_record(filter)
     index.refresh()
-    wait_until(
-        index, lambda: index.search({"size": 0, "query": filter}).hits.total == 0
-    )
+    wait_until(index, lambda: index.search({"size": 0, "query": filter}).hits.total == 0)
 
 
 def insert(index, records):

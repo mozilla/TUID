@@ -332,7 +332,7 @@ class Clogger:
             if not tmp:
                 fmt_insert_list.append(cset_entry)
 
-        # for _, tmp_insert_list in jx.groupby(fmt_insert_list, size=SQL_CSET_BATCH_SIZE):
+        # for _, tmp_insert_list in jx.chunk(fmt_insert_list, size=SQL_CSET_BATCH_SIZE):
         records = wrap(
             [
                 self._make_record_csetlog(revnum, revision, timestamp)
@@ -643,7 +643,7 @@ class Clogger:
                         (tip_revision),
                     )
 
-                for _, fs in jx.groupby(files_to_update, size=CACHING_BATCH_SIZE):
+                for _, fs in jx.chunk(files_to_update, size=CACHING_BATCH_SIZE):
                     if self.caching_signal._go == False:
                         break
                     files = [f[0] for f in fs]
