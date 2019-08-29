@@ -153,7 +153,7 @@ class Process(object):
     def _writer(self, pipe, send, please_stop):
         while not please_stop:
             line = send.pop(till=please_stop)
-            if line == THREAD_STOP:
+            if line is THREAD_STOP:
                 please_stop.go()
                 break
 
@@ -202,11 +202,9 @@ if "windows" in platform.system().lower():
     def cmd():
         return "%windir%\system32\cmd.exe"
 
-    if PY2:
-        def to_text(value):
-            return value.decode("latin1")
-    else:
-        Log.error("do not know windows stdout in py3")
+    def to_text(value):
+        return value.decode("latin1")
+
 else:
     cmd_escape = strings.quote
 

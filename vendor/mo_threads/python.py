@@ -61,7 +61,7 @@ class Python(object):
     def _daemon(self, please_stop):
         while not please_stop:
             line = self.process.stdout.pop(till=please_stop)
-            if line == THREAD_STOP:
+            if line is THREAD_STOP:
                 break
             try:
                 data = json2value(line.decode('utf8'))
@@ -83,7 +83,7 @@ class Python(object):
         while not please_stop:
             try:
                 line = self.process.stderr.pop(till=please_stop)
-                if line == THREAD_STOP:
+                if line is THREAD_STOP:
                     please_stop.go()
                     break
                 Log.note("Error line from {{name}}({{pid}}): {{line}}", line=line, name=self.process.name, pid=self.process.pid)
