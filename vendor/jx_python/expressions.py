@@ -76,6 +76,7 @@ from jx_base.expressions import (
     StringOp as StringOp_,
     SubOp as SubOp_,
     SuffixOp as SuffixOp_,
+    simplified,
     TRUE,
     TrueOp as TrueOp_,
     TupleOp as TupleOp_,
@@ -460,7 +461,7 @@ class LengthOp(LengthOp_):
 class FirstOp(FirstOp_):
     def to_python(self, not_null=False, boolean=False, many=False):
         value = Python[self.term].to_python()
-        return "first(listwrap(" + value + "))"
+        return "listwrap(" + value + ")[0]"
 
 
 class NumberOp(NumberOp_):
@@ -676,6 +677,40 @@ class SplitOp(SplitOp_):
 
 
 class FindOp(FindOp_):
+
+    @simplified
+    def partial_eval(self):
+        index = self.lang[BasicIndexOfOp([
+            self.value,
+            self.find,
+            self.start
+        ])].partial_eval()
+
+        output = self.lang[WhenOp(
+            OrOp([
+                self.value.missing(),
+                self.find.missing(),
+                BasicEqOp([index, Literal(-1)])
+            ]),
+            **{"then": self.default, "else": index}
+        )].partial_eval()
+        return output
+
+    def missing(self):
+        output = AndOp([
+            self.default.missing(),
+            OrOp([
+                self.value.missing(),
+                self.find.missing(),
+                EqOp([BasicIndexOfOp([
+                    self.value,
+                    self.find,
+                    self.start
+                ]), Literal(-1)])
+            ])
+        ]).partial_eval()
+        return output
+
     def to_python(self, not_null=False, boolean=False, many=False):
         # [Null if f==-1 else f for f in [(self.value.find(self.find))]][0]
         return assign_and_eval(

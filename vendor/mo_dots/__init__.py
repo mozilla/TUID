@@ -533,10 +533,7 @@ def unwrap(v):
         return None
     elif _type is DataObject:
         d = _get(v, OBJ)
-        if _get(d, CLASS) in data_types:
-            return d
-        else:
-            return v
+        return d
     elif _type in generator_types:
         return (unwrap(vv) for vv in v)
     else:

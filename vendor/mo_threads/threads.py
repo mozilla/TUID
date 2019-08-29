@@ -22,6 +22,7 @@ from time import sleep
 from mo_dots import Data, coalesce, unwraplist
 from mo_future import allocate_lock, get_function_name, get_ident, start_new_thread, text_type, decorate
 from mo_logs import Except, Log
+
 from mo_threads.lock import Lock
 from mo_threads.profiles import CProfiler, write_profiles
 from mo_threads.signal import AndSignals, Signal
@@ -66,12 +67,14 @@ class AllThread(object):
             Log.error("Problem in child threads", cause=exceptions)
 
 
-    def add(self, target, *args, **kwargs):
+    def add(self, name, target, *args, **kwargs):
         """
         target IS THE FUNCTION TO EXECUTE IN THE THREAD
         """
-        t = Thread.run(target.__name__, target, *args, **kwargs)
+        t = Thread.run(name, target, *args, **kwargs)
         self.threads.append(t)
+
+    run = add
 
 
 class BaseThread(object):
