@@ -217,12 +217,6 @@ else:
     def to_text(value):
         return value.decode("latin1")
 
-    if PY2:
-        def to_text(value):
-            return value.decode("latin1")
-    else:
-        Log.error("do not know linux stdout in py3")
-
 
 class Command(object):
 
