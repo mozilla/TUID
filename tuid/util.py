@@ -67,37 +67,8 @@ class AnnotateFile(SourceFile, object):
                 all_new_lines.append(line_obj.line)
             line_origins.append(line_entry)
 
-        # Get the new lines, excluding those that have existing tuids
-        existing_tuids = {}
-        if len(all_new_lines) > 0:
-            try:
-                query = {
-                    "size": 10000,
-                    "_source": {"includes": ["tuid", "file", "revision", "line"]},
-                    "query": {
-                        "bool": {
-                            "filter": [
-                                {"term": {"file": self.filename}},
-                                {"term": {"revision": revision}},
-                                {"terms": {"line": all_new_lines}},
-                            ]
-                        }
-                    },
-                }
-                result = self.tuid_service.temporal.search(query)
-                existing_tuids = {}
-
-                for r in result.hits.hits:
-                    s = r._source
-                    existing_tuids.update({s.line: s.tuid})
-            except Exception as e:
-                # Log takes out important output, use print instead
-                self.failed_file = True
-                print("Trying to find new lines: " + str(all_new_lines))
-                Log.error("Error encountered:", cause=e)
-
         insert_entries = []
-        insert_lines = set(all_new_lines) - set(existing_tuids.keys())
+        insert_lines = set(all_new_lines)
         if len(insert_lines) > 0:
             try:
                 insert_entries = [
@@ -105,13 +76,7 @@ class AnnotateFile(SourceFile, object):
                     for linenum in insert_lines
                 ]
 
-                records = wrap(
-                    [
-                        self.tuid_service._make_record_temporal(tuid, revision, file, line)
-                        for tuid, file, revision, line in insert_entries
-                    ]
-                )
-                insert(self.tuid_service.temporal, records)
+                self.tuid_service._insert_max_tuid()
             except Exception as e:
                 Log.note(
                     "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
@@ -123,11 +88,7 @@ class AnnotateFile(SourceFile, object):
 
         fmt_inserted_lines = {line: tuid for tuid, _, _, line in insert_entries}
         for line_obj in self.lines:
-            # If a tuid already exists for this line,
-            # replace, otherwise, use the newly created one.
-            if line_obj.line in existing_tuids:
-                line_obj.tuid = existing_tuids[line_obj.line]
-            elif line_obj.line in fmt_inserted_lines:
+            if line_obj.line in fmt_inserted_lines:
                 line_obj.tuid = fmt_inserted_lines[line_obj.line]
 
             if not line_obj.tuid:
@@ -139,15 +100,6 @@ class AnnotateFile(SourceFile, object):
                 )
                 self.failed_file = True
                 return
-
-
-def insert_into_db_chunked(transaction, data, cmd, sql_chunk_size=500):
-    # For the `cmd` object, we expect something like (don't forget the whitespace at the end):
-    #   "INSERT INTO temporal (tuid, file, revision, line) VALUES "
-    #
-    # `data` must be a list of tuples.
-    for _, inserts_list in jx.chunk(data, size=sql_chunk_size):
-        transaction.execute(cmd + sql_list(quote_set(entry) for entry in inserts_list))
 
 
 def map_to_array(pairs):

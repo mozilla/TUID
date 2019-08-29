@@ -101,10 +101,7 @@ class Clogger:
                     )
 
             self.init_db()
-            query = self.min_max_dsl("max")
-            self.next_revnum = (
-                coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)), 0) + 1
-            )
+            self.next_revnum = self.get_revnum_stats("max") + 1
 
             self.csets_todo_backwards = Queue(name="Clogger.csets_todo_backwards")
             self.caching_signal = Signal(name="Clogger.caching_signal")
@@ -149,14 +146,13 @@ class Clogger:
         except Exception as e:
             Log.warning("Cannot setup clogger: {{cause}}", cause=str(e))
 
-    def min_max_dsl(self, query_required):
+    def get_revnum_stats(self, query_required):
         query = None
         if query_required == "min":
             query = {"size": 0, "aggs": {"value": {"min": {"field": "revnum"}}}}
-
         elif query_required == "max":
             query = {"size": 0, "aggs": {"value": {"max": {"field": "revnum"}}}}
-        return query
+        return coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)), 0)
 
     def _query_result_size(self, terms):
         query = {"size": 0, "query": {"terms": terms}}
@@ -205,9 +201,7 @@ class Clogger:
         """
         :return: max revnum that was added
         """
-        query = self.min_max_dsl("max")
-        tmp = coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)), 0)
-        return tmp
+        return self.get_revnum_stats("max")
 
     def get_tip(self):
         query = {
@@ -308,11 +302,8 @@ class Clogger:
         :return:
         """
 
-        query = self.min_max_dsl("min")
-        current_min = coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)), 0)
-        query = self.min_max_dsl("max")
-        current_max = coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)), 0)
-
+        current_min = self.get_revnum_stats("min")
+        current_max = self.get_revnum_stats("max")
         direction = -1
         start = current_min - 1
         if number_forward:
@@ -444,11 +435,7 @@ class Clogger:
                 filter = {"match_all": {}}
                 delete(self.csetlog, filter)
 
-            # since no auto addition possible
-            query = self.min_max_dsl("max")
-            max_revnum = (
-                coalesce(eval(str(self.csetlog.search(query).aggregations.value.value)), 0) + 1
-            )
+            max_revnum = self.get_revnum_stats("max") + 1
             self.csetlog.add(self._make_record_csetlog(max_revnum, new_rev, -1))
             self.csetlog.refresh()
             while not self._get_revnum_exists(max_revnum):
