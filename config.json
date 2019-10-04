@@ -17,7 +17,7 @@
             "branches": {
                 "host": "http://localhost",
                 "port": 9201,
-                "index": "branches",
+                "index": "repo-branch",
                 "type": "branch",
                 "typed": false,
                 "timeout": 300,
@@ -52,7 +52,7 @@
             "csetLog": {
                 "host": "http://localhost",
                 "port": 9201,
-                "index": "csetlog",
+                "index": "tuid-csetlog",
                 "type": "csetlogtype",
                 "typed": false,
                 "timeout": 300,
