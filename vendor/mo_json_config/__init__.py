@@ -8,28 +8,26 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
+from mo_future import is_text, is_binary
 import os
-from collections import Mapping
 
 import mo_dots
-from mo_dots import set_default, wrap, unwrap
+from mo_dots import is_data, is_list, set_default, unwrap, wrap
 from mo_files import File
 from mo_files.url import URL
 from mo_future import text_type
 from mo_json import json2value
 from mo_json_config.convert import ini2value
-from mo_logs import Log, Except
+from mo_logs import Except, Log
 
 DEBUG = False
 
 
 def get_file(file):
     file = File(file)
-    if os.sep == "\\":
+    if os.sep=="\\":
         return get("file:///" + file.abspath)
     else:
         return get("file://" + file.abspath)
@@ -45,16 +43,14 @@ def get(url):
 
     base = URL("")
     if url.startswith("file://") and url[7] != "/":
-        if os.sep == "\\":
+        if os.sep=="\\":
             base = URL("file:///" + os.getcwd().replace(os.sep, "/").rstrip("/") + "/.")
         else:
             base = URL("file://" + os.getcwd().rstrip("/") + "/.")
     elif url[url.find("://") + 3] != "/":
         Log.error("{{url}} must be absolute", url=url)
 
-    phase1 = _replace_ref(
-        wrap({"$ref": url}), base
-    )  # BLANK URL ONLY WORKS IF url IS ABSOLUTE
+    phase1 = _replace_ref(wrap({"$ref": url}), base)  # BLANK URL ONLY WORKS IF url IS ABSOLUTE
     try:
         phase2 = _replace_locals(phase1, [phase1])
         return wrap(phase2)
@@ -88,7 +84,7 @@ def _replace_ref(node, url):
     if url.path.endswith("/"):
         url.path = url.path[:-1]
 
-    if isinstance(node, Mapping):
+    if is_data(node):
         ref = None
         output = {}
         for k, v in node.items():
@@ -121,25 +117,19 @@ def _replace_ref(node, url):
         if ref.fragment:
             new_value = mo_dots.get_attr(new_value, ref.fragment)
 
-        DEBUG and Log.note(
-            "Replace {{ref}} with {{new_value}}", ref=ref, new_value=new_value
-        )
+        DEBUG and Log.note("Replace {{ref}} with {{new_value}}", ref=ref, new_value=new_value)
 
         if not output:
             output = new_value
-        elif isinstance(output, text_type):
-            Log.error(
-                "Can not handle set_default({{output}},{{new_value}})",
-                output=output,
-                new_value=new_value,
-            )
+        elif is_text(output):
+            Log.error("Can not handle set_default({{output}},{{new_value}})", output=output, new_value=new_value)
         else:
             output = unwrap(set_default(output, new_value))
 
         DEBUG and Log.note("Return {{output}}", output=output)
 
         return output
-    elif isinstance(node, list):
+    elif is_list(node):
         output = [_replace_ref(n, url) for n in node]
         # if all(p[0] is p[1] for p in zip(output, node)):
         #     return node
@@ -149,7 +139,7 @@ def _replace_ref(node, url):
 
 
 def _replace_locals(node, doc_path):
-    if isinstance(node, Mapping):
+    if is_data(node):
         # RECURS, DEEP COPY
         ref = None
         output = {}
@@ -170,12 +160,9 @@ def _replace_locals(node, doc_path):
             # RELATIVE
             for i, p in enumerate(frag):
                 if p != ".":
-                    if i > len(doc_path):
-                        Log.error(
-                            "{{frag|quote}} reaches up past the root document",
-                            frag=frag,
-                        )
-                    new_value = mo_dots.get_attr(doc_path[i - 1], frag[i::])
+                    if i>len(doc_path):
+                        Log.error("{{frag|quote}} reaches up past the root document",  frag=frag)
+                    new_value = mo_dots.get_attr(doc_path[i-1], frag[i::])
                     break
             else:
                 new_value = doc_path[len(frag) - 1]
@@ -190,7 +177,7 @@ def _replace_locals(node, doc_path):
         else:
             return unwrap(set_default(output, new_value))
 
-    elif isinstance(node, list):
+    elif is_list(node):
         candidate = [_replace_locals(n, [n] + doc_path) for n in node]
         # if all(p[0] is p[1] for p in zip(candidate, node)):
         #     return node
@@ -202,7 +189,6 @@ def _replace_locals(node, doc_path):
 ###############################################################################
 ## SCHEME LOADERS ARE BELOW THIS LINE
 ###############################################################################
-
 
 def _get_file(ref, url):
 
@@ -277,5 +263,6 @@ scheme_loaders = {
     "http": get_http,
     "file": _get_file,
     "env": _get_env,
-    "param": _get_param,
+    "param": _get_param
 }
+

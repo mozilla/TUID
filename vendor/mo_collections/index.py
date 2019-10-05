@@ -8,14 +8,11 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
-from collections import Mapping
 from copy import copy
 
-from mo_dots import wrap, unwrap, tuplewrap, get_attr
+from mo_dots import get_attr, is_data, is_sequence, tuplewrap, unwrap, wrap
 from mo_logs import Log
 
 
@@ -36,7 +33,7 @@ class Index(object):
 
     def __getitem__(self, key):
         try:
-            if isinstance(key, (list, tuple)) and len(key) < len(self._keys):
+            if is_sequence(key) and len(key) < len(self._keys):
                 # RETURN ANOTHER Index
                 raise NotImplementedError()
 
@@ -55,6 +52,7 @@ class Index(object):
         e.append(unwrap(val))
         self.count += 1
 
+
     def __contains__(self, key):
         expected = True if self[key] else False
         testing = self._test_contains(key)
@@ -66,7 +64,7 @@ class Index(object):
 
     def _test_contains(self, key):
         try:
-            if isinstance(key, (list, tuple)) and len(key) < len(self._keys):
+            if is_sequence(key) and len(key) < len(self._keys):
                 # RETURN ANOTHER Index
                 length = len(key)
                 key = value2key(self._keys[0:length:], key)
@@ -96,8 +94,8 @@ class Index(object):
             return self._data.keys()
 
     def items(self):
-        if len(self._keys) == 1:
-            return ((k[0], d) for k, d in self._data.items())
+        if len(self._keys)==1:
+            return ((k[0], d) for k,d in self._data.items())
         else:
             return self._data.items()
 
@@ -157,15 +155,15 @@ class Index(object):
 
 def value2key(keys, val):
     if len(keys) == 1:
-        if isinstance(val, Mapping):
-            return (get_attr(val, keys[0]),)
-        elif isinstance(val, (list, tuple)):
-            return (val[0],)
-        return (val,)
+        if is_data(val):
+            return get_attr(val, keys[0]),
+        elif is_sequence(val):
+            return val[0],
+        return val,
     else:
-        if isinstance(val, Mapping):
+        if is_data(val):
             return tuple(val[k] for k in keys)
-        elif isinstance(val, (list, tuple)):
+        elif is_sequence(val):
             return tuple(val)
         else:
             Log.error("do not know what to do here")

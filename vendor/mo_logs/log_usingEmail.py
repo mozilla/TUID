@@ -9,11 +9,9 @@
 #
 
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
-from mo_dots import listwrap, literal_field, Data
+from mo_dots import Data, listwrap, literal_field
 from mo_kwargs import override
 from mo_logs import Log
 from mo_logs.exceptions import ALARM, NOTE
@@ -26,6 +24,7 @@ from pyLibrary.env.emailer import Emailer
 
 
 class StructuredLogger_usingEmail(StructuredLogger):
+
     @override
     def __init__(
         self,
@@ -40,7 +39,7 @@ class StructuredLogger_usingEmail(StructuredLogger):
         cc=None,
         log_type="email",
         average_interval=HOUR,
-        kwargs=None,
+        kwargs=None
     ):
         """
         SEND WARNINGS AND ERRORS VIA EMAIL
@@ -100,13 +99,12 @@ class StructuredLogger_usingEmail(StructuredLogger):
                         from_address=self.settings.from_address,
                         to_address=listwrap(to_address),
                         subject=self.settings.subject,
-                        text_data="\n\n".join(content),
+                        text_data="\n\n".join(content)
                     )
 
             self.accumulation = []
         except Exception as e:
             Log.warning("Could not send", e)
         finally:
-            self.next_send = Date.now() + self.settings.average_interval * (
-                2 * Random.float()
-            )
+            self.next_send = Date.now() + self.settings.average_interval * (2 * Random.float())
+

@@ -7,26 +7,21 @@
 #
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
-from collections import Mapping
+from mo_future import is_text, is_binary
 from copy import copy
-
-from mo_dots import Data
-from mo_dots import FlatList
-from mo_dots import coalesce, Null
-from mo_dots import wrap, listwrap
-from mo_logs import Log
-from mo_math import Math
 
 from jx_base.dimensions import Dimension
 from jx_base.domains import Domain
+from jx_base.query import QueryOp, get_all_vars
 from jx_python.containers import Container
 from jx_python.expressions import TRUE
 from jx_python.namespace import Namespace, convert_list
-from jx_base.query import QueryOp, get_all_vars
+from mo_dots import Data, FlatList, Null, coalesce, is_data, is_list, listwrap, wrap
+from mo_future import text_type
+from mo_logs import Log
+import mo_math
 
 DEFAULT_LIMIT = 10
 
@@ -37,16 +32,17 @@ class Normal(Namespace):
     """
 
     def convert(self, expr):
-        if isinstance(expr, Mapping) and expr["from"]:
+        if is_data(expr) and expr["from"]:
             return self._convert_query(expr)
         return expr
+
 
     def _convert_query(self, query):
         # if not isinstance(query["from"], Container):
         #     Log.error('Expecting from clause to be a Container')
         query = wrap(query)
 
-        output = QueryOp("from", None)
+        output = QueryOp(None)
         output["from"] = self._convert_from(query["from"])
 
         output.format = query.format
@@ -55,19 +51,12 @@ class Normal(Namespace):
             output.select = convert_list(self._convert_select, query.select)
         else:
             if query.edges or query.groupby:
-                output.select = {
-                    "name": "count",
-                    "value": ".",
-                    "aggregate": "count",
-                    "default": 0,
-                }
+                output.select = {"name": "count", "value": ".", "aggregate": "count", "default": 0}
             else:
                 output.select = {"name": "__all__", "value": "*", "aggregate": "none"}
 
         if query.groupby and query.edges:
-            Log.error(
-                "You can not use both the `groupby` and `edges` clauses in the same query!"
-            )
+            Log.error("You can not use both the `groupby` and `edges` clauses in the same query!")
         elif query.edges:
             output.edges = convert_list(self._convert_edge, query.edges)
             output.groupby = None
@@ -83,48 +72,41 @@ class Normal(Namespace):
         output.sort = self._convert_sort(query.sort)
 
         output.limit = coalesce(query.limit, DEFAULT_LIMIT)
-        if not Math.is_integer(output.limit) or output.limit < 0:
+        if not mo_math.is_integer(output.limit) or output.limit < 0:
             Log.error("Expecting limit >= 0")
 
         output.isLean = query.isLean
 
         # DEPTH ANALYSIS - LOOK FOR COLUMN REFERENCES THAT MAY BE DEEPER THAN
         # THE from SOURCE IS.
-        vars = get_all_vars(
-            output, exclude_where=True
-        )  # WE WILL EXCLUDE where VARIABLES
+        vars = get_all_vars(output, exclude_where=True)  # WE WILL EXCLUDE where VARIABLES
         for c in query.columns:
             if c.name in vars and len(c.nested_path) != 1:
-                Log.error(
-                    "This query, with variable {{var_name}} is too deep",
-                    var_name=c.name,
-                )
+                Log.error("This query, with variable {{var_name}} is too deep", var_name=c.name)
 
         output.having = convert_list(self._convert_having, query.having)
 
         return output
 
     def _convert_from(self, frum):
-        if isinstance(frum, text_type):
+        if is_text(frum):
             return Data(name=frum)
-        elif isinstance(frum, (Container, QueryOp)):
+        elif is_op(frum, (Container, Variable)):
             return frum
         else:
             Log.error("Expecting from clause to be a name, or a container")
 
     def _convert_select(self, select):
-        if isinstance(select, text_type):
+        if is_text(select):
             return Data(
-                name=select.rstrip(
-                    "."
-                ),  # TRAILING DOT INDICATES THE VALUE, BUT IS INVALID FOR THE NAME
+                name=select.rstrip("."),  # TRAILING DOT INDICATES THE VALUE, BUT IS INVALID FOR THE NAME
                 value=select,
-                aggregate="none",
+                aggregate="none"
             )
         else:
             select = wrap(select)
             output = copy(select)
-            if not select.value or isinstance(select.value, text_type):
+            if not select.value or is_text(select.value):
                 if select.value == ".":
                     output.name = coalesce(select.name, select.aggregate)
                 else:
@@ -133,30 +115,32 @@ class Normal(Namespace):
                 Log.error("Must give name to each column in select clause")
 
             if not output.name:
-                Log.error("expecting select to have a name: {{select}}", select=select)
+                Log.error("expecting select to have a name: {{select}}",  select=select)
 
-            output.aggregate = coalesce(
-                canonical_aggregates.get(select.aggregate), select.aggregate, "none"
-            )
+            output.aggregate = coalesce(canonical_aggregates.get(select.aggregate), select.aggregate, "none")
             return output
 
     def _convert_edge(self, edge):
-        if isinstance(edge, text_type):
-            return Data(name=edge, value=edge, domain=self._convert_domain())
+        if is_text(edge):
+            return Data(
+                name=edge,
+                value=edge,
+                domain=self._convert_domain()
+            )
         else:
             edge = wrap(edge)
-            if not edge.name and not isinstance(edge.value, text_type):
-                Log.error("You must name compound edges: {{edge}}", edge=edge)
+            if not edge.name and not is_text(edge.value):
+                Log.error("You must name compound edges: {{edge}}",  edge= edge)
 
-            if isinstance(edge.value, (Mapping, list)) and not edge.domain:
+            if edge.value.__class__ in (Data, dict, list, FlatList) and not edge.domain:
                 # COMPLEX EDGE IS SHORT HAND
-                domain = self._convert_domain()
+                domain =self._convert_domain()
                 domain.dimension = Data(fields=edge.value)
 
                 return Data(
                     name=edge.name,
                     allowNulls=False if edge.allowNulls is False else True,
-                    domain=domain,
+                    domain=domain
                 )
 
             domain = self._convert_domain(edge.domain)
@@ -165,31 +149,30 @@ class Normal(Namespace):
                 value=edge.value,
                 range=edge.range,
                 allowNulls=False if edge.allowNulls is False else True,
-                domain=domain,
+                domain=domain
             )
 
     def _convert_group(self, column):
-        if isinstance(column, text_type):
-            return wrap(
-                {"name": column, "value": column, "domain": {"type": "default"}}
-            )
+        if is_text(column):
+            return wrap({
+                "name": column,
+                "value": column,
+                "domain": {"type": "default"}
+            })
         else:
             column = wrap(column)
-            if (
-                column.domain and column.domain.type != "default"
-            ) or column.allowNulls != None:
+            if (column.domain and column.domain.type != "default") or column.allowNulls != None:
                 Log.error("groupby does not accept complicated domains")
 
-            if not column.name and not isinstance(column.value, text_type):
-                Log.error("You must name compound edges: {{edge}}", edge=column)
+            if not column.name and not is_text(column.value):
+                Log.error("You must name compound edges: {{edge}}",  edge= column)
 
-            return wrap(
-                {
-                    "name": coalesce(column.name, column.value),
-                    "value": column.value,
-                    "domain": {"type": "default"},
-                }
-            )
+            return wrap({
+                "name": coalesce(column.name, column.value),
+                "value": column.value,
+                "domain": {"type": "default"}
+            })
+
 
     def _convert_domain(self, domain=None):
         if not domain:
@@ -203,7 +186,7 @@ class Normal(Namespace):
             domain = domain.copy()
             domain.name = domain.type
 
-        if not isinstance(domain.partitions, list):
+        if not is_list(domain.partitions):
             domain.partitions = list(domain.partitions)
 
         return Domain(**domain)
@@ -212,12 +195,16 @@ class Normal(Namespace):
         if range == None:
             return None
 
-        return Data(min=range.min, max=range.max)
+        return Data(
+            min=range.min,
+            max=range.max
+        )
 
     def _convert_where(self, where):
         if where == None:
             return TRUE
         return where
+
 
     def _convert_window(self, window):
         return Data(
@@ -227,8 +214,9 @@ class Normal(Namespace):
             sort=self._convert_sort(window.sort),
             aggregate=window.aggregate,
             range=self._convert_range(window.range),
-            where=self._convert_where(window.where),
+            where=self._convert_where(window.where)
         )
+
 
     def _convert_sort(self, sort):
         return normalize_sort(sort)
@@ -244,23 +232,26 @@ def normalize_sort(sort=None):
 
     output = FlatList()
     for s in listwrap(sort):
-        if isinstance(s, text_type) or Math.is_integer(s):
+        if is_text(s) or mo_math.is_integer(s):
             output.append({"value": s, "sort": 1})
-        elif not s.field and not s.value and s.sort == None:
-            # ASSUME {name: sort} FORM
+        elif not s.field and not s.value and s.sort==None:
+            #ASSUME {name: sort} FORM
             for n, v in s.items():
                 output.append({"value": n, "sort": sort_direction[v]})
         else:
-            output.append(
-                {
-                    "value": coalesce(s.field, s.value),
-                    "sort": coalesce(sort_direction[s.sort], 1),
-                }
-            )
+            output.append({"value": coalesce(s.field, s.value), "sort": coalesce(sort_direction[s.sort], 1)})
     return wrap(output)
 
 
-sort_direction = {"asc": 1, "desc": -1, "none": 0, 1: 1, 0: 0, -1: -1, None: 1, Null: 1}
+sort_direction = {
+    "asc": 1,
+    "desc": -1,
+    "none": 0,
+    1: 1,
+    0: 0,
+    -1: -1,
+    None: 1
+}
 
 canonical_aggregates = {
     "none": "none",
@@ -281,5 +272,6 @@ canonical_aggregates = {
     "std_deviation": "std",
     "var": "variance",
     "variance": "variance",
-    "stats": "stats",
+    "stats": "stats"
 }
+

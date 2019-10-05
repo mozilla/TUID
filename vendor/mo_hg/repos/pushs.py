@@ -7,12 +7,14 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
 from mo_dots import Data
+from mo_dots.datas import register_data
 
 
 class Push(Data):
     pass
+
+
+register_data(Push)

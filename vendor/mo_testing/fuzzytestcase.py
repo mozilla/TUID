@@ -11,16 +11,17 @@ from __future__ import unicode_literals
 
 import types
 import unittest
-from collections import Mapping
 
-import mo_dots
+from jx_base.expressions import NULL, NullOp
 from mo_collections.unique_index import UniqueIndex
-from mo_dots import coalesce, literal_field, unwrap, wrap
-from mo_future import text_type
-from mo_future import zip_longest
-from mo_logs import Log, Except, suppress_exception
+import mo_dots
+from mo_dots import coalesce, is_container, is_list, literal_field, unwrap, wrap
+from mo_future import is_text, zip_longest
+from mo_json import is_data
+from mo_logs import Except, Log, suppress_exception
 from mo_logs.strings import expand_template
-from mo_math import Math
+import mo_math
+from mo_math import is_number, log10
 
 
 class FuzzyTestCase(unittest.TestCase):
@@ -38,55 +39,39 @@ class FuzzyTestCase(unittest.TestCase):
 
     def __init__(self, *args, **kwargs):
         unittest.TestCase.__init__(self, *args, **kwargs)
-        self.default_places = 15
+        self.default_places=15
+
 
     def set_default_places(self, places):
         """
         WHEN COMPARING float, HOW MANY DIGITS ARE SIGNIFICANT BY DEFAULT
         """
-        self.default_places = places
+        self.default_places=places
 
-    def assertAlmostEqual(
-        self, test_value, expected, msg=None, digits=None, places=None, delta=None
-    ):
+    def assertAlmostEqual(self, test_value, expected, msg=None, digits=None, places=None, delta=None):
         if delta or digits:
-            assertAlmostEqual(
-                test_value, expected, msg=msg, digits=digits, places=places, delta=delta
-            )
+            assertAlmostEqual(test_value, expected, msg=msg, digits=digits, places=places, delta=delta)
         else:
-            assertAlmostEqual(
-                test_value,
-                expected,
-                msg=msg,
-                digits=digits,
-                places=coalesce(places, self.default_places),
-                delta=delta,
-            )
+            assertAlmostEqual(test_value, expected, msg=msg, digits=digits, places=coalesce(places, self.default_places), delta=delta)
 
-    def assertEqual(
-        self, test_value, expected, msg=None, digits=None, places=None, delta=None
-    ):
-        self.assertAlmostEqual(
-            test_value, expected, msg=msg, digits=digits, places=places, delta=delta
-        )
+    def assertEqual(self, test_value, expected, msg=None, digits=None, places=None, delta=None):
+        self.assertAlmostEqual(test_value, expected, msg=msg, digits=digits, places=places, delta=delta)
 
     def assertRaises(self, problem, function, *args, **kwargs):
         try:
             function(*args, **kwargs)
         except Exception as e:
             f = Except.wrap(e)
-            if isinstance(problem, text_type):
+            if is_text(problem):
                 if problem in f:
                     return
                 Log.error(
                     "expecting an exception returning {{problem|quote}} got something else instead",
                     problem=problem,
-                    cause=f,
+                    cause=f
                 )
             elif not isinstance(f, problem) and not isinstance(e, problem):
-                Log.error(
-                    "expecting an exception of type {{type}} to be raised", type=problem
-                )
+                Log.error("expecting an exception of type {{type}} to be raised", type=problem)
             else:
                 return
 
@@ -98,89 +83,78 @@ def assertAlmostEqual(test, expected, digits=None, places=None, msg=None, delta=
     test = unwrap(test)
     expected = unwrap(expected)
     try:
-        if test is None and expected is None:
+        if test is None and (expected is NULL or expected is None):
             return
         elif test is expected:
             return
-        elif isinstance(expected, text_type):
-            assertAlmostEqualValue(
-                test, expected, msg=msg, digits=digits, places=places, delta=delta
-            )
+        elif is_text(expected):
+            assertAlmostEqualValue(test, expected, msg=msg, digits=digits, places=places, delta=delta)
         elif isinstance(test, UniqueIndex):
             if test ^ expected:
                 Log.error("Sets do not match")
-        elif isinstance(expected, Mapping) and isinstance(test, Mapping):
+        elif is_data(expected) and is_data(test):
             for k, v2 in unwrap(expected).items():
                 v1 = test.get(k)
-                assertAlmostEqual(
-                    v1, v2, msg=msg, digits=digits, places=places, delta=delta
-                )
-        elif isinstance(expected, Mapping):
+                assertAlmostEqual(v1, v2, msg=msg, digits=digits, places=places, delta=delta)
+        elif is_data(expected):
             for k, v2 in expected.items():
-                if isinstance(k, text_type):
+                if is_text(k):
                     v1 = mo_dots.get_attr(test, literal_field(k))
                 else:
                     v1 = test[k]
-                assertAlmostEqual(
-                    v1, v2, msg=msg, digits=digits, places=places, delta=delta
-                )
-        elif isinstance(test, (set, list)) and isinstance(expected, set):
+                assertAlmostEqual(v1, v2, msg=msg, digits=digits, places=places, delta=delta)
+        elif is_container(test) and isinstance(expected, set):
             test = set(wrap(t) for t in test)
             if len(test) != len(expected):
                 Log.error(
                     "Sets do not match, element count different:\n{{test|json|indent}}\nexpecting{{expectedtest|json|indent}}",
                     test=test,
-                    expected=expected,
+                    expected=expected
                 )
 
             for e in expected:
                 for t in test:
                     try:
-                        assertAlmostEqual(
-                            t, e, msg=msg, digits=digits, places=places, delta=delta
-                        )
+                        assertAlmostEqual(t, e, msg=msg, digits=digits, places=places, delta=delta)
                         break
                     except Exception as _:
                         pass
                 else:
-                    Log.error(
-                        "Sets do not match. {{value|json}} not found in {{test|json}}",
-                        value=e,
-                        test=test,
-                    )
+                    Log.error("Sets do not match. {{value|json}} not found in {{test|json}}", value=e, test=test)
 
         elif isinstance(expected, types.FunctionType):
             return expected(test)
         elif hasattr(test, "__iter__") and hasattr(expected, "__iter__"):
-            if test == None and not expected:
+            if test.__class__.__name__ == "ndarray":  # numpy
+                test = test.tolist()
+            elif test.__class__.__name__ == "DataFrame":  # pandas
+                test = test[test.columns[0]].values.tolist()
+            elif test.__class__.__name__ == "Series":  # pandas
+                test = test.values.tolist()
+
+            if not expected and test == None:
                 return
             if expected == None:
                 expected = []  # REPRESENT NOTHING
             for a, b in zip_longest(test, expected):
-                assertAlmostEqual(
-                    a, b, msg=msg, digits=digits, places=places, delta=delta
-                )
+                assertAlmostEqual(a, b, msg=msg, digits=digits, places=places, delta=delta)
         else:
-            assertAlmostEqualValue(
-                test, expected, msg=msg, digits=digits, places=places, delta=delta
-            )
+            assertAlmostEqualValue(test, expected, msg=msg, digits=digits, places=places, delta=delta)
     except Exception as e:
         Log.error(
             "{{test|json|limit(10000)}} does not match expected {{expected|json|limit(10000)}}",
             test=test if show_detail else "[can not show]",
             expected=expected if show_detail else "[can not show]",
-            cause=e,
+            cause=e
         )
 
 
-def assertAlmostEqualValue(
-    test, expected, digits=None, places=None, msg=None, delta=None
-):
+def assertAlmostEqualValue(test, expected, digits=None, places=None, msg=None, delta=None):
     """
     Snagged from unittest/case.py, then modified (Aug2014)
     """
-    if expected.__class__.__name__ == "NullOp":
-        if test == None:
+    if expected is NULL:
+        if test == None:  # pandas dataframes reject any comparision with an exception!
             return
         else:
             raise AssertionError(expand_template("{{test}} != {{expected}}", locals()))
@@ -191,11 +165,11 @@ def assertAlmostEqualValue(
         # shortcut
         return
 
-    if not Math.is_number(expected):
+    if not is_number(expected):
         # SOME SPECIAL CASES, EXPECTING EMPTY CONTAINERS IS THE SAME AS EXPECTING NULL
-        if isinstance(expected, list) and len(expected) == 0 and test == None:
+        if is_list(expected) and len(expected) == 0 and test == None:
             return
-        if isinstance(expected, Mapping) and not expected.keys() and test == None:
+        if is_data(expected) and not expected.keys() and test == None:
             return
         if test != expected:
             raise AssertionError(expand_template("{{test}} != {{expected}}", locals()))
@@ -208,36 +182,30 @@ def assertAlmostEqualValue(
         num_param += 1
     if delta != None:
         num_param += 1
-    if num_param > 1:
+    if num_param>1:
         raise TypeError("specify only one of digits, places or delta")
 
     if digits is not None:
         with suppress_exception:
-            diff = Math.log10(abs(test - expected))
+            diff = log10(abs(test-expected))
             if diff < digits:
                 return
 
-        standardMsg = expand_template(
-            "{{test}} != {{expected}} within {{digits}} decimal places", locals()
-        )
+        standardMsg = expand_template("{{test}} != {{expected}} within {{digits}} decimal places", locals())
     elif delta is not None:
         if abs(test - expected) <= delta:
             return
 
-        standardMsg = expand_template(
-            "{{test}} != {{expected}} within {{delta}} delta", locals()
-        )
+        standardMsg = expand_template("{{test}} != {{expected}} within {{delta}} delta", locals())
     else:
         if places is None:
             places = 15
 
         with suppress_exception:
-            diff = Math.log10(abs(test - expected))
-            if diff < Math.ceiling(Math.log10(abs(test))) - places:
+            diff = mo_math.log10(abs(test-expected))
+            if diff < mo_math.ceiling(mo_math.log10(abs(test)))-places:
                 return
 
-        standardMsg = expand_template(
-            "{{test|json}} != {{expected|json}} within {{places}} places", locals()
-        )
+        standardMsg = expand_template("{{test|json}} != {{expected|json}} within {{places}} places", locals())
 
     raise AssertionError(coalesce(msg, "") + ": (" + standardMsg + ")")

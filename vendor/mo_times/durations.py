@@ -7,16 +7,14 @@
 #
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
 import datetime
 import re
 
 from mo_dots import get_module, wrap
-from mo_future import text_type
-from mo_math import MIN, Math
+from mo_future import is_text, text_type
+from mo_math import MIN, is_nan, is_number, abs, floor, round
 from mo_times.vendor.dateutil.relativedelta import relativedelta
 
 _Date = None
@@ -47,26 +45,21 @@ class Duration(object):
             else:
                 return None
 
-        if Math.is_number(value):
+        if is_number(value):
             output._milli = float(value) * 1000
             output.month = 0
             return output
-        elif isinstance(value, text_type):
+        elif is_text(value):
             return parse(value)
         elif isinstance(value, Duration):
             output.milli = value.milli
             output.month = value.month
             return output
-        elif isinstance(value, float) and Math.is_nan(value):
+        elif isinstance(value, float) and is_nan(value):
             return None
         else:
             from mo_logs import Log
-
-            Log.error(
-                "Do not know type of object ("
-                + get_module("mo_json").value2json(value)
-                + ")of to make a Duration"
-            )
+            Log.error("Do not know type of object (" + get_module("mo_json").value2json(value) + ")of to make a Duration")
 
     @staticmethod
     def range(start, stop, step):
@@ -80,6 +73,8 @@ class Duration(object):
             output.append(c)
             c += step
         return output
+
+
 
     def __add__(self, other):
         output = Duration(0)
@@ -111,6 +106,7 @@ class Duration(object):
         output.month = -self.month
         return output
 
+
     def __rmul__(self, amount):
         amount = float(amount)
         output = Duration(0)
@@ -128,19 +124,18 @@ class Duration(object):
             r = r - tod
 
             if m == 0 and r > (MILLI_VALUES.year / 3):
-                m = Math.floor(12 * self.milli / MILLI_VALUES.year)
+                m = floor(12 * self.milli / MILLI_VALUES.year)
                 r -= (m / 12) * MILLI_VALUES.year
             else:
                 r = r - (self.month * MILLI_VALUES.month)
                 if r >= MILLI_VALUES.day * 31:
                     from mo_logs import Log
-
                     Log.error("Do not know how to handle")
             r = MIN([29 / 30, (r + tod) / (MILLI_VALUES.day * 30)])
 
-            output = Math.floor(m / amount.month) + r
+            output = floor(m / amount.month) + r
             return output
-        elif Math.is_number(amount):
+        elif is_number(amount):
             output = Duration(0)
             output.milli = self.milli / amount
             output.month = self.month / amount
@@ -167,7 +162,7 @@ class Duration(object):
             output.month = time.month - self.month
             return output
         else:
-            return time - relativedelta(months=self.month, seconds=self.milli / 1000)
+            return time - relativedelta(months=self.month, seconds=self.milli/1000)
 
     def __lt__(self, other):
         if other == None:
@@ -197,26 +192,20 @@ class Duration(object):
     def floor(self, interval=None):
         if not isinstance(interval, Duration):
             from mo_logs import Log
-
             Log.error("Expecting an interval as a Duration object")
 
         output = Duration(0)
         if interval.month:
             if self.month:
-                output.month = int(
-                    Math.floor(self.month / interval.month) * interval.month
-                )
+                output.month = int(floor(self.month / interval.month) * interval.month)
                 output.milli = output.month * MILLI_VALUES.month
                 return output
 
             # A MONTH OF DURATION IS BIGGER THAN A CANONICAL MONTH
-            output.month = int(
-                Math.floor(self.milli * 12 / MILLI_VALUES["year"] / interval.month)
-                * interval.month
-            )
+            output.month = int(floor(self.milli * 12 / MILLI_VALUES["year"] / interval.month) * interval.month)
             output.milli = output.month * MILLI_VALUES.month
         else:
-            output.milli = Math.floor(self.milli / (interval.milli)) * (interval.milli)
+            output.milli = floor(self.milli / (interval.milli)) * (interval.milli)
         return output
 
     @property
@@ -231,7 +220,6 @@ class Duration(object):
     def milli(self, value):
         if not isinstance(value, float):
             from mo_logs import Log
-
             Log.error("not allowed")
         self._milli = value
 
@@ -246,35 +234,33 @@ class Duration(object):
             return "zero"
 
         output = ""
-        rest = self.milli - (
-            MILLI_VALUES.month * self.month
-        )  # DO NOT INCLUDE THE MONTH'S MILLIS
-        isNegative = rest < 0
-        rest = Math.abs(rest)
+        rest = (self.milli - (MILLI_VALUES.month * self.month)) # DO NOT INCLUDE THE MONTH'S MILLIS
+        isNegative = (rest < 0)
+        rest = abs(rest)
 
         # MILLI
         rem = rest % 1000
         if rem != 0:
             output = "+" + text_type(rem) + "milli" + output
-        rest = Math.floor(rest / 1000)
+        rest = floor(rest / 1000)
 
         # SECOND
         rem = rest % 60
         if rem != 0:
             output = "+" + text_type(rem) + "second" + output
-        rest = Math.floor(rest / 60)
+        rest = floor(rest / 60)
 
         # MINUTE
         rem = rest % 60
         if rem != 0:
             output = "+" + text_type(rem) + "minute" + output
-        rest = Math.floor(rest / 60)
+        rest = floor(rest / 60)
 
         # HOUR
         rem = rest % 24
         if rem != 0:
             output = "+" + text_type(rem) + "hour" + output
-        rest = Math.floor(rest / 24)
+        rest = floor(rest / 24)
 
         # DAY
         if (rest < 11 and rest != 7) or rest % 10 == 0:
@@ -282,7 +268,7 @@ class Duration(object):
             rest = 0
         else:
             rem = rest % 7
-            rest = Math.floor(rest / 7)
+            rest = floor(rest / 7)
 
         if rem != 0:
             output = "+" + text_type(rem) + "day" + output
@@ -297,7 +283,7 @@ class Duration(object):
         # MONTH AND YEAR
         if self.month:
             sign = "-" if self.month < 0 else "+"
-            month = Math.abs(self.month)
+            month = abs(self.month)
 
             if month <= 18 and month != 12:
                 output = sign + text_type(month) + "month" + output
@@ -305,21 +291,22 @@ class Duration(object):
                 m = month % 12
                 if m != 0:
                     output = sign + text_type(m) + "month" + output
-                y = Math.floor(month / 12)
+                y = floor(month / 12)
                 output = sign + text_type(y) + "year" + output
 
         if output[0] == "+":
             output = output[1::]
-        if output[0] == "1" and not Math.is_number(output[1]):
+        if output[0] == '1' and not is_number(output[1]):
             output = output[1::]
         return output
+
 
     def format(self, interval, decimal):
         return self.round(Duration(interval), decimal) + interval
 
     def round(self, interval, decimal=0):
         output = self / interval
-        output = Math.round(output, decimal)
+        output = round(output, decimal)
         return output
 
 
@@ -335,11 +322,10 @@ def _string2Duration(text):
 
     if MILLI_VALUES[interval] == None:
         from mo_logs import Log
-
         Log.error(
             "{{interval|quote}} in {{text|quote}} is not a recognized duration type (did you use the pural form by mistake?",
             interval=interval,
-            text=text,
+            text=text
         )
 
     output = Duration(0)
@@ -365,34 +351,30 @@ def parse(value):
     return output
 
 
-MILLI_VALUES = wrap(
-    {
-        "year": float(52 * 7 * 24 * 60 * 60 * 1000),  # 52weeks
-        "quarter": float(13 * 7 * 24 * 60 * 60 * 1000),  # 13weeks
-        "month": float(28 * 24 * 60 * 60 * 1000),  # 4weeks
-        "week": float(7 * 24 * 60 * 60 * 1000),
-        "day": float(24 * 60 * 60 * 1000),
-        "hour": float(60 * 60 * 1000),
-        "minute": float(60 * 1000),
-        "second": float(1000),
-        "milli": float(1),
-        "zero": float(0),
-    }
-)
+MILLI_VALUES = wrap({
+    "year": float(52 * 7 * 24 * 60 * 60 * 1000),  # 52weeks
+    "quarter": float(13 * 7 * 24 * 60 * 60 * 1000),  # 13weeks
+    "month": float(28 * 24 * 60 * 60 * 1000),  # 4weeks
+    "week": float(7 * 24 * 60 * 60 * 1000),
+    "day": float(24 * 60 * 60 * 1000),
+    "hour": float(60 * 60 * 1000),
+    "minute": float(60 * 1000),
+    "second": float(1000),
+    "milli": float(1),
+    "zero": float(0)
+})
 
-MONTH_VALUES = wrap(
-    {
-        "year": 12,
-        "quarter": 3,
-        "month": 1,
-        "week": 0,
-        "day": 0,
-        "hour": 0,
-        "minute": 0,
-        "second": 0,
-        "milli": 0,
-    }
-)
+MONTH_VALUES = wrap({
+    "year": 12,
+    "quarter": 3,
+    "month": 1,
+    "week": 0,
+    "day": 0,
+    "hour": 0,
+    "minute": 0,
+    "second": 0,
+    "milli": 0
+})
 
 # A REAL MONTH IS LARGER THAN THE CANONICAL MONTH
 MONTH_SKEW = MILLI_VALUES["year"] / 12 - MILLI_VALUES.month
@@ -402,7 +384,10 @@ def compare(a, b):
     return a.milli - b.milli
 
 
-DOMAIN = {"type": "duration", "compare": compare}
+DOMAIN = {
+    "type": "duration",
+    "compare": compare
+}
 
 ZERO = Duration(0)
 SECOND = Duration("second")
@@ -435,5 +420,5 @@ COMMON_INTERVALS = [
     Duration("2month"),
     Duration("quarter"),
     Duration("6month"),
-    Duration("year"),
+    Duration("year")
 ]

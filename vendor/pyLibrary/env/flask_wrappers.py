@@ -6,18 +6,20 @@
 #
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
+
+from functools import update_wrapper
 
 import flask
 from flask import Response
 
 from mo_dots import coalesce
 from mo_files import File
+from mo_future import text_type
 from mo_json import value2json
 from mo_logs import Log
 from mo_logs.strings import unicode2utf8
+from pyLibrary.env import git
 from pyLibrary.env.big_data import ibytes2icompressed
 
 TOO_SMALL_TO_COMPRESS = 510  # DO NOT COMPRESS DATA WITH LESS THAN THIS NUMBER OF BYTES
@@ -28,11 +30,11 @@ def gzip_wrapper(func, compress_lower_limit=None):
 
     def output(*args, **kwargs):
         response = func(*args, **kwargs)
-        accept_encoding = flask.request.headers.get("Accept-Encoding", "")
-        if "gzip" not in accept_encoding.lower():
+        accept_encoding = flask.request.headers.get('Accept-Encoding', '')
+        if 'gzip' not in accept_encoding.lower():
             return response
 
-        response.headers["Content-Encoding"] = "gzip"
+        response.headers['Content-Encoding'] = 'gzip'
         response.response = ibytes2icompressed(response.response)
 
         return response
@@ -46,7 +48,6 @@ def cors_wrapper(func):
     :param func:  Flask method that handles requests and returns a response
     :return: Same, but with permissive CORS headers set
     """
-
     def _setdefault(obj, key, value):
         if value == None:
             return
@@ -56,27 +57,14 @@ def cors_wrapper(func):
         response = func(*args, **kwargs)
         headers = response.headers
         _setdefault(headers, "Access-Control-Allow-Origin", "*")
-        _setdefault(
-            headers,
-            "Access-Control-Allow-Headers",
-            flask.request.headers.get("Access-Control-Request-Headers"),
-        )
-        _setdefault(
-            headers,
-            "Access-Control-Allow-Methods",
-            flask.request.headers.get("Access-Control-Request-Methods"),
-        )
+        _setdefault(headers, "Access-Control-Allow-Headers", flask.request.headers.get("Access-Control-Request-Headers"))
+        _setdefault(headers, "Access-Control-Allow-Methods", flask.request.headers.get("Access-Control-Request-Methods"))
         _setdefault(headers, "Content-Type", "application/json")
-        _setdefault(
-            headers,
-            "Strict-Transport-Security",
-            "max-age=31536000; includeSubDomains; preload",
-        )
+        _setdefault(headers, "Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
         return response
 
     output.provide_automatic_options = False
-    output.__name__ = func.__name__
-    return output
+    return update_wrapper(output, func)
 
 
 def dockerflow(flask_app, backend_check):
@@ -95,7 +83,11 @@ def dockerflow(flask_app, backend_check):
         @cors_wrapper
         def version():
             return Response(
-                VERSION_JSON, status=200, headers={"Content-Type": "application/json"}
+                VERSION_JSON,
+                status=200,
+                headers={
+                    "Content-Type": "application/json"
+                }
             )
 
         @cors_wrapper
@@ -108,36 +100,55 @@ def dockerflow(flask_app, backend_check):
                 return Response(
                     unicode2utf8(value2json(e)),
                     status=500,
-                    headers={"Content-Type": "application/json"},
+                    headers={
+                        "Content-Type": "application/json"
+                    }
                 )
 
         @cors_wrapper
         def lbheartbeat():
             return Response(status=200)
 
-        flask_app.add_url_rule(
-            str("/__version__"),
-            None,
-            version,
-            defaults={},
-            methods=[str("GET"), str("POST")],
-        )
-        flask_app.add_url_rule(
-            str("/__heartbeat__"),
-            None,
-            heartbeat,
-            defaults={},
-            methods=[str("GET"), str("POST")],
-        )
-        flask_app.add_url_rule(
-            str("/__lbheartbeat__"),
-            None,
-            lbheartbeat,
-            defaults={},
-            methods=[str("GET"), str("POST")],
-        )
+        flask_app.add_url_rule(str('/__version__'), None, version, defaults={}, methods=[str('GET'), str('POST')])
+        flask_app.add_url_rule(str('/__heartbeat__'), None, heartbeat, defaults={}, methods=[str('GET'), str('POST')])
+        flask_app.add_url_rule(str('/__lbheartbeat__'), None, lbheartbeat, defaults={}, methods=[str('GET'), str('POST')])
     except Exception as e:
         Log.error("Problem setting up listeners for dockerflow", cause=e)
 
 
 VERSION_JSON = None
+
+
+def add_version(flask_app):
+    """
+    ADD ROUTING TO HANDLE REQUEST FOR /__version__
+    :param flask_app: THE (Flask) APP
+    :return:
+    """
+    try:
+        version_info = unicode2utf8(value2json(
+            {
+                "source": "https://github.com/mozilla/ActiveData/tree/" + git.get_branch(),
+                # "version": "",
+                "commit": git.get_revision(),
+            },
+            pretty=True
+        ) + text_type("\n"))
+
+        Log.note("Using github version\n{{version}}", version=version_info)
+
+        @cors_wrapper
+        def version():
+            return Response(
+                version_info,
+                status=200,
+                headers={
+                    "Content-Type": "application/json"
+                }
+            )
+
+        flask_app.add_url_rule(str('/__version__'), None, version, defaults={}, methods=[str('GET'), str('POST')])
+    except Exception as e:
+        Log.error("Problem setting up listeners for dockerflow", cause=e)
+
+

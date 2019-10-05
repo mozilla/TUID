@@ -7,20 +7,21 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
 from copy import deepcopy
 
-from mo_dots import wrap, unwrap, coalesce
+from mo_future import generator_types, text_type
+
+from mo_dots import CLASS, coalesce, unwrap, wrap
 from mo_dots.nones import Null
 
+LIST = text_type("list")
+
 _get = object.__getattribute__
-_get_list = lambda self: _get(self, "list")
+_get_list = lambda self: _get(self, LIST)
 _set = object.__setattr__
 _emit_slice_warning = True
-
 _datawrap = None
 Log = None
 
@@ -29,8 +30,8 @@ def _late_import():
     global _datawrap
     global Log
 
-    from mo_dots.objects import datawrap as _datawrap
 
+    from mo_dots.objects import datawrap as _datawrap
     try:
         from mo_logs import Log
     except Exception:
@@ -45,7 +46,6 @@ class FlatList(list):
     ENCAPSULATES FLAT SLICES ([::]) FOR USE IN WINDOW FUNCTIONS
     https://github.com/klahnakoski/mo-dots/tree/dev/docs#flatlist-is-flat
     """
-
     EMPTY = None
 
     def __init__(self, vals=None):
@@ -53,20 +53,18 @@ class FlatList(list):
         # list.__init__(self)
         if vals == None:
             self.list = []
-        elif isinstance(vals, FlatList):
+        elif vals.__class__ is FlatList:
             self.list = vals.list
         else:
             self.list = vals
 
     def __getitem__(self, index):
-        if isinstance(index, slice):
+        if _get(index, CLASS) is slice:
             # IMPLEMENT FLAT SLICES (for i not in range(0, len(self)): assert self[i]==None)
             if index.step is not None:
                 if not Log:
                     _late_import()
-                Log.error(
-                    "slice step must be None, do not know how to deal with values"
-                )
+                Log.error("slice step must be None, do not know how to deal with values")
             length = len(_get_list(self))
 
             i = index.start
@@ -81,7 +79,7 @@ class FlatList(list):
                 j = max(min(j, length), 0)
             return FlatList(_get_list(self)[i:j])
 
-        if index < 0 or len(_get_list(self)) <= index:
+        if not isinstance(index, int) or index < 0 or len(_get_list(self)) <= index:
             return Null
         return wrap(_get_list(self)[index])
 
@@ -113,10 +111,7 @@ class FlatList(list):
         """
         if not Log:
             _late_import()
-
-        return FlatList(
-            vals=[unwrap(coalesce(_datawrap(v), Null)[key]) for v in _get_list(self)]
-        )
+        return FlatList(vals=[unwrap(coalesce(_datawrap(v), Null)[key]) for v in _get_list(self)])
 
     def select(self, key):
         if not Log:
@@ -124,16 +119,12 @@ class FlatList(list):
         Log.error("Not supported.  Use `get()`")
 
     def filter(self, _filter):
-        return FlatList(
-            vals=[unwrap(u) for u in (wrap(v) for v in _get_list(self)) if _filter(u)]
-        )
+        return FlatList(vals=[unwrap(u) for u in (wrap(v) for v in _get_list(self)) if _filter(u)])
 
     def __delslice__(self, i, j):
         if not Log:
             _late_import()
-        Log.error(
-            "Can not perform del on slice: modulo arithmetic was performed on the parameters.  You can try using clear()"
-        )
+        Log.error("Can not perform del on slice: modulo arithmetic was performed on the parameters.  You can try using clear()")
 
     def __clear__(self):
         self.list = []
@@ -162,9 +153,7 @@ class FlatList(list):
             _emit_slice_warning = False
             if not Log:
                 _late_import()
-            Log.warning(
-                "slicing is broken in Python 2.7: a[i:j] == a[i+len(a), j] sometimes.  Use [start:stop:step] (see https://github.com/klahnakoski/pyLibrary/blob/master/pyLibrary/dot/README.md#the-slice-operator-in-python27-is-inconsistent)"
-            )
+            Log.warning("slicing is broken in Python 2.7: a[i:j] == a[i+len(a), j] sometimes.  Use [start:stop:step] (see https://github.com/klahnakoski/pyLibrary/blob/master/pyLibrary/dot/README.md#the-slice-operator-in-python27-is-inconsistent)")
         return self[i:j:]
 
     def __list__(self):
@@ -197,16 +186,18 @@ class FlatList(list):
             return wrap(_get_list(self).pop(index))
 
     def __eq__(self, other):
-        if isinstance(other, FlatList):
-            other = _get_list(other)
         lst = _get_list(self)
         if other == None and len(lst) == 0:
             return True
-        if not isinstance(other, list):
+        other_class = _get(other, CLASS)
+        if other_class is FlatList:
+            other = _get_list(other)
+        try:
+            if len(lst) != len(other):
+                return False
+            return all([s == o for s, o in zip(lst, other)])
+        except Exception:
             return False
-        if len(lst) != len(other):
-            return False
-        return all([s == o for s, o in zip(lst, other)])
 
     def __add__(self, value):
         if value == None:
@@ -226,7 +217,7 @@ class FlatList(list):
         return FlatList(vals=output)
 
     def __iadd__(self, other):
-        if isinstance(other, list):
+        if is_list(other):
             self.extend(other)
         else:
             self.append(other)
@@ -293,3 +284,22 @@ class FlatList(list):
 
 
 FlatList.EMPTY = Null
+
+list_types = (list, FlatList)
+container_types = (list, FlatList, set)
+sequence_types = (list, FlatList, tuple)
+many_types = tuple(set(list_types + container_types + sequence_types + generator_types))
+
+
+def is_list(l):
+    return l.__class__ in list_types
+
+def is_container(l):
+    return l.__class__ in container_types
+
+def is_sequence(l):
+    return l.__class__ in sequence_types
+
+def is_many(l):
+    return l.__class__ in many_types
+

@@ -9,55 +9,45 @@
 #
 
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
-from mo_logs import Log, Except, suppress_exception
+from mo_future import is_text, is_binary
+from mo_logs import Except, Log, suppress_exception
 from mo_logs.log_usingNothing import StructuredLogger
-from mo_threads import Thread, Queue, Till, THREAD_STOP
+from mo_threads import Queue, THREAD_STOP, Thread, Till
 
 DEBUG = False
 
 
 class StructuredLogger_usingThread(StructuredLogger):
+
     def __init__(self, logger):
         if not isinstance(logger, StructuredLogger):
             Log.error("Expecting a StructuredLogger")
 
-        self.queue = Queue(
-            "Queue for " + self.__class__.__name__,
-            max=10000,
-            silent=True,
-            allow_add_after_close=True,
-        )
+        self.queue = Queue("Queue for " + self.__class__.__name__, max=10000, silent=True, allow_add_after_close=True)
         self.logger = logger
 
         def worker(logger, please_stop):
             try:
                 while not please_stop:
-                    (Till(seconds=1) | please_stop).wait()
                     logs = self.queue.pop_all()
+                    if not logs:
+                        (Till(seconds=1) | please_stop).wait()
+                        continue
                     for log in logs:
                         if log is THREAD_STOP:
                             please_stop.go()
                         else:
                             logger.write(**log)
             except Exception as e:
-                print(
-                    "problem in "
-                    + StructuredLogger_usingThread.__name__
-                    + ": "
-                    + str(e)
-                )
+                print("problem in " + StructuredLogger_usingThread.__name__ + ": " + str(e))
             finally:
                 Log.note("stop the child")
                 logger.stop()
 
         self.thread = Thread("Thread for " + self.__class__.__name__, worker, logger)
-        self.thread.parent.remove_child(
-            self.thread
-        )  # LOGGING WILL BE RESPONSIBLE FOR THREAD stop()
+        self.thread.parent.remove_child(self.thread)  # LOGGING WILL BE RESPONSIBLE FOR THREAD stop()
         self.thread.start()
 
     def write(self, template, params):
@@ -69,7 +59,6 @@ class StructuredLogger_usingThread(StructuredLogger):
             raise e  # OH NO!
 
     def stop(self):
-        Log.warning("Stopping threaded logger")
         try:
             self.queue.add(THREAD_STOP)  # BE PATIENT, LET REST OF MESSAGE BE SENT
             self.thread.join()
@@ -79,3 +68,4 @@ class StructuredLogger_usingThread(StructuredLogger):
 
         with suppress_exception:
             self.queue.close()
+

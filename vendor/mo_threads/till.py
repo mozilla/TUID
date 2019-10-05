@@ -11,18 +11,16 @@
 # THIS SIGNAL IS IMPORTANT FOR PROPER SIGNALLING WHICH ALLOWS
 # FOR FAST AND PREDICTABLE SHUTDOWN AND CLEANUP OF THREADS
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
 from collections import namedtuple
 from time import sleep, time
 from weakref import ref
 
-from mo_future import allocate_lock as _allocate_lock
-from mo_future import text_type
+from mo_future import allocate_lock as _allocate_lock, text_type
 from mo_logs import Log
-from mo_threads.signal import Signal, DONE
+
+from mo_threads.signal import DONE, Signal
 
 DEBUG = False
 INTERVAL = 0.1
@@ -32,7 +30,6 @@ class Till(Signal):
     """
     TIMEOUT AS A SIGNAL
     """
-
     __slots__ = []
 
     locker = _allocate_lock()
@@ -43,14 +40,11 @@ class Till(Signal):
     def __new__(cls, till=None, seconds=None):
         if not Till.enabled:
             return DONE
-        elif till != None:
+        if seconds is None:
             return object.__new__(cls)
-        elif seconds == None:
-            return object.__new__(cls)
-        elif seconds <= 0:
+        if seconds <= 0:
             return DONE
-        else:
-            return object.__new__(cls)
+        return object.__new__(cls)
 
     def __init__(self, till=None, seconds=None):
         """
@@ -62,12 +56,12 @@ class Till(Signal):
         if till != None:
             if not isinstance(till, (float, int)):
                 from mo_logs import Log
-
                 Log.error("Date objects for Till are no longer allowed")
             timeout = till
         elif seconds != None:
             timeout = now + seconds
         else:
+            from mo_logs import Log
             raise Log.error("Should not happen")
 
         Signal.__init__(self, name=text_type(timeout))
@@ -97,7 +91,7 @@ def daemon(please_stop):
                         "Call to sleep failed with ({{later}}, {{interval}})",
                         later=later,
                         interval=INTERVAL,
-                        cause=e,
+                        cause=e
                     )
                 continue
 
@@ -109,9 +103,7 @@ def daemon(please_stop):
                 if len(new_timers) > 5:
                     Log.note("{{num}} new timers", num=len(new_timers))
                 else:
-                    Log.note(
-                        "new timers: {{timers}}", timers=[t for t, _ in new_timers]
-                    )
+                    Log.note("new timers: {{timers}}", timers=[t for t, _ in new_timers])
 
             sorted_timers.extend(new_timers)
 
@@ -130,9 +122,7 @@ def daemon(please_stop):
                     DEBUG and Log.note(
                         "done: {{timers}}.  Remaining {{pending}}",
                         timers=[t for t, s in work] if len(work) <= 5 else len(work),
-                        pending=[t for t, s in sorted_timers]
-                        if len(sorted_timers) <= 5
-                        else len(sorted_timers),
+                        pending=[t for t, s in sorted_timers] if len(sorted_timers) <= 5 else len(sorted_timers)
                     )
 
                     for t, r in work:

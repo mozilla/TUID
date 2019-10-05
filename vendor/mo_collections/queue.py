@@ -1,3 +1,4 @@
+
 # encoding: utf-8
 #
 #
@@ -8,10 +9,9 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import unicode_literals
-from __future__ import division
-from __future__ import absolute_import
+from __future__ import absolute_import, division, unicode_literals
 
+from mo_future import is_text, is_binary
 from collections import deque
 
 
@@ -28,7 +28,6 @@ class Queue(object):
     |     No     |   No    | Multiset |
     +------------+---------+----------+
     """
-
     def __init__(self):
         self.set = set()
         self.list = deque()

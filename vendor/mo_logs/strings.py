@@ -8,42 +8,23 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
 import cgi
+from collections import Mapping
+from datetime import date, datetime as builtin_datetime, timedelta
 import json as _json
+from json.encoder import encode_basestring
 import math
 import re
 import string
-from collections import Mapping
-from datetime import datetime as builtin_datetime
-from datetime import timedelta, date
-from json.encoder import encode_basestring
 
-from mo_dots import coalesce, wrap, get_module, Data
-from mo_future import (
-    text_type,
-    xrange,
-    binary_type,
-    round as _round,
-    get_function_name,
-    zip_longest,
-    transpose,
-    PY3,
-)
-from mo_logs.convert import (
-    datetime2unix,
-    datetime2string,
-    value2json,
-    milli2datetime,
-    unix2datetime,
-)
-
-# from mo_files.url import value2url_param
+from mo_dots import Data, coalesce, get_module, is_data, is_list, wrap, is_sequence
+from mo_future import PY3, get_function_name, is_binary, is_text, round as _round, text_type, transpose, xrange, zip_longest, binary_type
+from mo_logs.convert import datetime2string, datetime2unix, milli2datetime, unix2datetime, value2json
 
 FORMATTERS = {}
+CR = text_type("\n")
 
 _json_encoder = None
 _Log = None
@@ -75,7 +56,7 @@ def formatter(func):
     """
     register formatters
     """
-    FORMATTERS[get_function_name(func)] = func
+    FORMATTERS[get_function_name(func)]=func
     return func
 
 
@@ -93,7 +74,7 @@ def datetime(value):
     else:
         value = milli2datetime(value)
 
-    return datetime2string(value, "%Y-%m-%d %H:%M:%S")
+    return datetime2string(value, "%Y-%m-%d %H:%M:%S.%f").rstrip(".000000").rstrip("000")
 
 
 @formatter
@@ -172,7 +153,7 @@ def newline(value):
     """
     ADD NEWLINE, IF SOMETHING
     """
-    return "\n" + toString(value).lstrip("\n")
+    return CR + toString(value).lstrip(CR)
 
 
 @formatter
@@ -206,15 +187,19 @@ def tab(value):
     :param value:
     :return:
     """
-    if isinstance(value, Mapping):
+    if is_data(value):
         h, d = transpose(*wrap(value).leaves())
-        return "\t".join(map(value2json, h)) + "\n" + "\t".join(map(value2json, d))
+        return (
+            "\t".join(map(value2json, h)) +
+            CR +
+            "\t".join(map(value2json, d))
+        )
     else:
         text_type(value)
 
 
 @formatter
-def indent(value, prefix="\t", indent=None):
+def indent(value, prefix=u"\t", indent=None):
     """
     indent given string, using prefix * indent as prefix for each line
     :param value:
@@ -228,16 +213,11 @@ def indent(value, prefix="\t", indent=None):
     value = toString(value)
     try:
         content = value.rstrip()
-        suffix = value[len(content) :]
+        suffix = value[len(content):]
         lines = content.splitlines()
-        return prefix + ("\n" + prefix).join(lines) + suffix
+        return prefix + (CR + prefix).join(lines) + suffix
     except Exception as e:
-        raise Exception(
-            "Problem with indent of value ("
-            + e.message
-            + ")\n"
-            + text_type(toString(value))
-        )
+        raise Exception(u"Problem with indent of value (" + e.message + u")\n" + text_type(toString(value)))
 
 
 @formatter
@@ -254,7 +234,7 @@ def outdent(value):
             trim = len(l.lstrip())
             if trim > 0:
                 num = min(num, len(l) - len(l.lstrip()))
-        return "\n".join([l[num:] for l in lines])
+        return CR.join([l[num:] for l in lines])
     except Exception as e:
         if not _Log:
             _late_import()
@@ -320,7 +300,7 @@ def find(value, find, start=0):
     :return: If NOT found, return the length of `value` string
     """
     l = len(value)
-    if isinstance(find, list):
+    if is_list(find):
         m = l
         for f in find:
             i = value.find(f, start)
@@ -354,7 +334,7 @@ def strip(value):
 
     for i in reversed(range(s, e)):
         if ord(value[i]) > 32:
-            return value[s : i + 1]
+            return value[s:i + 1]
 
     return ""
 
@@ -396,9 +376,7 @@ def between(value, prefix, suffix, start=0):
     if e == -1:
         return None
 
-    s = value.rfind(prefix, start, e) + len(
-        prefix
-    )  # WE KNOW THIS EXISTS, BUT THERE MAY BE A RIGHT-MORE ONE
+    s = value.rfind(prefix, start, e) + len(prefix)  # WE KNOW THIS EXISTS, BUT THERE MAY BE A RIGHT-MORE ONE
 
     return value[s:e]
 
@@ -412,7 +390,7 @@ def right(value, len):
     :return:
     """
     if len <= 0:
-        return ""
+        return u""
     return value[-len:]
 
 
@@ -424,7 +402,7 @@ def right_align(value, length):
     :return:
     """
     if length <= 0:
-        return ""
+        return u""
 
     value = text_type(value)
 
@@ -437,7 +415,7 @@ def right_align(value, length):
 @formatter
 def left_align(value, length):
     if length <= 0:
-        return ""
+        return u""
 
     value = text_type(value)
 
@@ -456,7 +434,7 @@ def left(value, len):
     :return:
     """
     if len <= 0:
-        return ""
+        return u""
     return value[0:len]
 
 
@@ -485,7 +463,7 @@ def quote(value):
     """
     if value == None:
         output = ""
-    elif isinstance(value, text_type):
+    elif is_text(value):
         output = encode_basestring(value)
     else:
         output = _json.dumps(value)
@@ -507,6 +485,8 @@ _SNIP = "...<snip>..."
 
 @formatter
 def limit(value, length):
+    if value == None:
+        return None
     try:
         # LIMIT THE STRING value TO GIVEN LENGTH, CHOPPING OUT THE MIDDLE IF REQUIRED
         if len(value) <= length:
@@ -522,9 +502,8 @@ def limit(value, length):
             _late_import()
         _Log.error("Not expected", cause=e)
 
-
 @formatter
-def split(value, sep="\n"):
+def split(value, sep=CR):
     # GENERATOR VERSION OF split()
     # SOMETHING TERRIBLE HAPPENS, SOMETIMES, IN PYPY
     s = 0
@@ -536,7 +515,6 @@ def split(value, sep="\n"):
         n = value.find(sep, s)
     yield value[s:]
     value = None
-
 
 """
 THE REST OF THIS FILE IS TEMPLATE EXPANSION CODE USED BY mo-logs 
@@ -550,7 +528,7 @@ def expand_template(template, value):
     :return: UNICODE STRING WITH VARIABLES EXPANDED
     """
     value = wrap(value)
-    if isinstance(template, text_type):
+    if is_text(template):
         return _simple_expand(template, (value,))
 
     return _expand(template, (value,))
@@ -570,11 +548,9 @@ def find_first(value, find_arr, start=0):
     i = len(value)
     for f in find_arr:
         temp = value.find(f, start)
-        if temp == -1:
-            continue
+        if temp == -1: continue
         i = min(i, temp)
-    if i == len(value):
-        return -1
+    if i == len(value): return -1
     return i
 
 
@@ -585,11 +561,7 @@ def is_hex(value):
 if PY3:
     delchars = "".join(c for c in map(chr, range(256)) if not c.isalnum())
 else:
-    delchars = "".join(
-        c.decode("latin1")
-        for c in map(chr, range(256))
-        if not c.decode("latin1").isalnum()
-    )
+    delchars = "".join(c.decode("latin1") for c in map(chr, range(256)) if not c.decode("latin1").isalnum())
 
 
 def deformat(value):
@@ -615,9 +587,11 @@ def _expand(template, seq):
     """
     seq IS TUPLE OF OBJECTS IN PATH ORDER INTO THE DATA TREE
     """
-    if isinstance(template, text_type):
+    if is_text(template):
         return _simple_expand(template, seq)
-    elif isinstance(template, Mapping):
+    elif is_data(template):
+        # EXPAND LISTS OF ITEMS USING THIS FORM
+        # {"from":from, "template":template, "separator":separator}
         template = wrap(template)
         assert template["from"], "Expecting template to have 'from' attribute"
         assert template.template, "Expecting template to have 'template' attribute"
@@ -628,7 +602,7 @@ def _expand(template, seq):
             s = seq + (d,)
             output.append(_expand(template.template, s))
         return coalesce(template.separator, "").join(output)
-    elif isinstance(template, list):
+    elif is_list(template):
         return "".join(_expand(t, seq) for t in template)
     else:
         if not _Log:
@@ -652,14 +626,12 @@ def _simple_expand(template, seq):
         try:
             val = seq[-depth]
             if var:
-                if isinstance(val, (list, tuple)) and float(var) == _round(
-                    float(var), 0
-                ):
+                if is_sequence(val) and float(var) == _round(float(var), 0):
                     val = val[int(var)]
                 else:
                     val = val[var]
             for func_name in ops[1:]:
-                parts = func_name.split("(")
+                parts = func_name.split('(')
                 if len(parts) > 1:
                     val = eval(parts[0] + "(val, " + ("(".join(parts[1::])))
                 else:
@@ -680,11 +652,9 @@ def _simple_expand(template, seq):
                     _late_import()
 
                 _Log.warning(
-                    "Can not expand "
-                    + "|".join(ops)
-                    + " in template: {{template_|json}}",
+                    "Can not expand " + "|".join(ops) + " in template: {{template_|json}}",
                     template_=template,
-                    cause=e,
+                    cause=e
                 )
             return "[template expansion error: (" + str(e.message) + ")]"
 
@@ -706,23 +676,21 @@ def toString(val):
     elif isinstance(val, timedelta):
         duration = val.total_seconds()
         return text_type(round(duration, 3)) + " seconds"
-    elif isinstance(val, text_type):
+    elif is_text(val):
         return val
-    elif isinstance(val, str):
+    elif isinstance(val, binary_type):
         try:
-            return val.decode("utf8")
+            return val.decode('utf8')
         except Exception as _:
             pass
 
         try:
-            return val.decode("latin1")
+            return val.decode('latin1')
         except Exception as e:
             if not _Log:
                 _late_import()
 
-            _Log.error(
-                text_type(type(val)) + " type can not be converted to unicode", cause=e
-            )
+            _Log.error(text_type(type(val)) + " type can not be converted to unicode", cause=e)
     else:
         try:
             return text_type(val)
@@ -730,9 +698,7 @@ def toString(val):
             if not _Log:
                 _late_import()
 
-            _Log.error(
-                text_type(type(val)) + " type can not be converted to unicode", cause=e
-            )
+            _Log.error(text_type(type(val)) + " type can not be converted to unicode", cause=e)
 
 
 def edit_distance(s1, s2):
@@ -751,9 +717,7 @@ def edit_distance(s1, s2):
     for i, c1 in enumerate(s1):
         current_row = [i + 1]
         for j, c2 in enumerate(s2):
-            insertions = (
-                previous_row[j + 1] + 1
-            )  # j+1 instead of j since previous_row and current_row are one character longer
+            insertions = previous_row[j + 1] + 1  # j+1 instead of j since previous_row and current_row are one character longer
             deletions = current_row[j] + 1  # than s2
             substitutions = previous_row[j] + (c1 != c2)
             current_row.append(min(insertions, deletions, substitutions))
@@ -791,36 +755,21 @@ def apply_diff(text, diff, reverse=False, verify=True):
         return text
     output = text
     hunks = [
-        (new_diff[start_hunk], new_diff[start_hunk + 1 : end_hunk])
-        for new_diff in [
-            [
-                d.lstrip()
-                for d in diff
-                if d.lstrip() and d != "\\ No newline at end of file"
-            ]
-            + ["@@"]
-        ]  # ANOTHER REPAIR
-        for start_hunk, end_hunk in pairwise(
-            i for i, l in enumerate(new_diff) if l.startswith("@@")
-        )
+        (new_diff[start_hunk], new_diff[start_hunk+1:end_hunk])
+        for new_diff in [[d.lstrip() for d in diff if d.lstrip() and d != "\\ No newline at end of file"] + ["@@"]]  # ANOTHER REPAIR
+        for start_hunk, end_hunk in pairwise(i for i, l in enumerate(new_diff) if l.startswith('@@'))
     ]
-    for header, hunk_body in reversed(hunks) if reverse else hunks:
+    for header, hunk_body in (reversed(hunks) if reverse else hunks):
         matches = DIFF_PREFIX.match(header.strip())
         if not matches:
             if not _Log:
                 _late_import()
 
-            _Log.error("Can not handle \n---\n{{diff}}\n---\n", diff=diff)
+            _Log.error("Can not handle \n---\n{{diff}}\n---\n",  diff=diff)
 
-        removes = tuple(
-            int(i.strip()) for i in matches.group(1).split(",")
-        )  # EXPECTING start_line, length TO REMOVE
-        remove = Data(
-            start=removes[0], length=1 if len(removes) == 1 else removes[1]
-        )  # ASSUME FIRST LINE
-        adds = tuple(
-            int(i.strip()) for i in matches.group(2).split(",")
-        )  # EXPECTING start_line, length TO ADD
+        removes = tuple(int(i.strip()) for i in matches.group(1).split(","))  # EXPECTING start_line, length TO REMOVE
+        remove = Data(start=removes[0], length=1 if len(removes) == 1 else removes[1])  # ASSUME FIRST LINE
+        adds = tuple(int(i.strip()) for i in matches.group(2).split(","))  # EXPECTING start_line, length TO ADD
         add = Data(start=adds[0], length=1 if len(adds) == 1 else adds[1])
 
         if add.length == 0 and add.start == 0:
@@ -842,12 +791,10 @@ def apply_diff(text, diff, reverse=False, verify=True):
 
                 last_line = last_lines[0]
                 for problem_index, problem_line in enumerate(hunk_body):
-                    if problem_line.startswith("-") and problem_line.endswith(
-                        "+" + last_line
-                    ):
+                    if problem_line.startswith('-') and problem_line.endswith('+' + last_line):
                         split_point = len(problem_line) - (len(last_line) + 1)
                         break
-                    elif problem_line.startswith("+" + last_line + "-"):
+                    elif problem_line.startswith('+' + last_line + "-"):
                         split_point = len(last_line) + 1
                         break
                 else:
@@ -857,37 +804,34 @@ def apply_diff(text, diff, reverse=False, verify=True):
                     return hunk_body
                 last_line = output[-1]
                 for problem_index, problem_line in enumerate(hunk_body):
-                    if problem_line.startswith("+") and problem_line.endswith(
-                        "-" + last_line
-                    ):
+                    if problem_line.startswith('+') and problem_line.endswith('-' + last_line):
                         split_point = len(problem_line) - (len(last_line) + 1)
                         break
-                    elif problem_line.startswith("-" + last_line + "+"):
+                    elif problem_line.startswith('-' + last_line + "+"):
                         split_point = len(last_line) + 1
                         break
                 else:
                     return hunk_body
 
             new_hunk_body = (
-                hunk_body[:problem_index]
-                + [problem_line[:split_point], problem_line[split_point:]]
-                + hunk_body[problem_index + 1 :]
+                hunk_body[:problem_index] +
+                [problem_line[:split_point], problem_line[split_point:]] +
+                hunk_body[problem_index + 1:]
             )
             return new_hunk_body
-
         hunk_body = repair_hunk(hunk_body)
 
         if reverse:
             new_output = (
-                output[: add.start - 1]
-                + [d[1:] for d in hunk_body if d and d[0] == "-"]
-                + output[add.start + add.length - 1 :]
+                output[:add.start - 1] +
+                [d[1:] for d in hunk_body if d and d[0] == '-'] +
+                output[add.start + add.length - 1:]
             )
         else:
             new_output = (
-                output[: add.start - 1]
-                + [d[1:] for d in hunk_body if d and d[0] == "+"]
-                + output[add.start + remove.length - 1 :]
+                output[:add.start - 1] +
+                [d[1:] for d in hunk_body if d and d[0] == '+'] +
+                output[add.start + remove.length - 1:]
             )
         output = new_output
 
@@ -896,7 +840,7 @@ def apply_diff(text, diff, reverse=False, verify=True):
         if set(text) != set(original):  # bugzilla-etl diffs are a jumble
 
             for t, o in zip_longest(text, original):
-                if t in ["reports: https://goo.gl/70o6w6\r"]:
+                if t in ['reports: https://goo.gl/70o6w6\r']:
                     break  # KNOWN INCONSISTENCIES
                 if t != o:
                     if not _Log:
@@ -908,7 +852,7 @@ def apply_diff(text, diff, reverse=False, verify=True):
 
 
 def unicode2utf8(value):
-    return value.encode("utf8")
+    return value.encode('utf8')
 
 
 def utf82unicode(value):
@@ -921,23 +865,15 @@ def utf82unicode(value):
         if not _Log:
             _late_import()
 
-        if not isinstance(value, binary_type):
-            _Log.error(
-                "Can not convert {{type}} to unicode because it's not bytes",
-                type=type(value).__name__,
-            )
+        if not is_binary(value):
+            _Log.error("Can not convert {{type}} to unicode because it's not bytes",  type= type(value).__name__)
 
         e = _Except.wrap(e)
         for i, c in enumerate(value):
             try:
                 c.decode("utf8")
             except Exception as f:
-                _Log.error(
-                    "Can not convert charcode {{c}} in string index {{i}}",
-                    i=i,
-                    c=ord(c),
-                    cause=[e, _Except.wrap(f)],
-                )
+                _Log.error("Can not convert charcode {{c}} in string index {{i}}", i=i, c=ord(c), cause=[e, _Except.wrap(f)])
 
         try:
             latin1 = text_type(value.decode("latin1"))
@@ -951,13 +887,13 @@ def utf82unicode(value):
         except Exception:
             pass
 
-        _Log.error(
-            "Can not explain conversion failure of " + type(value).__name__ + "!", e
-        )
+        _Log.error("Can not explain conversion failure of " + type(value).__name__ + "!", e)
 
 
 def wordify(value):
     return [w for w in re.split(r"[\W_]", value) if strip(w)]
+
+
 
 
 def pairwise(values):

@@ -9,7 +9,7 @@
 from __future__ import division
 from __future__ import unicode_literals
 
-from mo_dots import wrap, coalesce
+from mo_dots import wrap, coalesce, Null
 from mo_json import json2value, value2json
 from mo_kwargs import override
 from mo_logs import Log
@@ -26,16 +26,14 @@ SLEEP_ON_ERROR = 30
 
 class TuidClient(object):
     @override
-    def __init__(self, endpoint, push_queue=None, timeout=30, db=None, kwargs=None):
+    def __init__(self, endpoint, push_queue=None, timeout=30, db=Null, kwargs=None):
         self.enabled = True
         self.num_bad_requests = 0
         self.endpoint = endpoint
         self.timeout = timeout
         self.push_queue = aws.Queue(push_queue) if push_queue else None
         self.config = kwargs
-        self.db = Sqlite(
-            filename=coalesce(db.filename, "tuid_client.sqlite"), kwargs=db
-        )
+        self.db = Sqlite(filename=coalesce(db.filename, "tuid_client.sqlite"), kwargs=db)
 
         if not self.db.query("SELECT name FROM sqlite_master WHERE type='table';").data:
             with self.db.transaction() as transaction:
@@ -127,21 +125,16 @@ class TuidClient(object):
                     )
 
                     with self.db.transaction() as transaction:
-                        command = (
-                            "INSERT INTO tuid (revision, file, tuids) VALUES "
-                            + sql_list(
-                                quote_list((revision, r.path, value2json(r.tuids)))
-                                for r in new_response.data
-                                if r.tuids != None
-                            )
+                        command = "INSERT INTO tuid (revision, file, tuids) VALUES " + sql_list(
+                            quote_list((revision, r.path, value2json(r.tuids)))
+                            for r in new_response.data
+                            if r.tuids != None
                         )
                         if not command.endswith(" VALUES "):
                             transaction.execute(command)
                     self.num_bad_requests = 0
 
-                found.update(
-                    {r.path: r.tuids for r in new_response.data} if new_response else {}
-                )
+                found.update({r.path: r.tuids for r in new_response.data} if new_response else {})
                 return found
 
             except Exception as e:

@@ -7,20 +7,16 @@
 #
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
-from collections import Mapping
 from copy import copy
 
-from mo_dots import Data
-from mo_dots import set_default, split_field, wrap, join_field
-from mo_future import generator_types, text_type
+from mo_dots import Data, is_data, is_many, join_field, set_default, split_field, wrap
+from mo_future import is_text
 from mo_logs import Log
 
 type2container = Data()
-config = Data()  # config.default IS EXPECTED TO BE SET BEFORE CALLS ARE MADE
+config = Data()   # config.default IS EXPECTED TO BE SET BEFORE CALLS ARE MADE
 _ListContainer = None
 _Cube = None
 _run = None
@@ -34,9 +30,7 @@ def _delayed_imports():
     global _run
     global _Query
 
-    from jx_python.containers.list_usingPythonList import (
-        ListContainer as _ListContainer,
-    )
+    from jx_python.containers.list_usingPythonList import ListContainer as _ListContainer
     from jx_python.containers.cube import Cube as _Cube
     from jx_python.jx import run as _run
     from jx_base.query import QueryOp as _Query
@@ -51,8 +45,9 @@ class Container(object):
     """
     CONTAINERS HOLD MULTIPLE FACTS AND CAN HANDLE
     GENERAL JSON QUERY EXPRESSIONS ON ITS CONTENTS
-    METADATA FOR A Container IS CALL A Namespace
+    METADATA FOR A Container IS CALLED A Namespace
     """
+
 
     @classmethod
     def new_instance(type, frum, schema=None):
@@ -68,24 +63,23 @@ class Container(object):
             return frum
         elif isinstance(frum, _Query):
             return _run(frum)
-        elif isinstance(frum, (list, set) + generator_types):
+        elif is_many(frum):
             return _ListContainer(frum)
-        elif isinstance(frum, text_type):
+        elif is_text(frum):
             # USE DEFAULT STORAGE TO FIND Container
             if not config.default.settings:
-                Log.error(
-                    "expecting jx_base.container.config.default.settings to contain default elasticsearch connection info"
-                )
+                Log.error("expecting jx_base.container.config.default.settings to contain default elasticsearch connection info")
 
             settings = set_default(
-                {"index": join_field(split_field(frum)[:1:]), "name": frum},
-                config.default.settings,
+                {
+                    "index": join_field(split_field(frum)[:1:]),
+                    "name": frum,
+                },
+                config.default.settings
             )
-            settings.type = (
-                None
-            )  # WE DO NOT WANT TO INFLUENCE THE TYPE BECAUSE NONE IS IN THE frum STRING ANYWAY
+            settings.type = None  # WE DO NOT WANT TO INFLUENCE THE TYPE BECAUSE NONE IS IN THE frum STRING ANYWAY
             return type2container["elasticsearch"](settings)
-        elif isinstance(frum, Mapping):
+        elif is_data(frum):
             frum = wrap(frum)
             if frum.type and type2container[frum.type]:
                 return type2container[frum.type](frum.settings)
@@ -96,9 +90,7 @@ class Container(object):
             else:
                 Log.error("Do not know how to handle {{frum|json}}", frum=frum)
         else:
-            Log.error(
-                "Do not know how to handle {{type}}", type=frum.__class__.__name__
-            )
+            Log.error("Do not know how to handle {{type}}", type=frum.__class__.__name__)
 
     def query(self, query):
         if query.frum != self:

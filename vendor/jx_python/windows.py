@@ -8,20 +8,16 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
-import functools
 from copy import copy
+import functools
 
-import mo_math
 from mo_collections.multiset import Multiset
-from mo_dots.lists import FlatList
+from mo_dots import FlatList
 from mo_logs import Log
-from mo_math import MIN
-from mo_math import Math
-from mo_math import stats
+import mo_math
+from mo_math import MIN, stats
 from mo_math.stats import ZeroMoment, ZeroMoment2Stats
 
 
@@ -40,6 +36,7 @@ class AggregationFunction(object):
         ADD value TO AGGREGATE
         """
         raise NotImplementedError
+
 
     def merge(self, agg):
         """
@@ -76,7 +73,6 @@ class One(AggregationFunction):
     """
     EXPECTING ONLY ONE VALUE OVER THE RESULT SET
     """
-
     def __init__(self, **kwargs):
         object.__init__(self)
         self.value = None
@@ -88,22 +84,14 @@ class One(AggregationFunction):
             self.value = value
             return
         if value != self.value:
-            Log.error(
-                "Expecting value to match: {{expecting}}, {{instead}}",
-                expecting=self.value,
-                instead=value,
-            )
+            Log.error("Expecting value to match: {{expecting}}, {{instead}}",  expecting= self.value,  instead= value)
 
     def merge(self, agg):
         if self.value is None and agg.value is not None:
             self.value = agg.value
         elif self.value is not None:
             if self.value != agg.value:
-                Log.error(
-                    "Expecting value to match: {{expecting}}, {{instead}}",
-                    expecting=self.value,
-                    instead=agg.value,
-                )
+                Log.error("Expecting value to match: {{expecting}}, {{instead}}",  expecting= self.value,  instead= agg.value)
 
     def end(self):
         return self.value
@@ -115,6 +103,7 @@ class WindowFunction(AggregationFunction):
         RETURN A ZERO-STATE AGGREGATE
         """
         raise NotImplementedError
+
 
     def sub(self, value):
         """
@@ -154,12 +143,10 @@ class _Stats(WindowFunction):
         Log.error("Do not know how to handle")
 
     def end(self):
-        ignore = Math.ceiling(len(self.samples) * (1 - self.middle) / 2)
+        ignore = mo_math.ceiling(len(self.samples) * (1 - self.middle) / 2)
         if ignore * 2 >= len(self.samples):
             return stats.Stats()
-        output = stats.Stats(
-            samples=sorted(self.samples)[ignore : len(self.samples) - ignore :]
-        )
+        output = stats.Stats(samples=sorted(self.samples)[ignore:len(self.samples) - ignore:])
         output.samples = list(self.samples)
         return output
 
@@ -194,6 +181,7 @@ class Min(WindowFunction):
     def __init__(self, **kwargs):
         object.__init__(self)
         self.total = Multiset()
+
 
     def add(self, value):
         if value == None:
@@ -235,6 +223,7 @@ class Max(WindowFunction):
         object.__init__(self)
         self.max = None
 
+
     def add(self, value):
         self.max = mo_math.MAX([self.max, value])
 
@@ -249,6 +238,7 @@ class Count(WindowFunction):
     def __init__(self, **kwargs):
         object.__init__(self)
         self.total = 0
+
 
     def add(self, value):
         if value == None:
@@ -268,6 +258,7 @@ class Sum(WindowFunction):
     def __init__(self, **kwargs):
         object.__init__(self)
         self.total = 0
+
 
     def add(self, value):
         if value == None:
@@ -292,6 +283,7 @@ class Percentile(WindowFunction):
         self.percentile = percentile
         self.total = []
 
+
     def add(self, value):
         if value == None:
             return
@@ -302,7 +294,7 @@ class Percentile(WindowFunction):
             return
         try:
             i = self.total.index(value)
-            self.total = self.total[:i] + self.total[i + 1 :]
+            self.total = self.total[:i] + self.total[i+1:]
         except Exception as e:
             Log.error("Problem with window function", e)
 
@@ -337,5 +329,5 @@ name2accumulator = {
     "min": Min,
     "minimum": Min,
     "percentile": Percentile,
-    "one": One,
+    "one": One
 }

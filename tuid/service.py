@@ -4,36 +4,32 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
-import gc
 import copy
+import gc
 
 from jx_python import jx
-from mo_dots import Null, coalesce, wrap, set_default
-from mo_future import text_type
-from mo_hg.hg_mozilla_org import HgMozillaOrg
-from mo_hg.apply import apply_diff, apply_diff_backwards
+from mo_dots import Null, coalesce, set_default, wrap
 from mo_files.url import URL
+from mo_future import text_type
+from mo_hg.apply import apply_diff, apply_diff_backwards
+from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_kwargs import override
 from mo_logs import Log
 from mo_logs.exceptions import suppress_exception
 from mo_math.randoms import Random
-from mo_threads import Till, Thread, Lock
-from mo_times.durations import SECOND, HOUR, MINUTE, DAY
-from pyLibrary.env import http, elasticsearch
+from mo_threads import Lock, Thread, Till
+from mo_times.durations import HOUR, MINUTE, SECOND
+from pyLibrary.env import elasticsearch, http
 from pyLibrary.meta import cache
-from pyLibrary.sql import sql_list, sql_iso
-from pyLibrary.sql.sqlite import quote_value, quote_list
+from pyLibrary.sql import sql_list
+from pyLibrary.sql.sqlite import quote_list, quote_value
 from tuid import sql
-from tuid.statslogger import StatsLogger
-from tuid.counter import Counter
-from tuid.util import MISSING, TuidMap, TuidLine, AnnotateFile, HG_URL, insert
-from mo_json import json2value, value2json
-
 import tuid.clogger
+from tuid.counter import Counter
+from tuid.statslogger import StatsLogger
+from tuid.util import AnnotateFile, HG_URL, MISSING, TuidLine, TuidMap, insert
 
 DEBUG = False
 ANNOTATE_DEBUG = False
@@ -459,7 +455,7 @@ class TUIDService:
 
         This function assumes the newest file names are given, if they
         are not, then no TUIDs are returned for that file.
-        
+
         The following is a very simplified overview of how this function works:
         (1) When a file is requested, we check if it exists in the annotations
             and latestFileMods table.
@@ -598,7 +594,7 @@ class TUIDService:
 
         if len(latestFileMod_inserts) > 0:
             with self.conn.transaction() as transaction:
-                for _, inserts_list in jx.groupby(
+                for _, inserts_list in jx.chunk(
                     latestFileMod_inserts.values(), size=SQL_BATCH_SIZE
                 ):
                     transaction.execute(
@@ -639,7 +635,7 @@ class TUIDService:
                 Log.note("Finished updating frontiers. Updating DB table `latestFileMod`...")
                 if len(latestFileMod_inserts) > 0:
                     with self.conn.transaction() as transaction:
-                        for _, inserts_list in jx.groupby(
+                        for _, inserts_list in jx.chunk(
                             latestFileMod_inserts.values(), size=SQL_BATCH_SIZE
                         ):
                             transaction.execute(
@@ -965,7 +961,7 @@ class TUIDService:
             # added by another thread.
             anns_added_by_other_thread = {}
             if len(ann_inserts) > 0:
-                for _, tmp_inserts in jx.groupby(ann_inserts, size=SQL_ANN_BATCH_SIZE):
+                for _, tmp_inserts in jx.chunk(ann_inserts, size=SQL_ANN_BATCH_SIZE):
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
                     for rev, filename, tuids in tmp_inserts:
@@ -1233,7 +1229,7 @@ class TUIDService:
             # No need to double-check if latesteFileMods has been updated before,
             # we perform an insert or replace any way.
             if len(latestFileMod_inserts) > 0:
-                for _, inserts_list in jx.groupby(
+                for _, inserts_list in jx.chunk(
                     latestFileMod_inserts.values(), size=SQL_BATCH_SIZE
                 ):
                     transaction.execute(
@@ -1243,7 +1239,7 @@ class TUIDService:
 
             anns_added_by_other_thread = {}
             if len(ann_inserts) > 0:
-                for _, tmp_inserts in jx.groupby(ann_inserts, size=SQL_ANN_BATCH_SIZE):
+                for _, tmp_inserts in jx.chunk(ann_inserts, size=SQL_ANN_BATCH_SIZE):
                     # Check if any were added in the mean time by another thread
                     recomputed_inserts = []
                     for rev, filename, string_tuids in tmp_inserts:
@@ -1296,7 +1292,7 @@ class TUIDService:
         if repo is None:
             repo = self.config.hg.branch
 
-        for _, new_files in jx.groupby(files, size=chunk):
+        for _, new_files in jx.chunk(files, size=chunk):
             for count, file in enumerate(new_files):
                 new_files[count] = file.lstrip("/")
 

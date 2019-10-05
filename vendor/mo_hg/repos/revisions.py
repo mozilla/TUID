@@ -7,11 +7,10 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
 from mo_dots import Data
+from mo_dots.datas import register_data
 
 
 class Revision(Data):
@@ -25,6 +24,9 @@ class Revision(Data):
             other.branch.name.lower(),
             other.changeset.id[:12],
         )
+
+
+register_data(Revision,)
 
 
 revision_schema = {
@@ -53,9 +55,7 @@ revision_schema = {
                             "store": True,
                             "index": True,
                             "type": "text",
-                            "fields": {
-                                "raw": {"type": "text", "analyzer": "description_limit"}
-                            },
+                            "fields": {"raw": {"type": "text", "analyzer": "description_limit"}},
                         },
                         "diff": {
                             "type": "nested",
@@ -69,20 +69,14 @@ revision_schema = {
                                             "type": "object",
                                             "dynamic": True,
                                             "properties": {
-                                                "content": {
-                                                    "store": True,
-                                                    "type": "keyword",
-                                                }
+                                                "content": {"store": True, "type": "keyword"}
                                             },
                                         },
                                         "old": {
                                             "type": "object",
                                             "dynamic": True,
                                             "properties": {
-                                                "content": {
-                                                    "store": True,
-                                                    "type": "keyword",
-                                                }
+                                                "content": {"store": True, "type": "keyword"}
                                             },
                                         },
                                     },

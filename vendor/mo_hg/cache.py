@@ -7,24 +7,23 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import division, unicode_literals
 
 import json
 
 from flask import Response
+
 from mo_dots import coalesce
 from mo_files.url import URL
 from mo_future import text_type, xrange
+from mo_hg.rate_logger import RateLogger
 from mo_json import value2json
 from mo_kwargs import override
 from mo_logs import Log
-from mo_threads import Lock, Signal, Queue, Thread, Till
-from mo_times import Date, SECOND, MINUTE
+from mo_threads import Lock, Queue, Signal, Thread, Till
+from mo_times import Date, MINUTE, SECOND
 from pyLibrary.env import http
-from pyLibrary.sql.sqlite import Sqlite, quote_value, quote_list
-
-from mo_hg.rate_logger import RateLogger
+from pyLibrary.sql.sqlite import Sqlite, quote_list, quote_value
 
 APP_NAME = "HG Cache"
 CONCURRENCY = 5
@@ -40,12 +39,7 @@ class Cache(object):
 
     @override
     def __init__(
-        self,
-        rate=None,
-        amortization_period=None,
-        source=None,
-        database=None,
-        kwargs=None,
+        self, rate=None, amortization_period=None, source=None, database=None, kwargs=None
     ):
         self.amortization_period = coalesce(amortization_period, AMORTIZATION_PERIOD)
         self.rate = coalesce(rate, HG_REQUEST_PER_SECOND)
@@ -55,8 +49,7 @@ class Cache(object):
         self.workers = []
         self.todo = Queue(APP_NAME + " todo")
         self.requests = Queue(
-            APP_NAME + " requests",
-            max=int(self.rate * self.amortization_period.seconds),
+            APP_NAME + " requests", max=int(self.rate * self.amortization_period.seconds)
         )
         self.url = URL(source.url)
         self.db = Sqlite(database)
@@ -223,12 +216,7 @@ class Cache(object):
                         t.execute(
                             "INSERT INTO cache (path, headers, response, timestamp) VALUES"
                             + quote_list(
-                                (
-                                    path,
-                                    resp_headers,
-                                    resp_content.decode("latin1"),
-                                    timestamp,
-                                )
+                                (path, resp_headers, resp_content.decode("latin1"), timestamp)
                             )
                         )
                 with self.cache_locker:

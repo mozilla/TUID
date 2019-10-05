@@ -11,9 +11,7 @@
 # THIS SIGNAL IS IMPORTANT FOR PROPER SIGNALLING WHICH ALLOWS
 # FOR FAST AND PREDICTABLE SHUTDOWN AND CLEANUP OF THREADS
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
 import random
 from weakref import ref
@@ -32,7 +30,7 @@ class Signal(object):
 
     go() - ACTIVATE SIGNAL (DOES NOTHING IF SIGNAL IS ALREADY ACTIVATED)
     wait() - PUT THREAD IN WAIT STATE UNTIL SIGNAL IS ACTIVATED
-    on_go() - METHOD FOR OTHER THREAD TO RUN WHEN ACTIVATING SIGNAL
+    then() - METHOD FOR OTHER THREAD TO RUN WHEN ACTIVATING SIGNAL
     """
 
     __slots__ = ["_name", "lock", "_go", "job_queue", "waiting_threads", "__weakref__"]
@@ -95,9 +93,7 @@ class Signal(object):
         threads, self.waiting_threads = self.waiting_threads, None
 
         if threads:
-            DEBUG and self._name and Log.note(
-                "Release {{num}} threads", num=len(threads)
-            )
+            DEBUG and self._name and Log.note("Release {{num}} threads", num=len(threads))
             for t in threads:
                 t.release()
 
@@ -108,7 +104,7 @@ class Signal(object):
                 except Exception as e:
                     Log.warning("Trigger on Signal.go() failed!", cause=e)
 
-    def on_go(self, target):
+    def then(self, target):
         """
         RUN target WHEN SIGNALED
         """
@@ -117,9 +113,7 @@ class Signal(object):
 
         with self.lock:
             if not self._go:
-                DEBUG and self._name and Log.note(
-                    "Adding target to signal {{name|quote}}", name=self.name
-                )
+                DEBUG and self._name and Log.note("Adding target to signal {{name|quote}}", name=self.name)
 
                 if not self.job_queue:
                     self.job_queue = [target]
@@ -127,10 +121,7 @@ class Signal(object):
                     self.job_queue.append(target)
                 return
 
-        (DEBUG_SIGNAL) and Log.note(
-            "Signal {{name|quote}} already triggered, running job immediately",
-            name=self.name,
-        )
+        (DEBUG_SIGNAL) and Log.note("Signal {{name|quote}} already triggered, running job immediately", name=self.name)
         target()
 
     def remove_go(self, target):
@@ -182,8 +173,8 @@ class Signal(object):
             output = Signal(self.name + " and " + other.name)
 
         gen = AndSignals(output, 2)
-        self.on_go(gen.done)
-        other.on_go(gen.done)
+        self.then(gen.done)
+        other.then(gen.done)
         return output
 
 
@@ -214,15 +205,14 @@ class OrSignal(object):
     A SELF-REFERENTIAL CLUSTER OF SIGNALING METHODS TO IMPLEMENT __or__()
     MANAGE SELF-REMOVAL UPON NOT NEEDING THE signal OBJECT ANY LONGER
     """
-
     __slots__ = ["signal", "dependencies"]
 
     def __init__(self, signal, dependencies):
         self.dependencies = dependencies
         self.signal = ref(signal, self.cleanup)
         for d in dependencies:
-            d.on_go(self)
-        signal.on_go(self.cleanup)
+            d.then(self)
+        signal.then(self.cleanup)
 
     def cleanup(self, r=None):
         for d in self.dependencies:

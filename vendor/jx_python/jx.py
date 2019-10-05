@@ -8,38 +8,14 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
-
-_range = range
-
-from mo_times import Date
-from collections import Mapping
 from jx_base import query
-from jx_python import expressions as _expressions
-from jx_python import flat_list, group_by
-from mo_dots import listwrap, wrap, unwrap, FlatList, NullType
-from mo_dots import set_default, Null, Data, split_field, coalesce, join_field
-from mo_future import (
-    text_type,
-    boolean_type,
-    none_type,
-    long,
-    generator_types,
-    sort_using_cmp,
-    PY2,
-)
-from mo_logs import Log
-from mo_math import Math
-from mo_math import UNION, MIN
-from pyLibrary import convert
-
-import mo_dots
 from jx_base.container import Container
-from jx_base.expressions import TRUE, FALSE, NullOp
+from jx_base.expressions import FALSE, TRUE
 from jx_base.query import QueryOp, _normalize_selects
+from jx_base.language import is_op, value_compare
+from jx_python import expressions as _expressions, flat_list, group_by
 from jx_python.containers.cube import Cube
 from jx_python.cubes.aggs import cube_aggs
 from jx_python.expression_compiler import compile_expression
@@ -47,7 +23,14 @@ from jx_python.expressions import jx_expression_to_function
 from jx_python.flat_list import PartFlatList
 from mo_collections.index import Index
 from mo_collections.unique_index import UniqueIndex
+import mo_dots
+from mo_dots import Data, FlatList, Null, coalesce, is_container, is_data, is_list, is_many, join_field, listwrap, set_default, split_field, unwrap, wrap
 from mo_dots.objects import DataObject
+from mo_future import is_text, sort_using_cmp
+from mo_logs import Log
+import mo_math
+from mo_math import MIN, UNION
+from pyLibrary import convert
 
 # A COLLECTION OF DATABASE OPERATORS (RELATIONAL ALGEBRA OPERATORS)
 # JSON QUERY EXPRESSION DOCUMENTATION: https://github.com/klahnakoski/jx/tree/master/docs
@@ -55,6 +38,7 @@ from mo_dots.objects import DataObject
 # TODO: USE http://docs.sqlalchemy.org/en/latest/core/tutorial.html AS DOCUMENTATION FRAMEWORK
 
 builtin_tuple = tuple
+_range = range
 _Column = None
 _merge_type = None
 _ = _expressions
@@ -84,13 +68,17 @@ def run(query, container=Null):
         return DUAL.query(query_op)
     elif isinstance(container, Container):
         return container.query(query_op)
-    elif isinstance(container, (list, set) + generator_types):
+    elif is_many(container):
         container = wrap(list(container))
     elif isinstance(container, Cube):
         if is_aggs(query_op):
             return cube_aggs(container, query_op)
-    elif isinstance(container, QueryOp):
+    elif is_op(container, QueryOp):
         container = run(container)
+    elif is_data(container):
+        query = container
+        container = query["from"]
+        container = run(QueryOp.wrap(query, container, container.namespace), container)
     else:
         Log.error(
             "Do not know how to handle {{type}}", type=container.__class__.__name__
@@ -128,6 +116,7 @@ def run(query, container=Null):
 
 
 groupby = group_by.groupby
+chunk = group_by.chunk
 
 
 def index(data, keys=None):
@@ -179,7 +168,7 @@ def unique_index(data, keys=None, fail_on_dup=True):
 
 def map2set(data, relation):
     """
-    EXPECTING A isinstance(relation, Mapping) THAT MAPS VALUES TO lists
+    EXPECTING A is_data(relation) THAT MAPS VALUES TO lists
     THE LISTS ARE EXPECTED TO POINT TO MEMBERS OF A SET
     A set() IS RETURNED
     """
@@ -188,7 +177,7 @@ def map2set(data, relation):
     if isinstance(relation, Data):
         Log.error("Does not accept a Data")
 
-    if isinstance(relation, Mapping):
+    if is_data(relation):
         try:
             # relation[d] is expected to be a list
             # return set(cod for d in data for cod in relation[d])
@@ -225,12 +214,12 @@ def tuple(data, field_name):
     if isinstance(data, FlatList):
         Log.error("not supported yet")
 
-    if isinstance(field_name, Mapping) and "value" in field_name:
+    if is_data(field_name) and "value" in field_name:
         # SIMPLIFY {"value":value} AS STRING
         field_name = field_name["value"]
 
     # SIMPLE PYTHON ITERABLE ASSUMED
-    if isinstance(field_name, text_type):
+    if is_text(field_name):
         if len(split_field(field_name)) == 1:
             return [(d[field_name],) for d in data]
         else:
@@ -238,7 +227,7 @@ def tuple(data, field_name):
             output = []
             flat_list._tuple1(data, path, 0, output)
             return output
-    elif isinstance(field_name, list):
+    elif is_list(field_name):
         paths = [_select_a_field(f) for f in field_name]
         output = FlatList()
         _tuple((), unwrap(data), paths, 0, output)
@@ -280,7 +269,7 @@ def _tuple_deep(v, field, depth, record):
 
     for i, f in enumerate(field.value[depth : len(field.value) - 1 :]):
         v = v.get(f)
-        if isinstance(v, list):
+        if is_list(v):
             return depth + i + 1, v, record
 
     f = field.value.last()
@@ -302,10 +291,10 @@ def select(data, field_name):
             data._data.values()
         )  # THE SELECT ROUTINE REQUIRES dicts, NOT Data WHILE ITERATING
 
-    if isinstance(data, Mapping):
+    if is_data(data):
         return select_one(data, field_name)
 
-    if isinstance(field_name, Mapping):
+    if is_data(field_name):
         field_name = wrap(field_name)
         if field_name.value in ["*", "."]:
             return data
@@ -315,7 +304,7 @@ def select(data, field_name):
             field_name = field_name.value
 
     # SIMPLE PYTHON ITERABLE ASSUMED
-    if isinstance(field_name, text_type):
+    if is_text(field_name):
         path = split_field(field_name)
         if len(path) == 1:
             return FlatList([d[field_name] for d in data])
@@ -323,7 +312,7 @@ def select(data, field_name):
             output = FlatList()
             flat_list._select1(data, path, 0, output)
             return output
-    elif isinstance(field_name, list):
+    elif is_list(field_name):
         keys = [_select_a_field(wrap(f)) for f in field_name]
         return _select(Data(), unwrap(data), keys, 0)
     else:
@@ -332,9 +321,9 @@ def select(data, field_name):
 
 
 def _select_a_field(field):
-    if isinstance(field, text_type):
+    if is_text(field):
         return wrap({"name": field, "value": split_field(field)})
-    elif isinstance(wrap(field).value, text_type):
+    elif is_text(wrap(field).value):
         field = wrap(field)
         return wrap({"name": field.name, "value": split_field(field.value)})
     else:
@@ -346,8 +335,8 @@ def _select(template, data, fields, depth):
     deep_path = []
     deep_fields = UniqueIndex(["name"])
     for d in data:
-        if isinstance(d, Data):
-            Log.error("programmer error, _select can not handle Data")
+        if d.__class__ is Data:
+            Log.error("programmer error, _select can not handle Data, only dict")
 
         record = template.copy()
         children = None
@@ -387,7 +376,7 @@ def _select_deep(v, field, depth, record):
         v = v.get(f)
         if v is None:
             return 0, None
-        if isinstance(v, list):
+        if is_list(v):
             return depth + i + 1, v
 
     f = field.value.last()
@@ -434,7 +423,7 @@ def _select_deep_meta(field, depth):
                 source = source.get(f)
                 if source is None:
                     return 0, None
-                if isinstance(source, list):
+                if is_list(source):
                     return depth + i + 1, source
 
             f = field.value.last()
@@ -529,23 +518,23 @@ def _deeper_iterator(columns, nested_path, path, data):
             c = columns.get(leaf)
             if not c:
                 c = columns[leaf] = _Column(name=leaf, type=type_to_name[v.__class__], table=None, es_column=leaf)
-            c.type = _merge_type[c.type][type_to_name[v.__class__]]
-            if c.type == "nested" and not nested_path[0].startswith(leaf + "."):
+            c.jx_type = _merge_type[c.jx_type][type_to_name[v.__class__]]
+            if c.jx_type == "nested" and not nested_path[0].startswith(leaf + "."):
                 if leaf.startswith(nested_path[0] + ".") or leaf == nested_path[0] or not nested_path[0]:
                     nested_path[0] = leaf
                 else:
                     Log.error("nested path conflict: {{leaf}} vs {{nested}}", leaf=leaf, nested=nested_path[0])
 
-            if isinstance(v, list) and v:
+            if is_list(v) and v:
                 if deep_leaf:
                     Log.error("nested path conflict: {{leaf}} vs {{nested}}", leaf=leaf, nested=deep_leaf)
                 deep_leaf = leaf
                 deep_v = v
-            elif isinstance(v, Mapping):
+            elif is_data(v):
                 for o in _deeper_iterator(columns, nested_path, leaf, [v]):
                     set_default(output, o)
             else:
-                if c.type not in ["object", "nested"]:
+                if c.jx_type not in ["object", "nested"]:
                     output[leaf] = v
 
         if deep_leaf:
@@ -585,7 +574,7 @@ def sort(data, fieldnames=None, already_normalized=False):
                     Log.error("problem with compare", e)
             return 0
 
-        if isinstance(data, list):
+        if is_list(data):
             output = FlatList([unwrap(d) for d in sort_using_cmp(data, cmp=comparer)])
         elif hasattr(data, "__iter__"):
             output = FlatList(
@@ -602,92 +591,6 @@ def sort(data, fieldnames=None, already_normalized=False):
 
 def count(values):
     return sum((1 if v != None else 0) for v in values)
-
-
-def value_compare(left, right, ordering=1):
-    """
-    SORT VALUES, NULL IS THE LEAST VALUE
-    :param left: LHS
-    :param right: RHS
-    :param ordering: (-1, 0, 0) TO AFFECT SORT ORDER
-    :return: The return value is negative if x < y, zero if x == y and strictly positive if x > y.
-    """
-
-    try:
-        if isinstance(left, list) or isinstance(right, list):
-            if left == None:
-                return ordering
-            elif right == None:
-                return -ordering
-
-            left = listwrap(left)
-            right = listwrap(right)
-            for a, b in zip(left, right):
-                c = value_compare(a, b) * ordering
-                if c != 0:
-                    return c
-
-            if len(left) < len(right):
-                return -ordering
-            elif len(left) > len(right):
-                return ordering
-            else:
-                return 0
-
-        ltype = type(left)
-        rtype = type(right)
-        ltype_num = TYPE_ORDER.get(ltype, 10)
-        rtype_num = TYPE_ORDER.get(rtype, 10)
-        type_diff = ltype_num - rtype_num
-        if type_diff != 0:
-            return ordering if type_diff > 0 else -ordering
-
-        if ltype_num == 9:
-            return 0
-        elif ltype is builtin_tuple:
-            for a, b in zip(left, right):
-                c = value_compare(a, b)
-                if c != 0:
-                    return c * ordering
-            return 0
-        elif ltype in (dict, Data):
-            for k in sorted(set(left.keys()) | set(right.keys())):
-                c = value_compare(left.get(k), right.get(k)) * ordering
-                if c != 0:
-                    return c
-            return 0
-        elif left > right:
-            return ordering
-        elif left < right:
-            return -ordering
-        else:
-            return 0
-    except Exception as e:
-        Log.error(
-            "Can not compare values {{left}} to {{right}}",
-            left=left,
-            right=right,
-            cause=e,
-        )
-
-
-TYPE_ORDER = {
-    boolean_type: 0,
-    int: 1,
-    float: 1,
-    Date: 1,
-    text_type: 2,
-    list: 3,
-    builtin_tuple: 3,
-    dict: 4,
-    Data: 4,
-    none_type: 9,
-    NullType: 9,
-    NullOp: 9,
-}
-
-if PY2:
-    TYPE_ORDER[long] = 1
 
 
 def pairwise(values):
@@ -716,7 +619,7 @@ def filter(data, where):
     if isinstance(data, Container):
         return data.filter(where)
 
-    if isinstance(data, (list, set)):
+    if is_container(data):
         temp = jx_expression_to_function(where)
         dd = wrap(data)
         return wrap([unwrap(d) for i, d in enumerate(data) if temp(wrap(d), i, dd)])
@@ -738,7 +641,7 @@ def drill_filter(esfilter, data):
     """
     PARTIAL EVALUATE THE FILTER BASED ON DATA GIVEN
 
-    TODO:  FIX THIS MONUMENALLY BAD IDEA
+    TODO:  FIX THIS MONUMENTALLY BAD IDEA
     """
     esfilter = unwrap(esfilter)
     primary_nested = []  # track if nested, changes if not
@@ -758,7 +661,7 @@ def drill_filter(esfilter, data):
                 d = d[c]
             except Exception as e:
                 Log.error("{{name}} does not exist", name=fieldname)
-            if isinstance(d, list) and len(col) > 1:
+            if is_list(d) and len(col) > 1:
                 if len(primary_column) <= depth + i:
                     primary_nested.append(True)
                     primary_column.append(c)
@@ -898,7 +801,7 @@ def drill_filter(esfilter, data):
             else:
                 return result
         elif filter.missing:
-            if isinstance(filter.missing, text_type):
+            if is_text(filter.missing):
                 field = filter["missing"]
             else:
                 field = filter["missing"]["field"]
@@ -928,7 +831,7 @@ def drill_filter(esfilter, data):
                 return result
 
         elif filter.exists:
-            if isinstance(filter["exists"], text_type):
+            if is_text(filter["exists"]):
                 field = filter["exists"]
             else:
                 field = filter["exists"]["field"]
@@ -967,7 +870,7 @@ def drill_filter(esfilter, data):
 
     # OUTPUT
     for i, d in enumerate(data):
-        if isinstance(d, Mapping):
+        if is_data(d):
             main([], esfilter, wrap(d), 0)
         else:
             Log.error("filter is expecting a dict, not {{type}}", type=d.__class__)
@@ -1013,7 +916,7 @@ def wrap_function(func):
     """
     RETURN A THREE-PARAMETER WINDOW FUNCTION TO MATCH
     """
-    if isinstance(func, text_type):
+    if is_text(func):
         return compile_expression(func)
 
     numarg = func.__code__.co_argcount
@@ -1063,7 +966,10 @@ def window(data, param):
             data = sort(data, sortColumns, already_normalized=True)
         # SIMPLE CALCULATED VALUE
         for rownum, r in enumerate(data):
-            r[name] = calc_value(r, rownum, data)
+            try:
+                r[name] = calc_value(r, rownum, data)
+            except Exception as e:
+                raise e
         return
 
     try:
@@ -1121,8 +1027,8 @@ def intervals(_min, _max=None, size=1):
     if _max == None:
         _max = _min
         _min = 0
-    _max = int(Math.ceiling(_max))
-    _min = int(Math.floor(_min))
+    _max = int(mo_math.ceiling(_max))
+    _min = int(mo_math.floor(_min))
 
     output = ((x, min(x + size, _max)) for x in _range(_min, _max, size))
     return output
@@ -1131,7 +1037,7 @@ def intervals(_min, _max=None, size=1):
 def prefixes(vals):
     """
     :param vals: iterable
-    :return: vals[:1], vals[:1], ... , vals[:n]
+    :return: vals[:1], vals[:2], ... , vals[:n]
     """
     for i in range(len(vals)):
         yield vals[: i + 1]

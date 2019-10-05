@@ -103,8 +103,6 @@ functions/methods.  Their inclusion here is for function name consistency.
 ##
 ## 11/08/98 ... fixed aput to output large arrays correctly
 
-import string
-import copy
 from types import *
 
 __version__ = 0.4
@@ -114,6 +112,9 @@ __version__ = 0.4
 ### Here are the list functions, DEFINED FOR ALL SYSTEMS.
 ### Array functions (for NumPy-enabled computers) appear below.
 ###
+
+
+
 
 
 def colex(listoflists, cnums):
@@ -129,19 +130,20 @@ Returns: a list-of-lists corresponding to the columns from listoflists
 """
     global index
     column = 0
-    if type(cnums) in [ListType, TupleType]:  # if multiple columns to get
+    if type(cnums) in [ListType, TupleType]:   # if multiple columns to get
         index = cnums[0]
         column = map(lambda x: x[index], listoflists)
         for col in cnums[1:]:
             index = col
             column = zip(column, map(lambda x: x[index], listoflists))
-    elif type(cnums) == StringType:  # if an 'x[3:]' type expr.
-        evalstring = "map(lambda x: x" + cnums + ", listoflists)"
+    elif type(cnums) == StringType:              # if an 'x[3:]' type expr.
+        evalstring = 'map(lambda x: x' + cnums + ', listoflists)'
         column = eval(evalstring)
-    else:  # else it's just 1 col to get
+    else:                                     # else it's just 1 col to get
         index = cnums
         column = map(lambda x: x[index], listoflists)
     return column
+
 
 
 def linexand(listoflists, columnlist, valuelist):
@@ -157,15 +159,15 @@ Returns: the rows of listoflists where columnlist[i]=valuelist[i] for ALL i
         columnlist = [columnlist]
     if type(valuelist) not in [ListType, TupleType]:
         valuelist = [valuelist]
-    criterion = ""
+    criterion = ''
     for i in range(len(columnlist)):
         if type(valuelist[i]) == StringType:
-            critval = "'" + valuelist[i] + "'"
+            critval = '\'' + valuelist[i] + '\''
         else:
             critval = str(valuelist[i])
-        criterion = criterion + " x[" + str(columnlist[i]) + "]==" + critval + " and"
-    criterion = criterion[0:-3]  # remove the "and" after the last crit
-    function = "filter(lambda x: " + criterion + ",listoflists)"
+        criterion = criterion + ' x[' + str(columnlist[i]) + ']==' + critval + ' and'
+    criterion = criterion[0:-3]         # remove the "and" after the last crit
+    function = 'filter(lambda x: ' + criterion + ',listoflists)'
     lines = eval(function)
     return lines
 
@@ -184,3 +186,4 @@ Returns: the unique elements (or rows) in inlist
         if item not in uniques:
             uniques.append(item)
     return uniques
+

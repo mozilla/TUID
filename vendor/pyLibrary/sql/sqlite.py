@@ -8,52 +8,62 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
+from mo_future import is_text, is_binary
+from collections import Mapping, namedtuple
 import os
 import re
 import sys
-from collections import Mapping, namedtuple
 
-from jx_base.expressions import jx_expression
-from mo_dots import Data, coalesce, unwraplist, Null
+from mo_dots import Data, coalesce, unwraplist
 from mo_files import File
 from mo_future import allocate_lock as _allocate_lock, text_type
+from mo_json import BOOLEAN, INTEGER, NESTED, NUMBER, OBJECT, STRING
 from mo_kwargs import override
 from mo_logs import Log
-from mo_logs.exceptions import Except, extract_stack, ERROR, format_trace
+from mo_logs.exceptions import ERROR, Except, extract_stack, format_trace
 from mo_logs.strings import quote
 from mo_math.stats import percentile
-from mo_threads import Queue, Thread, Lock, Till
-from mo_times import Date, Duration
-from mo_times.timer import Timer
+from mo_threads import Lock, Queue, Thread, Till
+from mo_times import Date, Duration, Timer
 from pyLibrary import convert
-from pyLibrary.sql import (
-    DB,
-    SQL,
-    SQL_TRUE,
-    SQL_FALSE,
-    SQL_NULL,
-    SQL_SELECT,
-    sql_iso,
-    sql_list,
-)
+from pyLibrary.sql import DB, SQL, SQL_FALSE, SQL_NULL, SQL_SELECT, SQL_TRUE, sql_iso, sql_list
 
 DEBUG = False
 TRACE = True
 
-FORMAT_COMMAND = "Running command\n{{command|limit(100)|indent}}"
-DOUBLE_TRANSACTION_ERROR = (
-    "You can not query outside a transaction you have open already"
-)
+FORMAT_COMMAND = "Running command\n{{command|limit(1000)|indent}}"
+DOUBLE_TRANSACTION_ERROR = "You can not query outside a transaction you have open already"
 TOO_LONG_TO_HOLD_TRANSACTION = 10
 
-sqlite3 = None
+_sqlite3 = None
 _load_extension_warning_sent = False
 _upgraded = False
-known_databases = {Null: None}
+known_databases = {None: None}
+
+
+def _upgrade():
+    try:
+        Log.note("sqlite not upgraded")
+        # return
+        #
+        # import sys
+        # import platform
+        # if "windows" in platform.system().lower():
+        #     original_dll = File.new_instance(sys.exec_prefix, "dlls/sqlite3.dll")
+        #     if platform.architecture()[0]=='32bit':
+        #         source_dll = File("vendor/pyLibrary/vendor/sqlite/sqlite3_32.dll")
+        #     else:
+        #         source_dll = File("vendor/pyLibrary/vendor/sqlite/sqlite3_64.dll")
+        #
+        #     if not all(a == b for a, b in zip_longest(source_dll.read_bytes(), original_dll.read_bytes())):
+        #         original_dll.backup()
+        #         File.copy(source_dll, original_dll)
+        # else:
+        #     pass
+    except Exception as e:
+        Log.warning("could not upgrade python's sqlite", cause=e)
 
 
 class Sqlite(DB):
@@ -63,15 +73,7 @@ class Sqlite(DB):
     """
 
     @override
-    def __init__(
-        self,
-        filename=None,
-        db=None,
-        get_trace=None,
-        upgrade=True,
-        load_functions=False,
-        kwargs=None,
-    ):
+    def __init__(self, filename=None, db=None, get_trace=None, upgrade=True, load_functions=False, kwargs=None):
         """
         :param filename:  FILE TO USE FOR DATABASE
         :param db: AN EXISTING sqlite3 DB YOU WOULD LIKE TO USE (INSTEAD OF USING filename)
@@ -80,39 +82,39 @@ class Sqlite(DB):
         :param load_functions: LOAD EXTENDED MATH FUNCTIONS (MAY REQUIRE upgrade)
         :param kwargs:
         """
-        if upgrade and not _upgraded:
-            _upgrade()
+        global _upgraded
+        global _sqlite3
 
         self.settings = kwargs
-        self.filename = File(filename).abspath
+        if not _upgraded:
+            if upgrade:
+                _upgrade()
+            _upgraded = True
+            import sqlite3 as _sqlite3
+            _ = _sqlite3
+
+        self.filename = File(filename).abspath if filename else None
         if known_databases.get(self.filename):
-            Log.error(
-                "Not allowed to create more than one Sqlite instance for {{file}}",
-                file=self.filename,
-            )
+            Log.error("Not allowed to create more than one Sqlite instance for {{file}}", file=self.filename)
 
         # SETUP DATABASE
-        DEBUG and Log.note("Sqlite version {{version}}", version=sqlite3.sqlite_version)
+        DEBUG and Log.note("Sqlite version {{version}}", version=_sqlite3.sqlite_version)
         try:
             if db == None:
-                self.db = sqlite3.connect(
+                self.db = _sqlite3.connect(
                     database=coalesce(self.filename, ":memory:"),
                     check_same_thread=False,
-                    isolation_level=None,
+                    isolation_level=None
                 )
             else:
                 self.db = db
         except Exception as e:
-            Log.error(
-                "could not open file {{filename}}", filename=self.filename, cause=e
-            )
+            Log.error("could not open file {{filename}}", filename=self.filename, cause=e)
         load_functions and self._load_functions()
 
         self.locker = Lock()
         self.available_transactions = []  # LIST OF ALL THE TRANSACTIONS BEING MANAGED
-        self.queue = Queue(
-            "sql commands"
-        )  # HOLD (command, result, signal, stacktrace) TUPLES
+        self.queue = Queue("sql commands")   # HOLD (command, result, signal, stacktrace) TUPLES
 
         self.get_trace = coalesce(get_trace, TRACE)
         self.upgrade = upgrade
@@ -120,29 +122,23 @@ class Sqlite(DB):
 
         # WORKER VARIABLES
         self.transaction_stack = []  # THE TRANSACTION OBJECT WE HAVE PARTIALLY RUN
-        self.last_command_item = (
-            None
-        )  # USE THIS TO HELP BLAME current_transaction FOR HANGING ON TOO LONG
+        self.last_command_item = None  # USE THIS TO HELP BLAME current_transaction FOR HANGING ON TOO LONG
         self.too_long = None
         self.delayed_queries = []
         self.delayed_transactions = []
         self.worker = Thread.run("sqlite db thread", self._worker)
 
-        DEBUG and Log.note(
-            "Sqlite version {{version}}",
-            version=self.query("select sqlite_version()").data[0][0],
-        )
+        DEBUG and Log.note("Sqlite version {{version}}", version=self.query("select sqlite_version()").data[0][0])
 
     def _enhancements(self):
         def regex(pattern, value):
-            return 1 if re.match(pattern + "$", value) else 0
-
+            return 1 if re.match(pattern+"$", value) else 0
         con = self.db.create_function("regex", 2, regex)
 
         class Percentile(object):
             def __init__(self, percentile):
-                self.percentile = percentile
-                self.acc = []
+                self.percentile=percentile
+                self.acc=[]
 
             def step(self, value):
                 self.acc.append(value)
@@ -215,34 +211,22 @@ class Sqlite(DB):
     def _load_functions(self):
         global _load_extension_warning_sent
         library_loc = File.new_instance(sys.modules[__name__].__file__, "../..")
-        full_path = File.new_instance(
-            library_loc, "vendor/sqlite/libsqlitefunctions.so"
-        ).abspath
+        full_path = File.new_instance(library_loc, "vendor/sqlite/libsqlitefunctions.so").abspath
         try:
             trace = extract_stack(0)[0]
             if self.upgrade:
-                if os.name == "nt":
-                    file = File.new_instance(
-                        trace["file"], "../../vendor/sqlite/libsqlitefunctions.so"
-                    )
+                if os.name == 'nt':
+                    file = File.new_instance(trace["file"], "../../vendor/sqlite/libsqlitefunctions.so")
                 else:
-                    file = File.new_instance(
-                        trace["file"], "../../vendor/sqlite/libsqlitefunctions"
-                    )
+                    file = File.new_instance(trace["file"], "../../vendor/sqlite/libsqlitefunctions")
 
                 full_path = file.abspath
                 self.db.enable_load_extension(True)
-                self.db.execute(
-                    SQL_SELECT + "load_extension" + sql_iso(quote_value(full_path))
-                )
+                self.db.execute(SQL_SELECT + "load_extension" + sql_iso(quote_value(full_path)))
         except Exception as e:
             if not _load_extension_warning_sent:
                 _load_extension_warning_sent = True
-                Log.warning(
-                    "Could not load {{file}}, doing without. (no SQRT for you!)",
-                    file=full_path,
-                    cause=e,
-                )
+                Log.warning("Could not load {{file}}, doing without. (no SQRT for you!)", file=full_path, cause=e)
 
     def create_new_functions(self):
         def regexp(pattern, item):
@@ -253,7 +237,7 @@ class Sqlite(DB):
 
     def show_transactions_blocked_warning(self):
         blocker = self.last_command_item
-        blocked = (self.delayed_queries + self.delayed_transactions)[0]
+        blocked = (self.delayed_queries+self.delayed_transactions)[0]
 
         Log.warning(
             "Query on thread {{blocked_thread|json}} at\n"
@@ -263,12 +247,8 @@ class Sqlite(DB):
             "this message brought to you by....",
             blocker_trace=format_trace(blocker.trace),
             blocked_trace=format_trace(blocked.trace),
-            blocker_thread=blocker.transaction.thread.name
-            if blocker.transaction is not None
-            else None,
-            blocked_thread=blocked.transaction.thread.name
-            if blocked.transaction is not None
-            else None,
+            blocker_thread=blocker.transaction.thread.name if blocker.transaction is not None else None,
+            blocked_thread=blocked.transaction.thread.name if blocked.transaction is not None else None
         )
 
     def _close_transaction(self, command_item):
@@ -342,18 +322,15 @@ class Sqlite(DB):
                     with self.locker:
                         if self.too_long is None:
                             self.too_long = Till(seconds=TOO_LONG_TO_HOLD_TRANSACTION)
-                            self.too_long.on_go(self.show_transactions_blocked_warning)
+                            self.too_long.then(self.show_transactions_blocked_warning)
                         self.delayed_queries.append(command_item)
                     return
-            elif self.transaction_stack and self.transaction_stack[-1] not in [
-                transaction,
-                transaction.parent,
-            ]:
+            elif self.transaction_stack and self.transaction_stack[-1] not in [transaction, transaction.parent]:
                 # THIS TRANSACTION IS NOT THE CURRENT TRANSACTION, DELAY IT
                 with self.locker:
                     if self.too_long is None:
                         self.too_long = Till(seconds=TOO_LONG_TO_HOLD_TRANSACTION)
-                        self.too_long.on_go(self.show_transactions_blocked_warning)
+                        self.too_long.then(self.show_transactions_blocked_warning)
                     self.delayed_transactions.append(command_item)
                 return
             else:
@@ -367,10 +344,10 @@ class Sqlite(DB):
                     self.transaction_stack.append(transaction)
                 elif transaction.exception and query is not ROLLBACK:
                     result.exception = Except(
-                        type=ERROR,
+                        context=ERROR,
                         template="Not allowed to continue using a transaction that failed",
                         cause=transaction.exception,
-                        trace=trace,
+                        trace=trace
                     )
                     signal.release()
                     return
@@ -381,18 +358,16 @@ class Sqlite(DB):
                     # DEAL WITH ERRORS IN QUEUED COMMANDS
                     # WE WILL UNWRAP THE OUTER EXCEPTION TO GET THE CAUSE
                     err = Except(
-                        type=ERROR,
-                        template="Bad call to Sqlite3 while " + FORMAT_COMMAND,
+                        context=ERROR,
+                        template="Bad call to Sqlite3 while "+FORMAT_COMMAND,
                         params={"command": e.params.current.command},
                         cause=e.cause,
-                        trace=e.params.current.trace,
+                        trace=e.params.current.trace
                     )
                     transaction.exception = result.exception = err
 
                     if query in [COMMIT, ROLLBACK]:
-                        self._close_transaction(
-                            CommandItem(ROLLBACK, result, signal, trace, transaction)
-                        )
+                        self._close_transaction(CommandItem(ROLLBACK, result, signal, trace, transaction))
 
                     signal.release()
                     return
@@ -408,9 +383,7 @@ class Sqlite(DB):
                 DEBUG and Log.note(FORMAT_COMMAND, command=query)
                 curr = self.db.execute(query)
                 result.meta.format = "table"
-                result.header = (
-                    [d[0] for d in curr.description] if curr.description else None
-                )
+                result.header = [d[0] for d in curr.description] if curr.description else None
                 result.data = curr.fetchall()
                 if DEBUG and result.data:
                     text = convert.table2csv(list(result.data))
@@ -418,11 +391,11 @@ class Sqlite(DB):
             except Exception as e:
                 e = Except.wrap(e)
                 err = Except(
-                    type=ERROR,
+                    context=ERROR,
                     template="Bad call to Sqlite while " + FORMAT_COMMAND,
                     params={"command": query},
                     trace=trace,
-                    cause=e,
+                    cause=e
                 )
                 result.exception = err
                 if transaction:
@@ -432,6 +405,7 @@ class Sqlite(DB):
 
 
 class Transaction(object):
+
     def __init__(self, db, parent=None):
         self.db = db
         self.locker = Lock("transaction " + text_type(id(self)) + " todo lock")
@@ -464,6 +438,8 @@ class Transaction(object):
         return output
 
     def execute(self, command):
+        if self.end_of_life:
+            Log.error("Transaction is dead")
         trace = extract_stack(1) if self.db.get_trace else None
         with self.locker:
             self.todo.append(CommandItem(command, None, None, trace, self))
@@ -478,7 +454,7 @@ class Transaction(object):
                 self.parent.do_all()
             # GET THE REMAINING COMMANDS
             with self.locker:
-                todo = self.todo[self.complete :]
+                todo = self.todo[self.complete:]
                 self.complete = len(self.todo)
 
             # RUN THEM
@@ -509,9 +485,7 @@ class Transaction(object):
         self.query(COMMIT)
 
 
-CommandItem = namedtuple(
-    "CommandItem", ("command", "result", "is_done", "trace", "transaction")
-)
+CommandItem = namedtuple("CommandItem", ("command", "result", "is_done", "trace", "transaction"))
 
 
 _no_need_to_quote = re.compile(r"^\w+$", re.UNICODE)
@@ -521,7 +495,7 @@ def quote_column(column_name, table=None):
     if isinstance(column_name, SQL):
         return column_name
 
-    if not isinstance(column_name, text_type):
+    if not is_text(column_name):
         Log.error("expecting a name")
     if table != None:
         return SQL(" d" + quote(table) + "." + quote(column_name) + " ")
@@ -538,7 +512,7 @@ def quote_value(value):
         return SQL(text_type(value.unix))
     elif isinstance(value, Duration):
         return SQL(text_type(value.seconds))
-    elif isinstance(value, text_type):
+    elif is_text(value):
         return SQL("'" + value.replace("'", "''") + "'")
     elif value == None:
         return SQL_NULL
@@ -553,11 +527,10 @@ def quote_value(value):
 def quote_list(list):
     return sql_iso(sql_list(map(quote_value, list)))
 
-
 def join_column(a, b):
     a = quote_column(a)
     b = quote_column(b)
-    return SQL(a.template.rstrip() + "." + b.template.lstrip())
+    return SQL(a.value.rstrip() + "." + b.value.lstrip())
 
 
 BEGIN = "BEGIN"
@@ -567,7 +540,7 @@ ROLLBACK = "ROLLBACK"
 
 def _upgrade():
     global _upgraded
-    global sqlite3
+    global _sqlite3
 
     try:
         Log.note("sqlite not upgraded")
@@ -590,7 +563,17 @@ def _upgrade():
     except Exception as e:
         Log.warning("could not upgrade python's sqlite", cause=e)
 
-    import sqlite3
-
-    _ = sqlite3
+    import sqlite3 as _sqlite3
+    _ = _sqlite3
     _upgraded = True
+
+
+json_type_to_sqlite_type = {
+    BOOLEAN: "TINYINT",
+    INTEGER: "INTEGER",
+    NUMBER: "REAL",
+    STRING: "TEXT",
+    OBJECT: "TEXT",
+    NESTED: "TEXT"
+}
+

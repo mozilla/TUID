@@ -7,11 +7,9 @@
 # Author: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
-from collections import Mapping
-
-from mo_dots import wrap, Data, coalesce, Null
-from mo_future import urlparse, text_type, PY2, unichr
-from mo_json import value2json, json2value
+from mo_dots import Data, Null, coalesce, is_data, is_list, wrap
+from mo_future import PY2, is_text, text_type, unichr, urlparse, is_binary
+from mo_json import json2value, value2json
 from mo_logs import Log
 
 
@@ -52,38 +50,24 @@ class URL(object):
             Log.error(u"problem parsing {{value}} to URL", value=value, cause=e)
 
     def __nonzero__(self):
-        if (
-            self.scheme
-            or self.host
-            or self.port
-            or self.path
-            or self.query
-            or self.fragment
-        ):
+        if self.scheme or self.host or self.port or self.path or self.query or self.fragment:
             return True
         return False
 
     def __bool__(self):
-        if (
-            self.scheme
-            or self.host
-            or self.port
-            or self.path
-            or self.query
-            or self.fragment
-        ):
+        if self.scheme or self.host or self.port or self.path or self.query or self.fragment:
             return True
         return False
 
     def __truediv__(self, other):
-        if not isinstance(other, text_type):
+        if not is_text(other):
             Log.error(u"Expecting text path")
         output = self.__copy__()
-        output.path = output.path.rstrip("/") + "/" + other.lstrip("/")
+        output.path = output.path.rstrip('/') + "/" + other.lstrip('/')
         return output
 
     def __unicode__(self):
-        return self.__str__().decode("utf8")  # ASSUME chr<128 ARE VALID UNICODE
+        return self.__str__().decode('utf8')  # ASSUME chr<128 ARE VALID UNICODE
 
     def __copy__(self):
         output = URL(None)
@@ -103,7 +87,7 @@ class URL(object):
         if self.host:
             url = self.host
         if self.scheme:
-            url = self.scheme + "://" + url
+            url = self.scheme + "://"+url
         if self.port:
             url = url + ":" + str(self.port)
         if self.path:
@@ -154,7 +138,7 @@ def parse(output, suffix, curr, next):
         parse(output, suffix, curr, next + 1)
     else:
         output.__setattr__(names[curr], suffix[:e:])
-        parse(output, suffix[e + 1 : :], next, next + 1)
+        parse(output, suffix[e + 1::], next, next + 1)
 
 
 def url_param2value(param):
@@ -172,7 +156,7 @@ def url_param2value(param):
         while i < len(v):
             c = v[i]
             if c == "%":
-                d = hex2chr(v[i + 1 : i + 3])
+                d = hex2chr(v[i + 1:i + 3])
                 output.append(d)
                 i += 3
             else:
@@ -187,7 +171,7 @@ def url_param2value(param):
         return output
 
     query = Data()
-    for p in param.split("&"):
+    for p in param.split('&'):
         if not p:
             continue
         if p.find("=") == -1:
@@ -200,7 +184,7 @@ def url_param2value(param):
         u = query.get(k)
         if u is None:
             query[k] = v
-        elif isinstance(u, list):
+        elif is_list(u):
             u += [v]
         else:
             query[k] = [u, v]
@@ -216,26 +200,21 @@ def value2url_param(value):
     if value == None:
         Log.error("Can not encode None into a URL")
 
-    if isinstance(value, Mapping):
+    if is_data(value):
         value_ = wrap(value)
-        output = "&".join(
-            [
-                value2url_param(k)
-                + "="
-                + (
-                    value2url_param(v)
-                    if isinstance(v, text_type)
-                    else value2url_param(value2json(v))
-                )
-                for k, v in value_.leaves()
-            ]
-        )
-    elif isinstance(value, text_type):
-        output = "".join(_map2url[c] for c in value.encode("utf8"))
-    elif isinstance(value, str):
+        output = "&".join([
+            value2url_param(k) + "=" + (value2url_param(v) if is_text(v) else value2url_param(value2json(v)))
+            for k, v in value_.leaves()
+            ])
+    elif is_text(value):
+        output = "".join(_map2url[c] for c in value.encode('utf8'))
+    elif is_binary(value):
         output = "".join(_map2url[c] for c in value)
     elif hasattr(value, "__iter__"):
         output = ",".join(value2url_param(v) for v in value)
     else:
         output = str(value)
     return output
+
+
+

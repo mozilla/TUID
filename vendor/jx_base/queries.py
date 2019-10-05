@@ -5,14 +5,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, unicode_literals
 
 import re
 
-from mo_future import text_type
-
+from mo_future import is_text
 from mo_logs import Log
 
 keyword_pattern = re.compile(r"(\w|[\\.,$-])+(?:\.(\w|[\\.,$-])+)*")
@@ -23,7 +20,7 @@ def is_variable_name(value):
         Log.warning("not expected")
         return True
 
-    if not value or not isinstance(value, text_type):
+    if not value or not is_text(value):
         return False  # _a._b
     value = value.lstrip(".")
     if not value:
@@ -32,7 +29,6 @@ def is_variable_name(value):
     if not match:
         return False
     return match.group(0) == value
-
 
 def dequote(s):
     """
@@ -44,7 +40,6 @@ def dequote(s):
         return s[1:-1]
     return s
 
-
 def is_column_name(col):
     if re.match(r"(\$|\w|\\\.)+(?:\.(\$|\w|\\\.)+)*\.\$\w{6}$", col):
         return True
@@ -53,7 +48,7 @@ def is_column_name(col):
 
 
 def get_property_name(s):
-    if s == ".":
+    if s==".":
         return s
     else:
         return s.lstrip(".")

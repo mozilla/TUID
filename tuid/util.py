@@ -77,7 +77,6 @@ class AnnotateFile(SourceFile, object):
                 ]
 
                 self.tuid_service._insert_max_tuid()
-
             except Exception as e:
                 Log.note(
                     "Failed to insert new tuids (likely due to merge conflict) on {{file}}: {{cause}}",
