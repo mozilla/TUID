@@ -15,8 +15,8 @@
             "branches": {
                 "host": "http://localhost",
                 "port": 9200,
-                "index": "branches",
-                "type": "repo-branch",
+                "index": "repo-branch",
+                "type": "branch",
                 "typed": false,
                 "timeout": 300,
                 "consistency": "one", // WE ONLY NEED ONE SHARD TO BE AVAILABLE
