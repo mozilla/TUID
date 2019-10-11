@@ -15,7 +15,7 @@
             "branches": {
                 "host": "http://localhost",
                 "port": 9200,
-                "index": "branches",
+                "index": "repo-branches",
                 "type": "branch",
                 "typed": false,
                 "timeout": 300,
@@ -50,7 +50,7 @@
             "csetLog": {
                 "host": "http://localhost",
                 "port": 9200,
-                "index": "csetlog",
+                "index": "tuid-csetlog",
                 "type": "csetlogtype",
                 "typed": false,
                 "timeout": 300,
@@ -63,7 +63,7 @@
             "temporal": {
                 "host": "http://localhost",
                 "port": 9200,
-                "index": "temporal",
+                "index": "tuid-temporal",
                 "type": "temporaltype",
                 "typed": false,
                 "timeout": 300,
@@ -74,7 +74,7 @@
             "annotations": {
                 "host": "http://localhost",
                 "port": 9200,
-                "index": "annotations",
+                "index": "tuid-annotations",
                 "type": "annotationstype",
                 "typed": false,
                 "timeout": 300,

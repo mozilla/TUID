@@ -33,7 +33,7 @@ def get_branches(hg, branches, kwargs=None):
     try:
         es = cluster.get_index(kwargs=branches, read_only=False)
         esq = jx_elasticsearch.new_instance(branches)
-        found_branches = esq.query({"from": "branches", "format": "list", "limit": 10000}).data
+        found_branches = esq.query({"from": "repo-branches", "format": "list", "limit": 10000}).data
 
         # IF IT IS TOO OLD, THEN PULL FROM HG
         oldest = Date(MAX(found_branches.etl.timestamp))
