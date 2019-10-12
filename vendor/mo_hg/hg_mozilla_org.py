@@ -579,7 +579,7 @@ class HgMozillaOrg(object):
         please_stop = False
         locker = Lock()
         output = []
-        queue = Queue("branches", max=2000)
+        queue = Queue("repo-branches", max=2000)
         queue.extend(
             b
             for b in self.branches

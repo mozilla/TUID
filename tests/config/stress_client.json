@@ -17,7 +17,7 @@
             "branches": {
                 "host": "http://localhost",
                 "port": 9200,
-                "index": "branches",
+                "index": "repo-branches",
                 "type": "branch",
                 "typed": false,
                 "timeout": 300,
