@@ -13,16 +13,16 @@ import platform
 import subprocess
 
 from mo_dots import NullType, set_default, wrap, Null
-from mo_future import none_type, PY2
+from mo_future import none_type
 from mo_logs import Log, strings
 from mo_logs.exceptions import Except
+from mo_times import Timer
 
 from mo_threads.lock import Lock
 from mo_threads.queues import Queue
-from mo_threads.signal import Signal
+from mo_threads.signals import Signal
 from mo_threads.threads import THREAD_STOP, Thread
 from mo_threads.till import Till
-from mo_times import Timer
 
 DEBUG = True
 
@@ -146,6 +146,7 @@ class Process(object):
                     break
         finally:
             pipe.close()
+            receive.add(THREAD_STOP)
         self.debug and Log.note("{{process}} ({{name}} is closed)", name=name, process=self.name)
 
         receive.add(THREAD_STOP)
@@ -156,6 +157,8 @@ class Process(object):
             if line is THREAD_STOP:
                 please_stop.go()
                 break
+            elif line is None:
+                continue
 
             self.debug and Log.note("{{process}} (stdin): {{line}}", process=self.name, line=line.rstrip())
             pipe.write(line.encode('utf8') + b"\n")

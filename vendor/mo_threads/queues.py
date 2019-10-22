@@ -14,17 +14,17 @@
 
 from __future__ import absolute_import, division, unicode_literals
 
+import types
 from collections import deque
 from datetime import datetime
 from time import time
-import types
 
 from mo_dots import Null, coalesce
 from mo_future import long
 from mo_logs import Except, Log
 
 from mo_threads.lock import Lock
-from mo_threads.signal import Signal
+from mo_threads.signals import Signal
 from mo_threads.threads import THREAD_STOP, THREAD_TIMEOUT, Thread
 from mo_threads.till import Till
 
@@ -145,16 +145,14 @@ class Queue(object):
 
         :param timeout:  IN SECONDS
         """
+        start = time()
         timeout = coalesce(timeout, DEFAULT_WAIT_TIME)
         wait_time = 5
-        timeout = coalesce(timeout, DEFAULT_WAIT_TIME)
 
         (DEBUG and len(self.queue) > 1 * 1000 * 1000) and Log.warning("Queue {{name}} has over a million items")
 
-        start = time()
-        stop_waiting = Till(till=start+coalesce(timeout, DEFAULT_WAIT_TIME))
-
         while not self.closed and len(self.queue) >= self.max:
+            stop_waiting = Till(till=start + timeout)
             if stop_waiting:
                 Log.error(THREAD_TIMEOUT)
 
@@ -194,10 +192,7 @@ class Queue(object):
         with self.lock:
             while True:
                 if self.queue:
-                    value = self.queue.popleft()
-                    return value
-                if self.closed:
-                    break
+                    return self.queue.popleft()
                 if not self.lock.wait(till=self.closed | till):
                     if self.closed:
                         break
@@ -210,7 +205,7 @@ class Queue(object):
         NON-BLOCKING POP ALL IN QUEUE, IF ANY
         """
         with self.lock:
-            output = list(self.queue)
+            output = [l for l in list(self.queue) if l is not THREAD_STOP]
             self.queue.clear()
 
         return output
@@ -441,7 +436,6 @@ class ThreadedQueue(Queue):
                     item = self.pop()
                     now = time()
                     if now > last_push + period:
-                        # Log.note("delay next push")
                         next_push = Till(till=now + period)
                 else:
                     item = self.pop(till=next_push)
@@ -455,7 +449,6 @@ class ThreadedQueue(Queue):
                     _post_push_functions.append(item)
                 elif item is not None:
                     _buffer.append(item)
-
             except Exception as e:
                 e = Except.wrap(e)
                 if error_target:
@@ -480,7 +473,6 @@ class ThreadedQueue(Queue):
                         push_to_queue()
                         last_push = now = time()
                     next_push = Till(till=now + period)
-
             except Exception as e:
                 e = Except.wrap(e)
                 if error_target:
@@ -503,6 +495,7 @@ class ThreadedQueue(Queue):
         if _buffer:
             # ONE LAST PUSH, DO NOT HAVE TIME TO DEAL WITH ERRORS
             push_to_queue()
+        self.slow_queue.add(THREAD_STOP)
 
     def add(self, value, timeout=None):
         with self.lock:
