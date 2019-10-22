@@ -13,7 +13,7 @@ from mo_json import json2value, value2json
 from mo_logs import Log
 
 
-class URL(text_type):
+class URL(object):
     """
     JUST LIKE urllib.parse() [1], BUT CAN HANDLE JSON query PARAMETERS
 
