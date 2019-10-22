@@ -289,7 +289,7 @@ def json2value(json_string, params=Null, flexible=False, leaves=False):
     :param leaves: ASSUME JSON KEYS ARE DOT-DELIMITED
     :return: Python value
     """
-    if not isinstance(json_string, text_type):
+    if not is_text(json_string):
         Log.error("only unicode json accepted")
 
     try:
