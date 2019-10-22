@@ -541,8 +541,8 @@ def quote_value(value):
         return SQL(text_type(value))
 
 
-def quote_list(list):
-    return sql_iso(sql_list(map(quote_value, list)))
+def quote_list(values):
+    return sql_iso(sql_list(map(quote_value, values)))
 
 
 def join_column(a, b):
