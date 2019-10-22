@@ -14,3 +14,5 @@
 /*.png
 .idea/*
 prof/*
+.svn
+*.iml
