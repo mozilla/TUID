@@ -5,7 +5,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Author: Kyle Lahnakoski (kyle@lahnakoski.com)
+# Contact: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
 from __future__ import absolute_import, division, unicode_literals
@@ -22,7 +22,7 @@ from mo_logs import Log
 from mo_logs.exceptions import suppress_exception
 from mo_logs.strings import expand_template
 from mo_threads import Lock
-from pyLibrary.sql import SQL, SQL_INSERT, sql_list, SQL_VALUES, sql_iso
+from mo_sql import SQL, SQL_INSERT, sql_list, SQL_VALUES, sql_iso
 
 
 class Redshift(object):
@@ -135,11 +135,6 @@ class Redshift(object):
             else:
                 output[k]=self.quote_value(v)
         return output
-
-    def quote_column(self, name):
-        if is_text(name):
-            return SQL('"' + name.replace('"', '""') + '"')
-        return SQL(sql_iso((", ".join(self.quote_value(v) for v in name))))
 
     def quote_value(self, value):
         if value ==None:

@@ -19,7 +19,8 @@ from mo_logs import Except, Log, constants, startup
 from mo_math import MAX
 from mo_times.dates import Date
 from mo_times.durations import DAY, SECOND
-from pyLibrary.env import elasticsearch, http
+from pyLibrary.env import http
+from jx_elasticsearch import elasticsearch
 
 EXTRA_WAIT_TIME = 20 * SECOND  # WAIT TIME TO SEND TO AWS, IF WE wait_forever
 OLD_BRANCH = DAY

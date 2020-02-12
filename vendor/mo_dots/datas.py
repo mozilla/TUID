@@ -4,19 +4,17 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Author: Kyle Lahnakoski (kyle@lahnakoski.com)
+# Contact: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
 from __future__ import absolute_import, division, unicode_literals
 
-from collections import MutableMapping
 from copy import copy, deepcopy
 from decimal import Decimal
 
-from mo_future import PY2, generator_types, is_binary, iteritems, long, none_type, text_type
-
 from mo_dots import _getdefault, coalesce, get_logger, hash_value, listwrap, literal_field
 from mo_dots.utils import CLASS
+from mo_future import generator_types, iteritems, long, none_type, text, MutableMapping, OrderedDict
 
 _get = object.__getattribute__
 _set = object.__setattr__
@@ -25,7 +23,7 @@ SLOT = str("_internal_dict")
 DEBUG = False
 
 
-class Data(MutableMapping):
+class Data(object):
     """
     Please see README.md
     """
@@ -90,7 +88,7 @@ class Data(MutableMapping):
             else:
                 return output
 
-        key = text_type(key)
+        key = text(key)
         d = self._internal_dict
 
         if key.find(".") >= 0:
@@ -151,7 +149,7 @@ class Data(MutableMapping):
             Log.error("can not set key={{key}}", key=key, cause=e)
 
     def __getattr__(self, key):
-        d = _get(self, SLOT)
+        d = self._internal_dict
         v = d.get(key)
         t = _get(v, CLASS)
 
@@ -188,6 +186,48 @@ class Data(MutableMapping):
     def __iadd__(self, other):
         return _iadd(self, other)
 
+    def __or__(self, other):
+        """
+        RECURSIVE COALESCE OF DATA PROPERTIES
+        """
+        if not _get(other, CLASS) in data_types:
+            get_logger().error("Expecting a Mapping")
+
+        d = self._internal_dict
+        output = Data(**d)
+        output.__ior__(other)
+        return output
+
+    def __ror__(self, other):
+        """
+        RECURSIVE COALESCE OF DATA PROPERTIES
+        """
+        if not _get(other, CLASS) in data_types:
+            get_logger().error("Expecting a Mapping")
+
+        return wrap(other).__or__(self)
+
+    def __ior__(self, other):
+        """
+        RECURSIVE COALESCE OF DATA PROPERTIES
+        """
+        if not _get(other, CLASS) in data_types:
+            get_logger().error("Expecting a Mapping")
+        d = self._internal_dict
+        for ok, ov in other.items():
+            if ov == None:
+                continue
+
+            sv = d.get(ok)
+            if sv == None:
+                d[ok] = ov
+            elif isinstance(sv, Data):
+                sv |= ov
+            elif is_data(sv):
+                wv = object.__new__(Data)
+                _set(wv, SLOT, sv)
+                wv |= ov
+        return self
 
     def __hash__(self):
         d = self._internal_dict
@@ -283,7 +323,7 @@ class Data(MutableMapping):
         d.pop(seq[-1], None)
 
     def __delattr__(self, key):
-        key = text_type(key)
+        key = text(key)
         d = self._internal_dict
         d.pop(key, None)
 
@@ -298,11 +338,18 @@ class Data(MutableMapping):
         except Exception:
             return "{}"
 
+    def __dir__(self):
+        d = self._internal_dict
+        return d.keys()
+
     def __repr__(self):
         try:
             return "Data("+dict.__repr__(self._internal_dict)+")"
         except Exception as e:
             return "Data()"
+
+
+MutableMapping.register(Data)
 
 
 def leaves(value, prefix=None):
@@ -352,6 +399,13 @@ def _str(value, depth):
 
 
 def _iadd(self, other):
+    """
+    RECURSIVE ADDITION OF DATA PROPERTIES
+    * LISTS ARE CONCATENATED
+    * SETS ARE UNIONED
+    * NUMBERS ARE ADDED
+    """
+
     if not _get(other, CLASS) in data_types:
         get_logger().error("Expecting a Mapping")
     d = unwrap(self)
@@ -395,7 +449,7 @@ def _iadd(self, other):
     return self
 
 
-data_types = (Data, dict)  # TYPES TO HOLD DATA
+data_types = (Data, dict, OrderedDict)  # TYPES TO HOLD DATA
 
 
 def register_data(type_):

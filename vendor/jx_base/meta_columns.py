@@ -5,10 +5,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http:# mozilla.org/MPL/2.0/.
 #
-# Author: Kyle Lahnakoski (kyle@lahnakoski.com)
+# Contact: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 from __future__ import absolute_import, division, unicode_literals
 
+import datetime
 from collections import Mapping
 
 from jx_base import Column, TableDesc
@@ -26,7 +27,7 @@ from mo_dots import (
     split_field,
     unwraplist,
     wrap)
-from mo_future import binary_type, items, long, none_type, reduce, text_type
+from mo_future import binary_type, items, long, none_type, reduce, text
 from mo_json import INTEGER, NUMBER, STRING, python_type_to_json_type
 from mo_times.dates import Date
 
@@ -272,8 +273,9 @@ _merge_order = {
     int: 3,
     long: 3,
     Date: 4,
+    datetime: 4,
     float: 5,
-    text_type: 6,
+    text: 6,
     binary_type: 6,
     object: 7,
     dict: 8,

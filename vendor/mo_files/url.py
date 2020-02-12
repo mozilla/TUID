@@ -4,11 +4,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Author: Kyle Lahnakoski (kyle@lahnakoski.com)
+# Contact: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
 from mo_dots import Data, Null, coalesce, is_data, is_list, wrap
-from mo_future import PY2, is_text, text_type, unichr, urlparse, is_binary
+from mo_future import PY2, is_text, text, unichr, urlparse, is_binary
 from mo_json import json2value, value2json
 from mo_logs import Log
 
@@ -20,8 +20,15 @@ class URL(object):
     [1] https://docs.python.org/3/library/urllib.parse.html
     """
 
+    def __new__(cls, value, *args, **kwargs):
+        if isinstance(value, URL):
+            return value
+        else:
+            return object.__new__(cls)
+
     def __init__(self, value, port=None, path=None, query=None, fragment=None):
-        text_type.__init__(self)
+        if isinstance(value, URL):
+            return
         try:
             self.scheme = None
             self.host = None
@@ -81,7 +88,7 @@ class URL(object):
         return output
 
     def decode(self, encoding=''):
-        return text_type(self).decode(encoding)
+        return text(self).decode(encoding)
 
     def __data__(self):
         return str(self)
@@ -95,7 +102,7 @@ class URL(object):
         if self.port:
             url = url + ":" + str(self.port)
         if self.path:
-            if self.path[0] == text_type("/"):
+            if self.path[0] == text("/"):
                 url += str(self.path)
             else:
                 url += "/" + str(self.path)
@@ -111,8 +118,10 @@ def int2hex(value, size):
 
 
 def hex2chr(hex):
-    return unichr(int(hex, 16))
-
+    try:
+        return unichr(int(hex, 16))
+    except Exception as e:
+        raise e
 
 if PY2:
     _map2url = {chr(i): chr(i) for i in range(32, 128)}
@@ -167,7 +176,7 @@ def url_param2value(param):
                 output.append(c)
                 i += 1
 
-        output = text_type("".join(output))
+        output = text("".join(output))
         try:
             return json2value(output)
         except Exception:

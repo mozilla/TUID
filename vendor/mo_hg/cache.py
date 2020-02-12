@@ -15,7 +15,7 @@ from flask import Response
 
 from mo_dots import coalesce
 from mo_files.url import URL
-from mo_future import text_type, xrange
+from mo_future import text, xrange
 from mo_hg.rate_logger import RateLogger
 from mo_json import value2json
 from mo_kwargs import override
@@ -68,7 +68,7 @@ class Cache(object):
                 )
 
         self.threads = [
-            Thread.run(APP_NAME + " worker" + text_type(i), self._worker)
+            Thread.run(APP_NAME + " worker" + text(i), self._worker)
             for i in range(CONCURRENCY)
         ]
         self.limiter = Thread.run(APP_NAME + " limiter", self._rate_limiter)

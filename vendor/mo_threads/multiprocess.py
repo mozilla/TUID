@@ -4,7 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Author: Kyle Lahnakoski (kyle@lahnakoski.com)
+# Contact: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 from __future__ import absolute_import, division, unicode_literals
 
@@ -12,30 +12,38 @@ import os
 import platform
 import subprocess
 
-from mo_dots import NullType, set_default, wrap, Null
-from mo_future import none_type
+from mo_dots import set_default, wrap, Null
+from mo_future import text
 from mo_logs import Log, strings
 from mo_logs.exceptions import Except
-from mo_times import Timer
-
 from mo_threads.lock import Lock
 from mo_threads.queues import Queue
 from mo_threads.signals import Signal
 from mo_threads.threads import THREAD_STOP, Thread
 from mo_threads.till import Till
+from mo_times import Timer
 
-DEBUG = True
+DEBUG = False
 
 
 class Process(object):
+    next_process_id = 0
+
     def __init__(self, name, params, cwd=None, env=None, debug=False, shell=False, bufsize=-1):
-        self.name = name
+        self.process_id = Process.next_process_id
+        Process.next_process_id += 1
+        self.name = name + " (" + text(self.process_id) + ")"
         self.service_stopped = Signal("stopped signal for " + strings.quote(name))
         self.stdin = Queue("stdin for process " + strings.quote(name), silent=True)
         self.stdout = Queue("stdout for process " + strings.quote(name), silent=True)
         self.stderr = Queue("stderr for process " + strings.quote(name), silent=True)
 
         try:
+            if cwd == None:
+                cwd = os.getcwd()
+            else:
+                cwd = str(cwd)
+
             self.debug = debug or DEBUG
             self.service = service = subprocess.Popen(
                 [str(p) for p in params],
@@ -43,7 +51,7 @@ class Process(object):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 bufsize=bufsize,
-                cwd=cwd if isinstance(cwd, (str, NullType, none_type)) else cwd.abspath,
+                cwd=cwd,
                 env={str(k): str(v) for k, v in set_default(env, os.environ).items()},
                 shell=shell
             )
@@ -103,7 +111,7 @@ class Process(object):
         return self.service.returncode
 
     def _monitor(self, please_stop):
-        with Timer(self.name):
+        with Timer(self.name, verbose=self.debug):
             self.service.wait()
             self.debug and Log.note("{{process}} STOP: returncode={{returncode}}", process=self.name, returncode=self.service.returncode)
             self.service_stopped.go()
@@ -116,20 +124,8 @@ class Process(object):
                 if line:
                     receive.add(line)
                     self.debug and Log.note("{{process}} ({{name}}): {{line}}", name=name, process=self.name, line=line)
-                    continue
-
-                # GRAB A FEW MORE LINES
-                for _ in range(100):
-                    try:
-                        line = to_text(pipe.readline().rstrip())
-                        if line:
-                            receive.add(line)
-                            self.debug and Log.note("{{process}} ({{name}}): {{line}}", name=name, process=self.name, line=line)
-                            break
-                    except Exception:
-                        break
                 else:
-                    Till(seconds=5).wait()
+                    (Till(seconds=1) | please_stop).wait()
 
             # GRAB A FEW MORE LINES
             max = 100
@@ -139,7 +135,7 @@ class Process(object):
                     if line:
                         max = 100
                         receive.add(line)
-                        self.debug and Log.note("{{process}} ({{name}}): {{line}}", name=name, process=self.name, line=line)
+                        self.debug and Log.note("{{process}} RESIDUE: ({{name}}): {{line}}", name=name, process=self.name, line=line)
                     else:
                         max -= 1
                 except Exception:
@@ -203,7 +199,7 @@ if "windows" in platform.system().lower():
         return "prompt "+PROMPT+"$g"
 
     def cmd():
-        return "%windir%\system32\cmd.exe"
+        return "%windir%\\system32\\cmd.exe"
 
     def to_text(value):
         return value.decode("latin1")
@@ -222,13 +218,18 @@ else:
 
 
 class Command(object):
+    """
+    FASTER Process CLASS - OPENS A COMMAND_LINE APP (CMD on windows) AND KEEPS IT OPEN FOR MULTIPLE COMMANDS
+    EACH WORKING DIRECTORY WILL HAVE ITS OWN PROCESS, MULTIPLE PROCESSES WILL OPEN FOR THE SAME DIR IF MULTIPLE
+    THREADS ARE REQUESTING Commands
+    """
 
     available_locker = Lock("cmd lock")
     available_process = {}
 
     def __init__(self, name, params, cwd=None, env=None, debug=False, shell=False, bufsize=-1):
         shell = True
-        self.name=name
+        self.name = name
         self.key = (cwd, wrap(env), debug, shell)
         self.stdout = Queue("stdout for "+name)
         self.stderr = Queue("stderr for "+name)
