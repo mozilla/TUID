@@ -20,7 +20,6 @@ import objgraph
 from mo_dots import listwrap, coalesce, unwraplist
 from mo_json import value2json, json2value
 from mo_logs import Log, constants, startup, Except
-from mo_logs.strings import utf82unicode, unicode2utf8
 from mo_threads.threads import RegisterThread
 from mo_times import Timer
 from pyLibrary.env import http
@@ -59,23 +58,15 @@ def tuid_endpoint(path):
 
             if flask.request.headers.get("content-length", "") in ["", "0"]:
                 # ASSUME A BROWSER HIT THIS POINT, SEND text/html RESPONSE BACK
-                service.statsdaemon.update_requests(
-                    requests_complete=1, requests_passed=1
-                )
-                return Response(
-                    EXPECTING_QUERY, status=400, headers={"Content-Type": "text/html"}
-                )
+                service.statsdaemon.update_requests(requests_complete=1, requests_passed=1)
+                return Response(EXPECTING_QUERY, status=400, headers={"Content-Type": "text/html"})
             elif int(flask.request.headers["content-length"]) > QUERY_SIZE_LIMIT:
-                service.statsdaemon.update_requests(
-                    requests_complete=1, requests_passed=1
-                )
+                service.statsdaemon.update_requests(requests_complete=1, requests_passed=1)
                 return Response(
-                    unicode2utf8("request too large"),
-                    status=400,
-                    headers={"Content-Type": "text/html"},
+                    b"request too large", status=400, headers={"Content-Type": "text/html"}
                 )
             request_body = flask.request.get_data().strip()
-            query = json2value(utf82unicode(request_body))
+            query = json2value(request_body.decode("utf8"))
 
             # ENSURE THE QUERY HAS THE CORRECT FORM
             if query["from"] != "files":
@@ -105,9 +96,7 @@ def tuid_endpoint(path):
 
             if len(paths) == 0:
                 response, completed = [], True
-            elif (
-                service.conn.pending_transactions > TOO_BUSY
-            ):  # CHECK IF service IS VERY BUSY
+            elif service.conn.pending_transactions > TOO_BUSY:  # CHECK IF service IS VERY BUSY
                 # TODO:  BE SURE TO UPDATE STATS TOO
                 Log.note("Too many open transactions")
                 response, completed = [], False
@@ -116,9 +105,7 @@ def tuid_endpoint(path):
                 response, completed = [], False
             else:
                 # RETURN TUIDS
-                with Timer(
-                    "tuid internal response time for {{num}} files", {"num": len(paths)}
-                ):
+                with Timer("tuid internal response time for {{num}} files", {"num": len(paths)}):
                     response, completed = service.get_tuids_from_files(
                         revision=rev, files=paths, going_forward=True, repo=branch_name
                     )
@@ -148,12 +135,10 @@ def tuid_endpoint(path):
             )
         except Exception as e:
             e = Except.wrap(e)
-            service.statsdaemon.update_requests(
-                requests_incomplete=1, requests_failed=1
-            )
+            service.statsdaemon.update_requests(requests_incomplete=1, requests_failed=1)
             Log.warning("could not handle request", cause=e)
             return Response(
-                unicode2utf8(value2json(e, pretty=True)),
+                value2json(e, pretty=True).encode("utf8"),
                 status=400,
                 headers={"Content-Type": "text/html"},
             )
@@ -193,11 +178,7 @@ if __name__ in ("__main__",):
     Log.note("Starting TUID Service App...")
     flask_app = TUIDApp(__name__)
     flask_app.add_url_rule(
-        str("/"),
-        None,
-        tuid_endpoint,
-        defaults={"path": ""},
-        methods=[str("GET"), str("POST")],
+        str("/"), None, tuid_endpoint, defaults={"path": ""}, methods=[str("GET"), str("POST")]
     )
     flask_app.add_url_rule(
         str("/<path:path>"), None, tuid_endpoint, methods=[str("GET"), str("POST")]
@@ -217,14 +198,10 @@ if __name__ in ("__main__",):
         service.statsdaemon.initial_growth = initial_growth
 
         Log.note("Started TUID Service")
-        Log.note(
-            "Current free memory: {{mem}} Mb", mem=service.statsdaemon.get_free_memory()
-        )
+        Log.note("Current free memory: {{mem}} Mb", mem=service.statsdaemon.get_free_memory())
     except BaseException as e:  # MUST CATCH BaseException BECAUSE argparse LIKES TO EXIT THAT WAY, AND gunicorn WILL NOT REPORT
         try:
-            Log.error(
-                "Serious problem with TUID service construction!  Shutdown!", cause=e
-            )
+            Log.error("Serious problem with TUID service construction!  Shutdown!", cause=e)
         finally:
             Log.stop()
 

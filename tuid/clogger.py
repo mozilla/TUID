@@ -15,19 +15,17 @@ import time
 # TUIDService, which makes use of the
 # Clogger
 import tuid.service
+from jx_elasticsearch import elasticsearch
 from jx_python import jx
 from mo_dots import Null, coalesce, set_default, wrap
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_logs import Log
 from mo_logs.exceptions import suppress_exception
 from mo_threads import Till, Thread, Lock, Queue, Signal
-from mo_threads.threads import ALL
 from mo_times.durations import DAY
-from pyLibrary.env import http, elasticsearch
-from pyLibrary.sql.sqlite import quote_value
+from pyLibrary.env import http
 from tuid import sql
 from tuid.util import HG_URL, insert, delete
-from collections import defaultdict
 
 RETRY = {"times": 3, "sleep": 5}
 SQL_CSET_BATCH_SIZE = 500
