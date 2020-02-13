@@ -420,7 +420,7 @@ class Clogger:
         :param new_rev: The revision to start searching from
         :return:
         """
-        old_settings = [self.disable_tipfilling, self.disable_backfilling, self.disable_caching]
+        old_settings = self.disable_tipfilling, self.disable_backfilling, self.disable_caching
         self.disable_tipfilling = True
         self.disable_backfilling = True
         self.disable_caching = True
@@ -441,9 +441,7 @@ class Clogger:
 
             self._fill_in_range(old_rev, new_rev, timestamp=True, number_forward=False)
 
-        self.disable_tipfilling = old_settings[0]
-        self.disable_backfilling = old_settings[1]
-        self.disable_caching = old_settings[2]
+        self.disable_tipfilling, self.disable_backfilling, self.disable_caching = old_settings
 
     def fill_backward_with_list(self, please_stop=None):
         """
