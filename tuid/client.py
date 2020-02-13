@@ -17,8 +17,7 @@ from mo_threads import Till
 from mo_times import Timer, Date
 from pyLibrary import aws
 from pyLibrary.env import http
-from pyLibrary.sql import sql_list
-from pyLibrary.sql.sqlite import Sqlite, quote_value, quote_list
+from jx_sqlite.sqlite import Sqlite, quote_value, quote_list, sql_insert
 
 DEBUG = True
 SLEEP_ON_ERROR = 30
@@ -125,10 +124,17 @@ class TuidClient(object):
                     )
 
                     with self.db.transaction() as transaction:
-                        command = "INSERT INTO tuid (revision, file, tuids) VALUES " + sql_list(
-                            quote_list((revision, r.path, value2json(r.tuids)))
-                            for r in new_response.data
-                            if r.tuids != None
+                        command = sql_insert(
+                            "tuid",
+                            [
+                                {
+                                    "revision": revision,
+                                    "file": r.path,
+                                    "tuids": value2json(r.tuids),
+                                }
+                                for r in new_response.data
+                                if r.tuids != None
+                            ],
                         )
                         if not command.endswith(" VALUES "):
                             transaction.execute(command)

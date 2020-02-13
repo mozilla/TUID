@@ -11,14 +11,14 @@ from __future__ import unicode_literals
 import json
 
 import pytest
+from mo_sql import sql_list
 
 from mo_dots import Null
 from mo_logs import Log, Except
 from mo_threads import Thread, Till
 from mo_times import Timer
 from pyLibrary.env import http
-from pyLibrary.sql import sql_list
-from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR, quote_list
+from jx_sqlite.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR, quote_list
 from tuid.service import TUIDService
 from tuid.util import map_to_array, delete
 

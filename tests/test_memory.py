@@ -15,7 +15,7 @@ import pytest
 from mo_dots import Null
 from mo_logs import Log
 from mo_threads import Till
-from pyLibrary.sql.sqlite import quote_list
+from jx_sqlite.sqlite import quote_list
 from tuid.service import TUIDService
 
 _service = None
