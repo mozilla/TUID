@@ -13,6 +13,7 @@ from mo_dots import wrap, coalesce, Null
 from mo_json import json2value, value2json
 from mo_kwargs import override
 from mo_logs import Log
+from mo_sql import sql_list
 from mo_threads import Till
 from mo_times import Timer, Date
 from pyLibrary import aws
@@ -124,17 +125,10 @@ class TuidClient(object):
                     )
 
                     with self.db.transaction() as transaction:
-                        command = sql_insert(
-                            "tuid",
-                            [
-                                {
-                                    "revision": revision,
-                                    "file": r.path,
-                                    "tuids": value2json(r.tuids),
-                                }
-                                for r in new_response.data
-                                if r.tuids != None
-                            ],
+                        command = "INSERT INTO tuid (revision, file, tuids) VALUES " + sql_list(
+                            quote_list((revision, r.path, value2json(r.tuids)))
+                            for r in new_response.data
+                            if r.tuids != None
                         )
                         if not command.endswith(" VALUES "):
                             transaction.execute(command)
