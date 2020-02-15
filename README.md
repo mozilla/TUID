@@ -17,7 +17,12 @@ More details can be gleaned from the [motivational document](https://github.com/
 
 ## Running tests
 
-Running any tests requires access to an Elastic Search cluster for `mo_hg` on localhost:9201. This requires [Elastic Search version 6.2.4](https://www.elastic.co/downloads/past-releases/elasticsearch-6-2-4). To look at the Elastic Search cluster, you can use Elasticsearch-head, [found here](https://github.com/mobz/elasticsearch-head).
+Running any tests requires access to an Elastic Search cluster for `mo_hg` on localhost:9200. This requires [Elastic Search version 6.2.4](https://www.elastic.co/downloads/past-releases/elasticsearch-6-2-4). To look at the Elastic Search cluster, you can use Elasticsearch-head, [found here](https://github.com/mobz/elasticsearch-head). Steps to run the Elastic Search will differ based on the operating system, but for Windows we have to do the following:
+
+1. Install elasticsearch.
+1. Now, you might have to copy the contents of [elasticsearch-6.2.4.yml](https://github.com/mozilla/TUID/blob/dev/tests/travis/elasticsearch-6.2.4.yml) to `<ES-INSTALLATION>/config/elasticsearch`. The default config should work though.
+1. Open a command prompt and go to the `bin` folder in the elasticsearch installation.
+1. Run `elasticsearch.bat` to start the service - you should now be able to run the tests.
 
 After cloning the repo into `~/TUID`:
 
@@ -27,6 +32,7 @@ After cloning the repo into `~/TUID`:
     pip install -r ./tests/requirements.txt
     pre-commit install
     export PYTHONPATH=.:vendor
+    export TUID_CONFIG=tests/travis/config.json
     python -m pytest -m first_run --capture=no ./tests
     python -m pytest -m 'not first_run' --capture=no ./tests
 
@@ -36,6 +42,7 @@ After cloning the repo into `~/TUID`:
     pip install -r .\tests\requirements.txt
     pre-commit install
     set PYTHONPATH=.;vendor
+    set TUID_CONFIG=tests\travis\config.json
     python -m pytest -m first_run --capture=no tests
     python -m pytest -m 'not first_run' --capture=no tests
 
@@ -138,6 +145,5 @@ has methods specifically suited for that project; but one method, called
 
 Porting to Elasticsearch from SQLite and caching to make the service faster. Details can be found [here](https://github.com/mozilla/TUID/blob/dev/docs/GSoC_Final_Report_2019.md).
 
-## IRC Channel
-<a href="https://www.irccloud.com/invite?channel=%23codecoverage&amp;hostname=irc.mozilla.org&amp;port=6697&amp;ssl=1" target="_blank"><img src="https://www.irccloud.com/invite-svg?channel=%23codecoverage&amp;hostname=irc.mozilla.org&amp;port=6697&amp;ssl=1"  height="18"></a>
-
+## Riot Matrix Channel
+We've moved away from IRC. You can find us in the public [code-coverage Riot channel](https://chat.mozilla.org/#/room/#codecoverage:mozilla.org) instead.
