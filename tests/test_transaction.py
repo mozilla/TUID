@@ -8,10 +8,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
+from mo_sql import sql_iso
+
+from jx_sqlite import sqlite
 from mo_dots import Data
 from mo_threads import Signal, Thread
-from pyLibrary.sql import sqlite, sql_iso
-from pyLibrary.sql.sqlite import Sqlite, quote_value, DOUBLE_TRANSACTION_ERROR
+from jx_sqlite.sqlite import Sqlite, quote_value, DOUBLE_TRANSACTION_ERROR
 
 sqlite.DEBUG = True
 

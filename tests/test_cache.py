@@ -14,7 +14,7 @@ from mo_logs import Log
 from mo_threads import Till
 from tuid.service import TUIDService
 from mo_dots import Null
-from pyLibrary.sql.sqlite import quote_value
+from jx_sqlite.sqlite import quote_value
 from tuid.util import delete
 
 _service = None

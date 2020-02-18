@@ -1,7 +1,12 @@
 {
+    "es": {
+        "host": "http://localhost",
+        "port": 9200
+    },
     "tuid": {
         "database": {
-            "name": "resources/tuid_app.db"
+            "name": "resources/tuid_app.db",
+            "upgrade": false,
         },
         "local_hg_source": "C:/mozilla-source/mozilla-central/",
         "hg_for_building": "C:/mozilla-build/python/Scripts/hg.exe",
@@ -15,8 +20,7 @@
                 "url": "https://hg.mozilla.org"
             },
             "branches": {
-                "host": "http://localhost",
-                "port": 9201,
+                "$ref": "#es",
                 "index": "repo-branches",
                 "type": "branch",
                 "typed": false,
@@ -26,8 +30,7 @@
                 "limit_replicas": false
             },
             "repo": {
-                "host": "http://localhost",
-                "port": 9201,
+                "$ref": "#es",
                 "index": "repo",
                 "type": "revision",
                 "typed": false,
@@ -37,8 +40,7 @@
                 "limit_replicas": false
             },
             "moves": {
-                "host": "http://localhost",
-                "port": 9201,
+                "$ref": "#es",
                 "index": "repo-moves",
                 "type": "revision",
                 "typed": false,
@@ -50,8 +52,7 @@
         },
         "clogger": {
             "csetLog": {
-                "host": "http://localhost",
-                "port": 9201,
+                "$ref": "#es",
                 "index": "tuid-csetlog",
                 "type": "csetlogtype",
                 "typed": false,
@@ -100,7 +101,7 @@
             "Referer": "https://github.com/mozilla/TUID",
             "User-Agent": "TUID Service"
         },
-        "pyLibrary.sql.sqlite.DEBUG": false,
+        "jx_sqlite.sqlite.DEBUG": false,
         "mo_hg.hg_mozilla_org.DAEMON_HG_INTERVAL": 0,
         "mo_hg.hg_mozilla_org.WAIT_AFTER_CACHE_MISS":0,
         "mo_hg.hg_branches.BRANCH_WHITELIST": ["mozilla-central", "try"]

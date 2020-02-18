@@ -59,7 +59,7 @@
         "tuid.service.DEBUG": false,
         "pyLibrary.env.http.DEBUG": true,
         "pyLibrary.env.http.default_headers": {"Referer": "https://github.com/mozilla/TUID"},
-        "pyLibrary.sql.sqlite.DEBUG": false,
+        "jx_sqlite.sqlite.DEBUG": false,
         "mo_hg.hg_mozilla_org.DAEMON_HG_INTERVAL": 0
     },
     "debug": {

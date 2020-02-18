@@ -10,6 +10,7 @@ import copy
 import gc
 
 from jx_python import jx
+from jx_sqlite.sqlite import quote_list, quote_value
 from mo_dots import Null, coalesce, set_default, wrap
 from mo_files.url import URL
 from mo_future import text_type
@@ -19,12 +20,12 @@ from mo_kwargs import override
 from mo_logs import Log
 from mo_logs.exceptions import suppress_exception
 from mo_math.randoms import Random
+from mo_sql import sql_list
 from mo_threads import Lock, Thread, Till
 from mo_times.durations import HOUR, MINUTE, SECOND
-from pyLibrary.env import elasticsearch, http
+from jx_elasticsearch import elasticsearch
+from pyLibrary.env import http
 from pyLibrary.meta import cache
-from pyLibrary.sql import sql_list
-from pyLibrary.sql.sqlite import quote_list, quote_value
 from tuid import sql
 import tuid.clogger
 from tuid.counter import Counter
@@ -58,7 +59,7 @@ class TUIDService:
         try:
             self.config = kwargs
 
-            self.conn = conn if conn else sql.Sql(self.config.database.name)
+            self.conn = conn if conn else sql.Sql(self.config.database)
             self.hg_cache = (
                 HgMozillaOrg(kwargs=self.config.hg_cache, use_cache=True)
                 if self.config.hg_cache

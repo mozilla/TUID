@@ -14,13 +14,10 @@ import pytest
 
 from mo_dots import wrap, Null
 from mo_future import text_type, PY2
-from mo_json import json2value
 from mo_logs import Log
-from mo_logs.strings import utf82unicode
-from mo_threads import Process
+from mo_threads import Process, Thread
 from pyLibrary.env import http
 from tuid.app import EXPECTING_QUERY
-
 from tuid.client import TuidClient
 
 app_process = None
@@ -40,6 +37,8 @@ def app():
         for line in app_process.stderr:
             if line.startswith(" * Running on "):
                 break
+        drain(app_process.stdout)
+        drain(app_process.stderr)
     yield
     app_process.stop()
     app_process.join(raise_on_error=False)
@@ -170,3 +169,17 @@ def test_client(config, app):
 def test_client_w_try(config, app):
     client = TuidClient(config.client)
     client.get_tuid(revision="0f4946791ddb", file="dom/base/nsWrapperCache.cpp", branch="try")
+
+
+def drain(queue):
+    """
+    HAVE THREAD DRAIN THE QUEUE SO IT IS NOT OVERFILLED
+    :param queue:
+    :return:
+    """
+
+    def _drainer(queue_, please_stop):
+        while not please_stop:
+            queue_.pop(till=please_stop)
+
+    Thread.run("drain queue", _drainer, queue)

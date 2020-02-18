@@ -15,19 +15,17 @@ import time
 # TUIDService, which makes use of the
 # Clogger
 import tuid.service
+from jx_elasticsearch import elasticsearch
 from jx_python import jx
 from mo_dots import Null, coalesce, set_default, wrap
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_logs import Log
 from mo_logs.exceptions import suppress_exception
 from mo_threads import Till, Thread, Lock, Queue, Signal
-from mo_threads.threads import ALL
 from mo_times.durations import DAY
-from pyLibrary.env import http, elasticsearch
-from pyLibrary.sql.sqlite import quote_value
+from pyLibrary.env import http
 from tuid import sql
 from tuid.util import HG_URL, insert, delete
-from collections import defaultdict
 
 RETRY = {"times": 3, "sleep": 5}
 SQL_CSET_BATCH_SIZE = 500
@@ -422,7 +420,7 @@ class Clogger:
         :param new_rev: The revision to start searching from
         :return:
         """
-        old_settings = [self.disable_tipfilling, self.disable_backfilling, self.disable_caching]
+        old_settings = self.disable_tipfilling, self.disable_backfilling, self.disable_caching
         self.disable_tipfilling = True
         self.disable_backfilling = True
         self.disable_caching = True
@@ -443,9 +441,7 @@ class Clogger:
 
             self._fill_in_range(old_rev, new_rev, timestamp=True, number_forward=False)
 
-        self.disable_tipfilling = old_settings[0]
-        self.disable_backfilling = old_settings[1]
-        self.disable_caching = old_settings[2]
+        self.disable_tipfilling, self.disable_backfilling, self.disable_caching = old_settings
 
     def fill_backward_with_list(self, please_stop=None):
         """

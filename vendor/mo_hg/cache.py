@@ -15,7 +15,7 @@ from flask import Response
 
 from mo_dots import coalesce
 from mo_files.url import URL
-from mo_future import text_type, xrange
+from mo_future import text, xrange
 from mo_hg.rate_logger import RateLogger
 from mo_json import value2json
 from mo_kwargs import override
@@ -23,7 +23,7 @@ from mo_logs import Log
 from mo_threads import Lock, Queue, Signal, Thread, Till
 from mo_times import Date, MINUTE, SECOND
 from pyLibrary.env import http
-from pyLibrary.sql.sqlite import Sqlite, quote_list, quote_value
+from jx_sqlite.sqlite import Sqlite, quote_list, quote_value
 
 APP_NAME = "HG Cache"
 CONCURRENCY = 5
@@ -68,7 +68,7 @@ class Cache(object):
                 )
 
         self.threads = [
-            Thread.run(APP_NAME + " worker" + text_type(i), self._worker)
+            Thread.run(APP_NAME + " worker" + text(i), self._worker)
             for i in range(CONCURRENCY)
         ]
         self.limiter = Thread.run(APP_NAME + " limiter", self._rate_limiter)

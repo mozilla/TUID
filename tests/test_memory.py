@@ -13,14 +13,10 @@ import json
 import pytest
 
 from mo_dots import Null
-from mo_logs import Log, Except
-from mo_threads import Thread, Till
-from mo_times import Timer
-from pyLibrary.env import http
-from pyLibrary.sql import sql_list, sql_iso, quote_set
-from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR
+from mo_logs import Log
+from mo_threads import Till
+from jx_sqlite.sqlite import quote_list
 from tuid.service import TUIDService
-from tuid.util import map_to_array
 
 _service = None
 GC_DEBUG = False
@@ -74,8 +70,8 @@ def test_annotation_memory(service):
                 Till(seconds=0.001).wait()
                 result = service.temporal.search(query)
             service.temporal.delete_record(filter)
-            t.execute("DELETE FROM annotations WHERE file IN " + quote_set(files_to_get))
-            t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(files_to_get))
+            t.execute("DELETE FROM annotations WHERE file IN " + quote_list(files_to_get))
+            t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_list(files_to_get))
 
         if start_mem == -1:
             start_mem = round(process.memory_info().rss / (1000 * 1000), 2)

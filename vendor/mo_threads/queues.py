@@ -6,7 +6,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Author: Kyle Lahnakoski (kyle@lahnakoski.com)
+# Contact: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 # THIS THREADING MODULE IS PERMEATED BY THE please_stop SIGNAL.
 # THIS SIGNAL IS IMPORTANT FOR PROPER SIGNALLING WHICH ALLOWS
@@ -14,17 +14,18 @@
 
 from __future__ import absolute_import, division, unicode_literals
 
+import types
 from collections import deque
+from copy import copy
 from datetime import datetime
 from time import time
-import types
 
 from mo_dots import Null, coalesce
 from mo_future import long
 from mo_logs import Except, Log
 
 from mo_threads.lock import Lock
-from mo_threads.signal import Signal
+from mo_threads.signals import Signal
 from mo_threads.threads import THREAD_STOP, THREAD_TIMEOUT, Thread
 from mo_threads.till import Till
 
@@ -145,9 +146,7 @@ class Queue(object):
 
         :param timeout:  IN SECONDS
         """
-        timeout = coalesce(timeout, DEFAULT_WAIT_TIME)
         wait_time = 5
-        timeout = coalesce(timeout, DEFAULT_WAIT_TIME)
 
         (DEBUG and len(self.queue) > 1 * 1000 * 1000) and Log.warning("Queue {{name}} has over a million items")
 
@@ -165,7 +164,7 @@ class Queue(object):
                 if not stop_waiting and len(self.queue) >= self.max:
                     now = time()
                     Log.alert(
-                        "Queue by name of {{name|quote}} is full with ({{num}} items), thread(s) have been waiting {{wait_time}} sec",
+                        "Queue with name {{name|quote}} is full with ({{num}} items), thread(s) have been waiting {{wait_time}} sec",
                         name=self.name,
                         num=len(self.queue),
                         wait_time=now-start
@@ -194,8 +193,7 @@ class Queue(object):
         with self.lock:
             while True:
                 if self.queue:
-                    value = self.queue.popleft()
-                    return value
+                    return self.queue.popleft()
                 if self.closed:
                     break
                 if not self.lock.wait(till=self.closed | till):
@@ -221,7 +219,7 @@ class Queue(object):
         """
         with self.lock:
             if self.closed:
-                return [THREAD_STOP]
+                return THREAD_STOP
             elif not self.queue:
                 return None
             else:
@@ -402,7 +400,7 @@ class ThreadedQueue(Queue):
         max_size=None,   # SET THE MAXIMUM SIZE OF THE QUEUE, WRITERS WILL BLOCK IF QUEUE IS OVER THIS LIMIT
         period=None,  # MAX TIME (IN SECONDS) BETWEEN FLUSHES TO SLOWER QUEUE
         silent=False,  # WRITES WILL COMPLAIN IF THEY ARE WAITING TOO LONG
-        error_target=None  # CALL THIS WITH ERROR **AND THE LIST OF OBJECTS ATTEMPTED**
+        error_target=None  # CALL error_target(error, buffer) **buffer IS THE LIST OF OBJECTS ATTEMPTED**
                            # BE CAREFUL!  THE THREAD MAKING THE CALL WILL NOT BE YOUR OWN!
                            # DEFAULT BEHAVIOUR: THIS WILL KEEP RETRYING WITH WARNINGS
     ):
@@ -429,6 +427,9 @@ class ThreadedQueue(Queue):
         last_push = now - period
 
         def push_to_queue():
+            if self.slow_queue.__class__.__name__ == "Index":
+                if self.slow_queue.settings.index.startswith("saved"):
+                    Log.alert("INSERT SAVED QUERY {{data|json}}", data=copy(_buffer))
             self.slow_queue.extend(_buffer)
             del _buffer[:]
             for ppf in _post_push_functions:
@@ -441,7 +442,6 @@ class ThreadedQueue(Queue):
                     item = self.pop()
                     now = time()
                     if now > last_push + period:
-                        # Log.note("delay next push")
                         next_push = Till(till=now + period)
                 else:
                     item = self.pop(till=next_push)
@@ -455,7 +455,6 @@ class ThreadedQueue(Queue):
                     _post_push_functions.append(item)
                 elif item is not None:
                     _buffer.append(item)
-
             except Exception as e:
                 e = Except.wrap(e)
                 if error_target:
@@ -480,7 +479,6 @@ class ThreadedQueue(Queue):
                         push_to_queue()
                         last_push = now = time()
                     next_push = Till(till=now + period)
-
             except Exception as e:
                 e = Except.wrap(e)
                 if error_target:
@@ -503,6 +501,7 @@ class ThreadedQueue(Queue):
         if _buffer:
             # ONE LAST PUSH, DO NOT HAVE TIME TO DEAL WITH ERRORS
             push_to_queue()
+        self.slow_queue.add(THREAD_STOP)
 
     def add(self, value, timeout=None):
         with self.lock:

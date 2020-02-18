@@ -5,7 +5,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Author: Kyle Lahnakoski (kyle@lahnakoski.com)
+# Contact: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
 from __future__ import absolute_import, division, unicode_literals
@@ -17,8 +17,8 @@ import math
 import re
 from time import time as _time
 
-from mo_dots import Null, NullType
-from mo_future import long, none_type, text_type, unichr
+from mo_dots import Null, NullType, coalesce
+from mo_future import long, none_type, text, unichr
 from mo_logs import Except
 from mo_logs.strings import deformat
 import mo_math
@@ -33,6 +33,7 @@ except Exception:
     pass
 
 ISO8601 = '%Y-%m-%dT%H:%M:%SZ'
+RFC1123 = '%a, %d %b %Y %H:%M:%S GMT'
 
 
 class Date(object):
@@ -85,11 +86,18 @@ class Date(object):
 
     def format(self, format="%Y-%m-%d %H:%M:%S"):
         try:
-            return text_type(unix2datetime(self.unix).strftime(format))
+            return text(unix2datetime(self.unix).strftime(format))
         except Exception as e:
             from mo_logs import Log
 
             Log.error("Can not format {{value}} with {{format}}", value=unix2datetime(self.unix), format=format, cause=e)
+
+    @property
+    def datetime(self):
+        """
+        RETURN AS PYTHON DATETIME (GMT)
+        """
+        return datetime.utcfromtimestamp(self.unix)
 
     @property
     def milli(self):
@@ -416,7 +424,7 @@ def unicode2Date(value, format=None):
 
     try:  # 2.7 DOES NOT SUPPORT %z
         local_value = parse_date(value)  #eg 2014-07-16 10:57 +0200
-        return _unix2Date(datetime2unix((local_value - local_value.utcoffset()).replace(tzinfo=None)))
+        return _unix2Date(datetime2unix((local_value - coalesce(local_value.utcoffset(), 0)).replace(tzinfo=None)))
     except Exception as e:
         e = Except.wrap(e)  # FOR DEBUGGING
         pass
@@ -442,6 +450,11 @@ def unicode2Date(value, format=None):
         "%d%b%y",
         "%d%B%Y",
         "%d%B%y",
+        "%B%d%Y",
+        "%b%d%Y",
+        "%B%d%",
+        "%b%d%y",
+        "%Y%m%d%H%M%S%f",
         "%Y%m%d%H%M%S",
         "%Y%m%dT%H%M%S",
         "%d%m%Y%H%M%S",
@@ -488,7 +501,11 @@ def datetime2unix(value):
 def unix2datetime(unix):
     if unix == None:
         return Null
-    return datetime.utcfromtimestamp(unix)
+    try:
+        return datetime.utcfromtimestamp(unix)
+    except Exception as e:
+        from mo_logs import Log
+        Log.error("Can not convert {{value}} to datetime", value=unix, cause=e)
 
 
 def unix2Date(unix):

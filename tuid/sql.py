@@ -10,8 +10,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
+from jx_sqlite.sqlite import Sqlite, quote_value
+from mo_future import text_type, text
 from mo_logs import Log
-from pyLibrary.sql.sqlite import quote_value, Sqlite
 
 DEBUG = False
 TRACE = True
@@ -33,7 +34,7 @@ class Sql:
     def get(self, sql, params=None):
         if params:
             for p in params:
-                sql = sql.replace("?", quote_value(p), 1)
+                sql = sql.replace("?", text(quote_value(p)), 1)
         return self.db.query(sql).data
 
     def get_one(self, sql, params=None):
@@ -65,13 +66,13 @@ class Transaction:
     def execute(self, sql, params=None):
         if params:
             for p in params:
-                sql = sql.replace("?", quote_value(p), 1)
+                sql = sql.replace("?", text(quote_value(p)), 1)
         return self.transaction.execute(sql)
 
     def get(self, sql, params=None):
         if params:
             for p in params:
-                sql = sql.replace("?", quote_value(p), 1)
+                sql = sql.replace("?", text(quote_value(p)), 1)
         return self.transaction.query(sql).data
 
     def get_one(self, sql, params=None):

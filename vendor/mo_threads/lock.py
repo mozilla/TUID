@@ -5,7 +5,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Author: Kyle Lahnakoski (kyle@lahnakoski.com)
+# Contact: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 # THIS THREADING MODULE IS PERMEATED BY THE please_stop SIGNAL.
 # THIS SIGNAL IS IMPORTANT FOR PROPER SIGNALLING WHICH ALLOWS
@@ -15,7 +15,7 @@ from __future__ import absolute_import, division, unicode_literals
 
 from mo_future import allocate_lock as _allocate_lock
 from mo_math.randoms import Random
-from mo_threads.signal import Signal
+from mo_threads.signals import Signal
 
 _Log = None
 _Except = None
@@ -36,7 +36,7 @@ def _late_import():
         return
 
     from mo_logs.exceptions import Except as _Except
-    from mo_logs.exceptions import extract_stack as _extract_stack
+    from mo_logs.exceptions import get_stacktrace as _extract_stack
     from mo_threads.threads import Thread as _Thread
     from mo_logs import Log as _Log
 

@@ -13,12 +13,12 @@ from mo_dots import wrap, coalesce, Null
 from mo_json import json2value, value2json
 from mo_kwargs import override
 from mo_logs import Log
+from mo_sql import sql_list
 from mo_threads import Till
 from mo_times import Timer, Date
 from pyLibrary import aws
 from pyLibrary.env import http
-from pyLibrary.sql import sql_list
-from pyLibrary.sql.sqlite import Sqlite, quote_value, quote_list
+from jx_sqlite.sqlite import Sqlite, quote_value, quote_list, sql_insert
 
 DEBUG = True
 SLEEP_ON_ERROR = 30

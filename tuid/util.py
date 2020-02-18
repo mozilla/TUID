@@ -10,13 +10,10 @@ from __future__ import unicode_literals
 
 from collections import namedtuple
 
-from jx_python import jx
 from mo_files.url import URL
 from mo_hg.apply import Line, SourceFile
 from mo_logs import Log
-from pyLibrary.sql import quote_set, sql_list
 from mo_threads import Till
-from mo_dots import wrap
 
 TIMEOUT = 10
 HG_URL = URL("https://hg.mozilla.org/")

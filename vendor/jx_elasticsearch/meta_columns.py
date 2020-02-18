@@ -5,7 +5,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http:# mozilla.org/MPL/2.0/.
 #
-# Author: Kyle Lahnakoski (kyle@lahnakoski.com)
+# Contact: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 from __future__ import absolute_import, division, unicode_literals
 
@@ -14,9 +14,10 @@ from jx_base import Column, Table
 from jx_base.meta_columns import META_COLUMNS_NAME, META_COLUMNS_TYPE_NAME, SIMPLE_METADATA_COLUMNS, META_COLUMNS_DESC
 from jx_base.schema import Schema
 from jx_python import jx
-from mo_dots import Data, Null, is_data, is_list, unwraplist, wrap, set_default
-from mo_json import STRUCT
-from mo_json.typed_encoder import unnest_path, untype_path, untyped
+from mo_dots import Data, Null, is_data, is_list, unwraplist, wrap, listwrap, split_field
+from mo_dots.lists import last
+from mo_json import STRUCT, NESTED, OBJECT
+from mo_json.typed_encoder import unnest_path, untype_path, untyped, NESTED_TYPE, get_nested_path
 from mo_logs import Log
 from mo_math import MAX
 from mo_threads import Lock, MAIN_THREAD, Queue, Thread, Till
@@ -25,6 +26,7 @@ from mo_times.dates import Date
 
 DEBUG = False
 singlton = None
+REPLICAS = 5
 COLUMN_LOAD_PERIOD = 10
 COLUMN_EXTRACT_PERIOD = 2 * 60
 ID = {"field": ["es_index", "es_column"], "version": "last_updated"}
@@ -32,6 +34,8 @@ ID = {"field": ["es_index", "es_column"], "version": "last_updated"}
 
 class ColumnList(Table, jx_base.Container):
     """
+    CENTRAL CONTAINER FOR ALL COLUMNS
+    SYNCHRONIZED WITH ELASTICSEARCH
     OPTIMIZED FOR THE PARTICULAR ACCESS PATTERNS USED
     """
 
@@ -44,7 +48,7 @@ class ColumnList(Table, jx_base.Container):
         self.es_cluster = es_cluster
         self.es_index = None
         self.last_load = Null
-        self.todo = Queue(
+        self.for_es_update = Queue(
             "update columns to es"
         )  # HOLD (action, column) PAIR, WHERE action in ['insert', 'update']
         self._db_load()
@@ -62,7 +66,7 @@ class ColumnList(Table, jx_base.Container):
 
     def _db_create(self):
         schema = {
-            "settings": {"index.number_of_shards": 1, "index.number_of_replicas": 6},
+            "settings": {"index.number_of_shards": 1, "index.number_of_replicas": REPLICAS},
             "mappings": {META_COLUMNS_TYPE_NAME: {}},
         }
 
@@ -109,12 +113,16 @@ class ColumnList(Table, jx_base.Container):
             Log.note("{{num}} columns loaded", num=result.hits.total)
             with self.locker:
                 for r in result.hits.hits._source:
-                    self._add(doc_to_column(r))
+                    col = doc_to_column(r)
+                    if col:
+                        self._add(col)
 
         except Exception as e:
-            Log.warning(
-                "no {{index}} exists, making one", index=META_COLUMNS_NAME, cause=e
-            )
+            metadata = self.es_cluster.get_metadata(after=Date.now())
+            if any(index.startswith(META_COLUMNS_NAME) for index in metadata.indices.keys()):
+                Log.error("metadata already exists!", cause=e)
+
+            Log.warning("no {{index}} exists, making one", index=META_COLUMNS_NAME, cause=e)
             self._db_create()
 
     def _update_from_es(self, please_stop):
@@ -141,11 +149,12 @@ class ColumnList(Table, jx_base.Container):
                         with self.locker:
                             for r in result.hits.hits._source:
                                 c = doc_to_column(r)
-                                self._add(c)
-                                self.last_load = MAX((self.last_load, c.last_updated))
+                                if c:
+                                    self._add(c)
+                                    self.last_load = MAX((self.last_load, c.last_updated))
 
                     while not please_stop:
-                        updates = self.todo.pop_all()
+                        updates = self.for_es_update.pop_all()
                         if not updates:
                             break
 
@@ -184,8 +193,19 @@ class ColumnList(Table, jx_base.Container):
             canonical = self._add(column)
         if canonical == None:
             return column  # ALREADY ADDED
-        self.todo.add(canonical)
+        self.for_es_update.add(canonical)
         return canonical
+
+    def remove(self, column, after):
+        if column.last_updated>after:
+            return
+        with self.locker:
+            canonical = self._add(column)
+        if canonical:
+            Log.error("Expecting canonical column to be removed")
+        mark_as_deleted(column)
+        DEBUG and Log.note("delete {{col|quote}}, at {{timestamp}}", col=column.es_column, timestamp=column.last_updated)
+        self.for_es_update.add(column)
 
     def remove_table(self, table_name):
         del self.data[table_name]
@@ -285,8 +305,7 @@ class ColumnList(Table, jx_base.Container):
                             del d[i]
 
                         for c in cols:
-                            mark_as_deleted(c)
-                            self.todo.add(c)
+                            self.remove(c)
                         return
 
                     # FASTEST
@@ -330,7 +349,7 @@ class ColumnList(Table, jx_base.Container):
                     for k in command["clear"]:
                         if k == ".":
                             mark_as_deleted(col)
-                            self.todo.add(col)
+                            self.for_es_update.add(col)
                             lst = self.data[col.es_index]
                             cols = lst[col.name]
                             cols.remove(col)
@@ -345,7 +364,7 @@ class ColumnList(Table, jx_base.Container):
                         # DID NOT DELETE COLUMNM ("."), CONTINUE TO SET PROPERTIES
                         for k, v in command.set.items():
                             col[k] = v
-                        self.todo.add(col)
+                        self.for_es_update.add(col)
 
         except Exception as e:
             Log.error("should not happen", cause=e)
@@ -434,13 +453,48 @@ class ColumnList(Table, jx_base.Container):
 
 
 def doc_to_column(doc):
-    kwargs = set_default(untyped(doc), {"last_updated": Date.now()-YEAR})
-    return Column(**wrap(kwargs))
+    try:
+        doc = wrap(untyped(doc))
+        if not doc.last_updated:
+            doc.last_updated = Date.now()-YEAR
+
+        if doc.es_type == None:
+            if doc.jx_type == OBJECT:
+                doc.es_type = "object"
+            else:
+                Log.warning("{{doc}} has no es_type", doc=doc)
+        doc.multi = 1001 if doc.es_type == "nested" else doc.multi
+
+        doc.nested_path = tuple(listwrap(doc.nested_path))
+        if last(split_field(doc.es_column)) == NESTED_TYPE and doc.es_type != "nested":
+            doc.es_type = "nested"
+            doc.jx_type = NESTED
+            doc.multi = 1001
+            doc.last_updated = Date.now()
+
+        expected_nested_path = get_nested_path(doc.es_column)
+        if len(doc.nested_path) > 1 and doc.nested_path[-2] == '.':
+            doc.nested_path = doc.nested_path[:-1]
+        if untype_path(doc.es_column) == doc.es_column:
+            if doc.nested_path != (".",):
+                if doc.es_index in {"repo"}:
+                    pass
+                else:
+                    Log.note("not expected")
+                    doc.nested_path = expected_nested_path
+        else:
+            if doc.nested_path != expected_nested_path:
+                doc.nested_path = expected_nested_path
+        return Column(**doc)
+    except Exception:
+        doc.nested_path = ["."]
+        mark_as_deleted(Column(**doc))
+        return None
 
 
 def mark_as_deleted(col):
     col.count = 0
     col.cardinality = 0
-    col.multi = 0
+    col.multi = 1001 if col.es_type == "nested" else 0,
     col.partitions = None
     col.last_updated = Date.now()

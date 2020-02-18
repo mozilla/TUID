@@ -5,7 +5,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http:# mozilla.org/MPL/2.0/.
 #
-# Author: Kyle Lahnakoski (kyle@lahnakoski.com)
+# Contact: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 from __future__ import absolute_import, division, unicode_literals
 
@@ -15,20 +15,25 @@ from jx_base.dimensions import Dimension
 from jx_base.expressions import jx_expression
 from jx_base.language import is_op
 from jx_base.query import QueryOp
-from jx_elasticsearch.es52.aggs import es_aggsop, is_aggsop
+from jx_elasticsearch.es52.agg_op import es_aggsop, is_aggsop
+from jx_elasticsearch.es52.agg_bulk import is_bulk_agg, es_bulkaggsop
 from jx_elasticsearch.es52.deep import es_deepop, is_deepop
-from jx_elasticsearch.es52.setop import es_setop, is_setop
-from jx_elasticsearch.es52.util import aggregates
+from jx_elasticsearch.es52.set_bulk import is_bulk_set, es_bulksetop
+from jx_elasticsearch.es52.set_op import es_setop, is_setop
+from jx_elasticsearch.es52.stats import QueryStats
+from jx_elasticsearch.es52.util import aggregates, temper_limit
 from jx_elasticsearch.meta import ElasticsearchMetadata, Table
 from jx_python import jx
 from mo_dots import Data, coalesce, is_list, join_field, listwrap, split_field, startswith_field, unwrap, wrap
+from mo_dots.lists import last
 from mo_future import sort_using_key
 from mo_json import OBJECT, value2json
-from mo_json.typed_encoder import EXISTS_TYPE
+from mo_json.typed_encoder import EXISTS_TYPE, NESTED_TYPE
 from mo_kwargs import override
 from mo_logs import Except, Log
 from mo_times import Date
-from pyLibrary.env import elasticsearch, http
+from pyLibrary.env import http
+from jx_elasticsearch import elasticsearch
 
 
 class ES52(Container):
@@ -77,6 +82,7 @@ class ES52(Container):
 
         self._ensure_max_result_window_set(name)
         self.settings.type = self.es.settings.type
+        self.stats = QueryStats(self.es.cluster)
 
         columns = self.snowflake.columns  # ABSOLUTE COLUMNS
         is_typed = any(c.es_column == EXISTS_TYPE for c in columns)
@@ -94,14 +100,12 @@ class ES52(Container):
             all_paths = {'.': None}  # MAP FROM path TO parent TO MAKE A TREE
 
             def nested_path_of(v):
-                parent = all_paths[v]
-                if parent is None:
-                    return ['.']
-                else:
-                    return [parent] + nested_path_of(parent)
+                if v == '.':
+                    return ('.',)
+                return (v,) + nested_path_of(all_paths[v])
 
-            all = sort_using_key(set(step for path in self.snowflake.query_paths for step in path), key=lambda p: len(split_field(p)))
-            for step in sorted(all):
+            query_paths = sort_using_key(set(step for path in self.snowflake.query_paths for step in path), key=lambda p: len(split_field(p)))
+            for step in query_paths:
                 if step in all_paths:
                     continue
                 else:
@@ -113,15 +117,19 @@ class ES52(Container):
                     all_paths[step] = best
             for p in all_paths.keys():
                 nested_path = nested_path_of(p)
-                self.namespace.meta.columns.add(Column(
-                    name=p,
-                    es_column=p,
-                    es_index=self.name,
-                    es_type=OBJECT,
-                    jx_type=OBJECT,
-                    nested_path=nested_path,
-                    last_updated=Date.now()
-                ))
+                try:
+                    self.namespace.meta.columns.add(Column(
+                        name=p,
+                        es_column=p,
+                        es_index=self.name,
+                        es_type=OBJECT,
+                        jx_type=OBJECT,
+                        nested_path=nested_path,
+                        multi=1001 if last(split_field(p)) == NESTED_TYPE else None,
+                        last_updated=Date.now()
+                    ))
+                except Exception as e:
+                    raise e
 
     @property
     def snowflake(self):
@@ -180,6 +188,8 @@ class ES52(Container):
         try:
             query = QueryOp.wrap(_query, container=self, namespace=self.namespace)
 
+            self.stats.record(query)
+
             for s in listwrap(query.select):
                 if s.aggregate != None and not aggregates.get(s.aggregate):
                     Log.error(
@@ -194,6 +204,13 @@ class ES52(Container):
                 q2 = query.copy()
                 q2.frum = result
                 return jx.run(q2)
+
+            if is_bulk_agg(self.es, query):
+                return es_bulkaggsop(self, frum, query)
+            if is_bulk_set(self.es, query):
+                return es_bulksetop(self, frum, query)
+
+            query.limit = temper_limit(query.limit, query)
 
             if is_deepop(self.es, query):
                 return es_deepop(self.es, query)
@@ -287,5 +304,4 @@ class ES52(Container):
             return
 
         es_index.flush()
-
 

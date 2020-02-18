@@ -11,14 +11,14 @@ from __future__ import unicode_literals
 import json
 
 import pytest
+from mo_sql import sql_list
 
 from mo_dots import Null
 from mo_logs import Log, Except
 from mo_threads import Thread, Till
 from mo_times import Timer
 from pyLibrary.env import http
-from pyLibrary.sql import sql_list, quote_set
-from pyLibrary.sql.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR, quote_list
+from jx_sqlite.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR, quote_list
 from tuid.service import TUIDService
 from tuid.util import map_to_array, delete
 
@@ -488,7 +488,7 @@ def test_many_files_one_revision(service):
     service.clogger.start_backfilling()
 
     with service.conn.transaction() as t:
-        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(test_file))
+        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_list(test_file))
         filter = {"terms": {"file": test_file}}
         delete(service.annotations, filter)
 
@@ -524,7 +524,7 @@ def test_one_addition_many_files(service):
     service.clogger.start_backfilling()
 
     with service.conn.transaction() as t:
-        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(test_file))
+        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_list(test_file))
         filter = {"terms": {"file": test_file}}
         delete(service.annotations, filter)
 
@@ -710,7 +710,7 @@ def test_one_http_call_required(service):
 
     with service.conn.transaction() as t:
         temp = [i.lstrip("/") for i in proc_files]
-        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_set(temp))
+        t.execute("DELETE FROM latestFileMod WHERE file IN " + quote_list(temp))
         filter = {"terms": {"file": temp}}
         delete(service.annotations, filter)
 
