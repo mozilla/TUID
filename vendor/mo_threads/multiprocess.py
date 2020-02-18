@@ -30,6 +30,21 @@ class Process(object):
     next_process_id = 0
 
     def __init__(self, name, params, cwd=None, env=None, debug=False, shell=False, bufsize=-1):
+        """
+        Spawns multiple threads to manage the stdin/stdout/stderr of the child process; communication is done
+        via proper thread-safe queues of the same name.
+
+        Since the process is managed and monitored by threads, the main thread is not blocked when the child process
+        encounters problems
+
+        :param name: name given to this process
+        :param params: list of strings for program name and parameters
+        :param cwd: current working directory
+        :param env: enviroment variables
+        :param debug: true to be verbose about stdin/stdout
+        :param shell: true to run as command line
+        :param bufsize: if you want to screw stuff up
+        """
         self.process_id = Process.next_process_id
         Process.next_process_id += 1
         self.name = name + " (" + text(self.process_id) + ")"
