@@ -10,12 +10,11 @@ from __future__ import unicode_literals
 
 import pytest
 
-from mo_dots import Null, wrap
-from mo_logs import Log, Except
-from mo_threads import Thread, Till
-from tuid.clogger import Clogger
+from mo_logs import Log
+from mo_threads import Till
 from tuid import sql
-from tuid.util import delete, insert
+from tuid.clogger import Clogger
+from tuid.util import delete
 
 _clogger = None
 _conn = None
@@ -28,7 +27,7 @@ HG_URL = "https://hg.mozilla.org/"
 def clogger(config, new_db):
     global _clogger
     global _conn
-    _conn = sql.Sql(config.tuid.database.name)
+    _conn = sql.Sql(config.tuid.database)
     if new_db == "yes":
         return Clogger(conn=_conn, new_table=True, kwargs=config)
     elif new_db == "no":
