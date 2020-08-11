@@ -9,8 +9,8 @@
 #
 from __future__ import absolute_import, division, unicode_literals
 
-from copy import copy
 import itertools
+from copy import copy
 
 import jx_base
 from jx_base import Container
@@ -18,15 +18,14 @@ from jx_base.expressions import TRUE, Variable
 from jx_base.language import is_expression, is_op
 from jx_base.meta_columns import get_schema_from_list
 from jx_base.schema import Schema
+from jx_python.convert import list2cube, list2table
 from jx_python.expressions import jx_expression_to_function
 from jx_python.lists.aggs import is_aggs, list_aggs
 from mo_collections import UniqueIndex
-from mo_dots import Data, Null, is_data, is_list, listwrap, unwrap, unwraplist, wrap, coalesce, relative_field, \
-    split_field
+from mo_dots import Data, Null, is_data, is_list, listwrap, unwrap, unwraplist, wrap, coalesce
 from mo_future import first, sort_using_key
 from mo_logs import Log
 from mo_threads import Lock
-from pyLibrary import convert
 
 
 class ListContainer(Container, jx_base.Namespace, jx_base.Table):
@@ -72,11 +71,6 @@ class ListContainer(Container, jx_base.Namespace, jx_base.Table):
         if is_aggs(q):
             output = list_aggs(output.data, q)
         else:
-            # SETOP
-            if q['from']:
-                path = split_field(relative_field(q['from'], self.name))
-                ListContainer(self.name)
-
             try:
                 if q.filter != None or q.esfilter != None:
                     Log.error("use 'where' clause")
@@ -91,7 +85,8 @@ class ListContainer(Container, jx_base.Namespace, jx_base.Table):
 
             if q.select:
                 output = output.select(q.select)
-        #TODO: ADD EXTRA COLUMN DESCRIPTIONS TO RESULTING SCHEMA
+
+        # TODO: ADD EXTRA COLUMN DESCRIPTIONS TO RESULTING SCHEMA
         for param in q.window:
             output.window(param)
 
@@ -194,10 +189,10 @@ class ListContainer(Container, jx_base.Namespace, jx_base.Table):
                     output[n] = unwraplist(p(wrap(d)))
                 return unwrap(output)
 
-            new_data = map(selector, self.data)
+            new_data = list(map(selector, self.data))
         else:
             select_value = jx_expression_to_function(select.value)
-            new_data = map(select_value, self.data)
+            new_data = list(map(select_value, self.data))
             if is_op(select.value, Variable):
                 column = copy(first(c for c in self.schema.columns if c.name == select.value.var))
                 column.name = '.'
@@ -212,9 +207,9 @@ class ListContainer(Container, jx_base.Namespace, jx_base.Table):
 
     def format(self, format):
         if format == "table":
-            frum = convert.list2table(self.data, self._schema.lookup.keys())
+            frum = list2table(self.data, self._schema.lookup.keys())
         elif format == "cube":
-            frum = convert.list2cube(self.data, self.schema.lookup.keys())
+            frum = list2cube(self.data, self.schema.lookup.keys())
         else:
             frum = self.__data__()
 

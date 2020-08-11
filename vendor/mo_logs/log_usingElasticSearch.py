@@ -29,8 +29,8 @@ from jx_elasticsearch.rollover_index import RolloverIndex
 
 MAX_BAD_COUNT = 5
 LOG_STRING_LENGTH = 2000
-PAUSE_AFTER_GOOD_INSERT = 1
-PAUSE_AFTER_BAD_INSERT = 60
+PAUSE_AFTER_GOOD_INSERT = 60
+PAUSE_AFTER_BAD_INSERT = 600
 
 
 class StructuredLogger_usingElasticSearch(StructuredLogger):
@@ -43,6 +43,7 @@ class StructuredLogger_usingElasticSearch(StructuredLogger):
         type="log",
         queue_size=1000,
         batch_size=100,
+        refresh_interval="1second",
         kwargs=None,
     ):
         """

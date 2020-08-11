@@ -16,13 +16,14 @@ from datetime import datetime
 from mimetypes import MimeTypes
 from tempfile import NamedTemporaryFile, mkdtemp
 
+from mo_math.randoms import Random
+
 from mo_dots import Null, coalesce, get_module, is_list
 from mo_files import mimetype
 from mo_files.url import URL
 from mo_future import PY3, binary_type, text, is_text
 from mo_logs import Except, Log
 from mo_logs.exceptions import get_stacktrace
-from mo_threads import Thread, Till
 
 
 class File(object):
@@ -150,7 +151,7 @@ class File(object):
                 mime = MimeTypes()
                 self._mime_type, _ = mime.guess_type(self.abspath)
                 if not self._mime_type:
-                    self._mime_type = "application/binary"
+                    self._mime_type = mimetype.BINARY
         return self._mime_type
 
     def find(self, pattern):
@@ -451,7 +452,9 @@ class TempDirectory(File):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        Thread.run("delete dir " + self.name, delete_daemon, file=self, caller_stack=get_stacktrace(1))
+        from mo_threads import Thread
+
+        Thread.run("delete dir " + self.name, delete_daemon, file=self, caller_stack=get_stacktrace(1)).release()
 
 
 class TempFile(File):
@@ -465,7 +468,7 @@ class TempFile(File):
     def __init__(self, filename=None):
         if isinstance(filename, File):
             return
-        self.temp = NamedTemporaryFile(delete=False)
+        self.temp = NamedTemporaryFile(prefix=Random.filename(), delete=False)
         self.temp.close()
         File.__init__(self, self.temp.name)
 
@@ -473,8 +476,9 @@ class TempFile(File):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        Thread.run("delete file " + self.name, delete_daemon, file=self, caller_stack=get_stacktrace(1))
+        from mo_threads import Thread
 
+        Thread.run("delete file " + self.name, delete_daemon, file=self, caller_stack=get_stacktrace(1)).release()
 
 def _copy(from_, to_):
     if from_.is_directory():
@@ -561,6 +565,8 @@ def join_path(*path):
 
 def delete_daemon(file, caller_stack, please_stop):
     # WINDOWS WILL HANG ONTO A FILE FOR A BIT AFTER WE CLOSED IT
+    from mo_threads import Till
+
     while not please_stop:
         try:
             file.delete()

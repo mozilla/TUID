@@ -13,7 +13,7 @@ from jx_python import jx
 from jx_sqlite.sqlite import quote_list, quote_value
 from mo_dots import Null, coalesce, set_default, wrap
 from mo_files.url import URL
-from mo_future import text_type
+from mo_future import text
 from mo_hg.apply import apply_diff, apply_diff_backwards
 from mo_hg.hg_mozilla_org import HgMozillaOrg
 from mo_kwargs import override
@@ -24,7 +24,7 @@ from mo_sql import sql_list
 from mo_threads import Lock, Thread, Till
 from mo_times.durations import HOUR, MINUTE, SECOND
 from jx_elasticsearch import elasticsearch
-from pyLibrary.env import http
+from mo_http import http
 from pyLibrary.meta import cache
 from tuid import sql
 import tuid.clogger
@@ -374,7 +374,7 @@ class TUIDService:
         try:
             Log.note("Searching through changelog {{url}}", url=clog_url)
             clog_obj = self.get_clog(clog_url)
-            if isinstance(clog_obj, (text_type, str)):
+            if isinstance(clog_obj, (text, str)):
                 Log.note(
                     "Revision {{cset}} does not exist in the {{branch}} branch",
                     cset=revision,

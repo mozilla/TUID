@@ -11,10 +11,9 @@ import os
 import flask
 from flask import Flask, Response
 
-from mo_hg.cache import Cache
+from mo_hg.relay.cache import Cache
 from mo_json import value2json
 from mo_logs import Except, Log, constants, startup
-from mo_logs.strings import unicode2utf8
 from pyLibrary.env.flask_wrappers import cors_wrapper
 
 APP_NAME = "HG Relay"
@@ -44,7 +43,7 @@ def relay_get(path):
         e = Except.wrap(e)
         Log.warning("could not handle request", cause=e)
         return Response(
-            unicode2utf8(value2json(e, pretty=True)),
+            value2json(e, pretty=True).encode('utf8'),
             status=400,
             headers={"Content-Type": "text/html"},
         )
@@ -58,7 +57,7 @@ def relay_post(path):
         e = Except.wrap(e)
         Log.warning("could not handle request", cause=e)
         return Response(
-            unicode2utf8(value2json(e, pretty=True)),
+            value2json(e, pretty=True).encode('utf8'),
             status=400,
             headers={"Content-Type": "text/html"},
         )

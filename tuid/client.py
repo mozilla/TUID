@@ -17,7 +17,7 @@ from mo_sql import sql_list
 from mo_threads import Till
 from mo_times import Timer, Date
 from pyLibrary import aws
-from pyLibrary.env import http
+from mo_http import http
 from jx_sqlite.sqlite import Sqlite, quote_value, quote_list, sql_insert
 
 DEBUG = True

@@ -14,7 +14,7 @@ from __future__ import absolute_import, division, unicode_literals
 from jx_base import Column
 from jx_base.language import is_op
 from jx_base.queries import get_property_name
-from jx_sqlite import COLUMN, ColumnMapping, ORDER, _make_column_name, get_column, UID, PARENT
+from jx_sqlite.utils import COLUMN, ColumnMapping, ORDER, _make_column_name, get_column, UID, PARENT
 from jx_sqlite.expressions._utils import SQLang, sql_type_to_json_type
 from jx_sqlite.expressions.boolean_op import BooleanOp
 from jx_sqlite.expressions.leaves_op import LeavesOp

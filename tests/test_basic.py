@@ -17,7 +17,7 @@ from mo_dots import Null
 from mo_logs import Log, Except
 from mo_threads import Thread, Till
 from mo_times import Timer
-from pyLibrary.env import http
+from mo_http import http
 from jx_sqlite.sqlite import quote_value, DOUBLE_TRANSACTION_ERROR, quote_list
 from tuid.service import TUIDService
 from tuid.util import map_to_array, delete

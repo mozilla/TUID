@@ -12,7 +12,7 @@
 from __future__ import absolute_import, division, unicode_literals
 
 from jx_python import jx
-from jx_sqlite import ColumnMapping, _make_column_name, get_column, sql_aggs, PARENT, UID
+from jx_sqlite.utils import ColumnMapping, _make_column_name, get_column, sql_aggs, PARENT, UID
 from jx_sqlite.edges_table import EdgesTable
 from jx_sqlite.expressions._utils import SQLang, sql_type_to_json_type
 from mo_dots import concat_field, join_field, listwrap, split_field, startswith_field

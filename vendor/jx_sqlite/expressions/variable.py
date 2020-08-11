@@ -13,7 +13,7 @@ from jx_sqlite.sqlite import quote_column
 
 from jx_base.expressions import Variable as Variable_
 from jx_base.queries import get_property_name
-from jx_sqlite import GUID, quoted_GUID
+from jx_sqlite.utils import GUID, quoted_GUID
 from jx_sqlite.expressions._utils import json_type_to_sql_type, check
 from mo_dots import ROOT_PATH, relative_field, wrap
 from mo_json import BOOLEAN, OBJECT

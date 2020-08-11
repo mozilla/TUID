@@ -10,19 +10,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
-import gc
 import os
 
 import flask
-from flask import Flask, Response, request
-
 import objgraph
+from flask import Flask, Response
+
 from mo_dots import listwrap, coalesce, unwraplist
 from mo_json import value2json, json2value
 from mo_logs import Log, constants, startup, Except
 from mo_threads.threads import RegisterThread
 from mo_times import Timer
-from pyLibrary.env import http
 from pyLibrary.env.flask_wrappers import cors_wrapper
 from tuid.service import TUIDService
 from tuid.util import map_to_array

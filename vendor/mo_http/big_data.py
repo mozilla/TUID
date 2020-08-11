@@ -8,19 +8,18 @@
 #
 from __future__ import absolute_import, division, unicode_literals
 
-from mo_future import is_text, is_binary
 import gzip
-from io import BytesIO
 import struct
-from tempfile import TemporaryFile
 import time
 import zipfile
 import zlib
+from io import BytesIO
+from tempfile import TemporaryFile
 
-from mo_future import PY3, long, text
+import mo_math
+from mo_future import PY3, long, text, next
 from mo_logs import Log
 from mo_logs.exceptions import suppress_exception
-import mo_math
 
 # LIBRARY TO DEAL WITH BIG DATA ARRAYS AS ITERATORS OVER (IR)REGULAR SIZED
 # BLOCKS, OR AS ITERATORS OVER LINES
@@ -200,7 +199,7 @@ class LazyLines(object):
         try:
             if item == self._next:
                 self._next += 1
-                return self._iter.next()
+                return next(self._iter)
             elif item == self._next - 1:
                 return self._last
             else:
@@ -246,7 +245,7 @@ class CompressedLines(LazyLines):
     def __getitem__(self, item):
         try:
             if item == self._next:
-                self._last = self._iter.next()
+                self._last = next(self._iter)
                 self._next += 1
                 return self._last
             elif item == self._next - 1:
@@ -295,13 +294,17 @@ def ibytes2ilines(generator, encoding="utf8", flexible=False, closer=None):
     :return:
     """
     decode = get_decoder(encoding=encoding, flexible=flexible)
-    _buffer = generator.next()
+    try:
+        _buffer = next(generator)
+    except StopIteration:
+        return
+
     s = 0
     e = _buffer.find(b"\n")
     while True:
         while e == -1:
             try:
-                next_block = generator.next()
+                next_block = next(generator)
                 _buffer = _buffer[s:] + next_block
                 s = 0
                 e = _buffer.find(b"\n")
@@ -459,3 +462,35 @@ def get_decoder(encoding, flexible=False):
         def do_decode2(v):
             return v.decode(encoding)
         return do_decode2
+
+
+def zip2bytes(compressed):
+    """
+    UNZIP DATA
+    """
+    if hasattr(compressed, "read"):
+        return gzip.GzipFile(fileobj=compressed, mode='r')
+
+    buff = BytesIO(compressed)
+    archive = gzip.GzipFile(fileobj=buff, mode='r')
+    return safe_size(archive)
+
+
+def bytes2zip(bytes):
+    """
+    RETURN COMPRESSED BYTES
+    """
+    if hasattr(bytes, "read"):
+        buff = TemporaryFile()
+        archive = gzip.GzipFile(fileobj=buff, mode='w')
+        for b in bytes:
+            archive.write(b)
+        archive.close()
+        buff.seek(0)
+        return FileString(buff)
+
+    buff = BytesIO()
+    archive = gzip.GzipFile(fileobj=buff, mode='w')
+    archive.write(bytes)
+    archive.close()
+    return buff.getvalue()

@@ -16,18 +16,16 @@ import sys
 from collections import Mapping, namedtuple
 
 from jx_base import jx_expression
+from jx_python.convert import table2csv
 from mo_dots import Data, coalesce, unwraplist, listwrap, wrap
 from mo_files import File
-from mo_future import allocate_lock as _allocate_lock, text, first, is_text, zip_longest, binary_type
+from mo_future import allocate_lock as _allocate_lock, text, first, is_text, zip_longest
 from mo_json import BOOLEAN, INTEGER, NESTED, NUMBER, OBJECT, STRING
 from mo_kwargs import override
 from mo_logs import Log
 from mo_logs.exceptions import ERROR, Except, get_stacktrace, format_trace
 from mo_logs.strings import quote
 from mo_math.stats import percentile
-from mo_threads import Lock, Queue, Thread, Till
-from mo_times import Date, Duration, Timer
-from pyLibrary import convert
 from mo_sql import (
     DB,
     SQL,
@@ -54,8 +52,10 @@ from mo_sql import (
     SQL_CP,
     SQL_DOT,
     SQL_LT, SQL_SPACE, SQL_AS, SQL_LIMIT)
+from mo_threads import Lock, Queue, Thread, Till
+from mo_times import Date, Duration, Timer
 
-DEBUG = True
+DEBUG = False
 TRACE = True
 
 FORMAT_COMMAND = "Running command from \"{{file}}:{{line}}\"\n{{command|limit(1000)|indent}}"
@@ -80,9 +80,9 @@ def _upgrade():
         # if "windows" in platform.system().lower():
         #     original_dll = File.new_instance(sys.exec_prefix, "dlls/sqlite3.dll")
         #     if platform.architecture()[0]=='32bit':
-        #         source_dll = File("vendor/pyLibrary/vendor/sqlite/sqlite3_32.dll")
+        #         source_dll = File("jx-sqlite/vendor/sqlite/sqlite3_32.dll")
         #     else:
-        #         source_dll = File("vendor/pyLibrary/vendor/sqlite/sqlite3_64.dll")
+        #         source_dll = File("jx-sqlite/vendor/sqlite/sqlite3_64.dll")
         #
         #     if not all(a == b for a, b in zip_longest(source_dll.read_bytes(), original_dll.read_bytes())):
         #         original_dll.backup()
@@ -143,7 +143,7 @@ class Sqlite(DB):
             "Sqlite version {{version}}", version=_sqlite3.sqlite_version
         )
         try:
-            if db == None:
+            if not isinstance(db, _sqlite3.Connection):
                 self.db = _sqlite3.connect(
                     database=coalesce(self.filename, ":memory:"),
                     check_same_thread=False,
@@ -471,7 +471,7 @@ class Sqlite(DB):
                 )
                 result.data = curr.fetchall()
                 if self.debug and result.data:
-                    csv = convert.table2csv(list(result.data))
+                    csv = table2csv(list(result.data))
                     Log.note("Result:\n{{data|limit(100)|indent}}", data=csv)
             except Exception as e:
                 e = Except.wrap(e)
@@ -747,9 +747,9 @@ def _upgrade():
         if "windows" in platform.system().lower():
             original_dll = File.new_instance(sys.exec_prefix, "dlls/sqlite3.dll")
             if platform.architecture()[0] == "32bit":
-                source_dll = File("vendor/pyLibrary/vendor/sqlite/sqlite3_32.dll")
+                source_dll = File("vendor/jx-sqlite/vendor/sqlite/sqlite3_32.dll")
             else:
-                source_dll = File("vendor/pyLibrary/vendor/sqlite/sqlite3_64.dll")
+                source_dll = File("vendor/jx-sqlite/vendor/sqlite/sqlite3_64.dll")
 
             if not all(
                 a == b

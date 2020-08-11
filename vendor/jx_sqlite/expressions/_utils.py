@@ -11,7 +11,7 @@ from __future__ import absolute_import, division, unicode_literals
 
 from jx_base.expressions import FALSE, FalseOp, NULL, NullOp, TrueOp, extend
 from jx_base.language import Language
-from jx_sqlite import quote_column
+from jx_sqlite.utils import quote_column
 from jx_sqlite.sqlite import sql_call
 from mo_dots import wrap, FlatList, is_data
 from mo_future import decorate

@@ -4,23 +4,23 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Author: Kyle Lahnakoski (kyle@lahnakoski.com)
+# Contact: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 from __future__ import unicode_literals
 
 from bs4 import BeautifulSoup
 
 import jx_elasticsearch
+from jx_elasticsearch import elasticsearch
 from mo_collections import UniqueIndex
 from mo_dots import Data, set_default
 from mo_hg.hg_mozilla_org import DEFAULT_LOCALE
 from mo_kwargs import override
-from mo_logs import Except, Log, constants, startup
+from mo_logs import Except, Log
 from mo_math import MAX
 from mo_times.dates import Date
 from mo_times.durations import DAY, SECOND
-from pyLibrary.env import http
-from jx_elasticsearch import elasticsearch
+from mo_http import http
 
 EXTRA_WAIT_TIME = 20 * SECOND  # WAIT TIME TO SEND TO AWS, IF WE wait_forever
 OLD_BRANCH = DAY
@@ -34,7 +34,7 @@ def get_branches(hg, branches, kwargs=None):
     try:
         es = cluster.get_index(kwargs=branches, read_only=False)
         esq = jx_elasticsearch.new_instance(branches)
-        found_branches = esq.query({"from": "repo-branches", "format": "list", "limit": 10000}).data
+        found_branches = esq.query({"from": branches.index, "format": "list", "limit": 10000}).data
 
         # IF IT IS TOO OLD, THEN PULL FROM HG
         oldest = Date(MAX(found_branches.etl.timestamp))
@@ -50,7 +50,7 @@ def get_branches(hg, branches, kwargs=None):
     except Exception as e:
         e = Except.wrap(e)
         if "Can not find index " in e:
-            set_default(branches, {"schema": branches_schema})
+            branches.schema = branches_schema
             es = cluster.get_or_create_index(branches)
             es.add_alias()
             return get_branches(kwargs)
@@ -199,26 +199,3 @@ branches_schema = {
 }
 
 
-def main():
-
-    try:
-        settings = startup.read_settings()
-        constants.set(settings.constants)
-        Log.start(settings.debug)
-
-        branches = _get_branches_from_hg(settings.hg)
-
-        es = elasticsearch.Cluster(kwargs=settings.hg.branches).get_or_create_index(
-            kwargs=settings.hg.branches
-        )
-        es.add_alias()
-        es.extend({"id": b.name + " " + b.locale, "value": b} for b in branches)
-        Log.alert("DONE!")
-    except Exception as e:
-        Log.error("Problem with etl", e)
-    finally:
-        Log.stop()
-
-
-if __name__ == "__main__":
-    main()

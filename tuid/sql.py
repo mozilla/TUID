@@ -11,7 +11,7 @@ from __future__ import division
 from __future__ import unicode_literals
 
 from jx_sqlite.sqlite import Sqlite, quote_value
-from mo_future import text_type, text
+from mo_future import text, text
 from mo_logs import Log
 
 DEBUG = False

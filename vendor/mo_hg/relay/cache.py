@@ -4,7 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Author: Kyle Lahnakoski (kyle@lahnakoski.com)
+# Contact: Kyle Lahnakoski (kyle@lahnakoski.com)
 #
 
 from __future__ import division, unicode_literals
@@ -16,13 +16,13 @@ from flask import Response
 from mo_dots import coalesce
 from mo_files.url import URL
 from mo_future import text, xrange
-from mo_hg.rate_logger import RateLogger
+from mo_hg.relay.rate_logger import RateLogger
 from mo_json import value2json
 from mo_kwargs import override
 from mo_logs import Log
 from mo_threads import Lock, Queue, Signal, Thread, Till
 from mo_times import Date, MINUTE, SECOND
-from pyLibrary.env import http
+from mo_http import http
 from jx_sqlite.sqlite import Sqlite, quote_list, quote_value
 
 APP_NAME = "HG Cache"

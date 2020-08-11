@@ -9,7 +9,7 @@
 from __future__ import absolute_import, division, unicode_literals
 
 from jx_base.queries import get_property_name
-from jx_sqlite import GUID, untyped_column
+from jx_sqlite.utils import GUID, untyped_column
 from mo_dots import concat_field, relative_field, set_default, startswith_field
 from mo_json import EXISTS, OBJECT, STRUCT
 from mo_logs import Log

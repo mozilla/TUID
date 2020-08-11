@@ -6,9 +6,7 @@
 from __future__ import absolute_import, division, unicode_literals
 
 from mo_dots import wrap
-from mo_dots.datas import Data
 from mo_logs import Log
-import copy
 
 
 class Line:
@@ -146,11 +144,7 @@ def apply_diff_backwards(file, diff):
         )
 
         new_changes = []
-        if isinstance(f_proc["changes"][0], Data):
-            f_diff = copy.deepcopy(f_proc["changes"])
-        else:
-            f_diff = [fc.__copy__() for fc in f_proc["changes"]]
-
+        f_diff = f_proc["changes"].copy()
         for change in f_diff:
             if change.action == "+":
                 change.action = "-"

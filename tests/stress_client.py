@@ -18,8 +18,8 @@ from mo_logs import startup, constants, Log
 from mo_times import Timer, Date
 from mo_threads import Process, Till
 
-from mo_future import text_type
-from pyLibrary.env import http
+from mo_future import text
+from mo_http import http
 
 from tuid import sql
 from tuid.client import TuidClient
@@ -40,7 +40,7 @@ try:
     # This test requests TUIDs at a rate of request_rate.
     # Overtime the load increases until we reach a breaking
     # point.
-    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
+    url = "http://localhost:" + text(config.flask.port) + "/tuid"
     queue_length_at_rate = []
     req_rate = 0.2  # Rate at reqs/sec
     step = 0.01  # Secs to increase per end
@@ -73,11 +73,7 @@ try:
             Log.note("Searching through changelog {{url}}", url=clog_url)
             clog_obj = http.get_json(clog_url, retry=RETRY)
         except Exception as e:
-            Log.error(
-                "Unexpected error getting changset-log for {{url}}",
-                url=clog_url,
-                error=e,
-            )
+            Log.error("Unexpected error getting changset-log for {{url}}", url=clog_url, error=e)
 
         cset = ""
         for clog_cset in clog_obj["changesets"]:
@@ -108,9 +104,7 @@ try:
             request = wrap(
                 {
                     "from": "files",
-                    "where": {
-                        "and": [{"eq": {"revision": rev}}, {"in": {"path": files}}]
-                    },
+                    "where": {"and": [{"eq": {"revision": rev}}, {"in": {"path": files}}]},
                     "meta": {"format": "list", "request_time": Date.now()},
                 }
             )

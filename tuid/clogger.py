@@ -23,7 +23,7 @@ from mo_logs import Log
 from mo_logs.exceptions import suppress_exception
 from mo_threads import Till, Thread, Lock, Queue, Signal
 from mo_times.durations import DAY
-from pyLibrary.env import http
+from mo_http import http
 from tuid import sql
 from tuid.util import HG_URL, insert, delete
 

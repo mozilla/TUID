@@ -9,7 +9,7 @@
 from __future__ import absolute_import, division, unicode_literals
 
 import jx_base
-from jx_sqlite import quoted_ORDER, quoted_PARENT, quoted_UID, untyped_column
+from jx_sqlite.utils import quoted_ORDER, quoted_PARENT, quoted_UID, untyped_column
 from jx_sqlite.expressions._utils import SQL_NESTED_TYPE
 from jx_sqlite.schema import Schema
 from jx_sqlite.sqlite import quote_column

@@ -13,10 +13,10 @@ import os
 import pytest
 
 from mo_dots import wrap, Null
-from mo_future import text_type, PY2
+from mo_future import text, PY2
 from mo_logs import Log
 from mo_threads import Process, Thread
-from pyLibrary.env import http
+from mo_http import http
 from tuid.app import EXPECTING_QUERY
 from tuid.client import TuidClient
 
@@ -47,7 +47,7 @@ def app():
 @pytest.mark.first_run  # MARKED first_run SO WE DO NOT RETEST ON SECOND travis RUN
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_empty_query(config, app):
-    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
+    url = "http://localhost:" + text(config.flask.port) + "/tuid"
     response = http.get(url)
     assert response.status_code == 400
     assert response.content == EXPECTING_QUERY
@@ -56,7 +56,7 @@ def test_empty_query(config, app):
 @pytest.mark.first_run
 @pytest.mark.skipif(True, reason="can not get this test to work")
 def test_query_too_big(config, app):
-    url = "http://localhost:" + text_type(config.flask.port) + "/tuid/"
+    url = "http://localhost:" + text(config.flask.port) + "/tuid/"
     name = "a" * 10000000
     response = http.get(url, json={"from": name})
     assert response.status_code == 400
@@ -67,7 +67,7 @@ def test_query_too_big(config, app):
 @pytest.mark.skip(reason="please enable, should not break subsequent tests")
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_query_error(config, app):
-    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
+    url = "http://localhost:" + text(config.flask.port) + "/tuid"
     http.get(url)
 
 
@@ -76,7 +76,7 @@ def test_query_error(config, app):
 @pytest.mark.skip(reason="should not break other tests")
 def test_shutdown(config, app):
     # SHOULD NOT ACCEPT A SHUTDOWN COMMAND, WILL BREAK OTHER TESTS
-    url = "http://localhost:" + text_type(config.flask.port) + "/shutdown"
+    url = "http://localhost:" + text(config.flask.port) + "/shutdown"
     http.get(url)
     Log.alert("/shutdown sent, should have no effect")
 
@@ -84,7 +84,7 @@ def test_shutdown(config, app):
 @pytest.mark.first_run
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_zero_files(config, app):
-    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
+    url = "http://localhost:" + text(config.flask.port) + "/tuid"
     response = http.post_json(
         url,
         json={
@@ -105,7 +105,7 @@ def test_zero_files(config, app):
 @pytest.mark.first_run
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_single_file(config, app):
-    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
+    url = "http://localhost:" + text(config.flask.port) + "/tuid"
     response = http.post_json(
         url,
         json={
@@ -130,7 +130,7 @@ def test_single_file(config, app):
 @pytest.mark.first_run
 @pytest.mark.skipif(PY2, reason="interprocess communication problem")
 def test_single_file_list(config, app):
-    url = "http://localhost:" + text_type(config.flask.port) + "/tuid"
+    url = "http://localhost:" + text(config.flask.port) + "/tuid"
     response = http.post_json(
         url,
         json={

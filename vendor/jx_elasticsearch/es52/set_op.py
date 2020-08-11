@@ -41,7 +41,7 @@ from mo_dots import (
     wrap,
 )
 from mo_future import first, text
-from mo_json import NESTED
+from mo_json import NESTED, STRUCT
 from mo_json.typed_encoder import decode_property, unnest_path, untype_path, untyped
 from mo_logs import Log
 from mo_math import AND
@@ -313,8 +313,6 @@ def es_setop(es, query):
     with Timer("call to ES", silent=DEBUG) as call_timer:
         result = es.search(es_query)
 
-    # Log.note("{{result}}", result=result)
-
     T = result.hits.hits
 
     try:
@@ -364,8 +362,11 @@ def get_pull(column):
 
 
 def get_pull_function(column):
-    return jx_expression_to_function(get_pull(column))
-
+    func = jx_expression_to_function(get_pull(column))
+    if column.jx_type in STRUCT:
+        return lambda doc: untyped(func(doc))
+    else:
+        return func
 
 def get_pull_source(es_column):
     def output(row):

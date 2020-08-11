@@ -19,7 +19,7 @@ from jx_base.expressions import TupleOp, Variable, jx_expression
 from jx_base.language import is_op
 from jx_base.query import QueryOp
 from jx_python import jx
-from jx_sqlite import GUID, sql_aggs, unique_name, untyped_column
+from jx_sqlite.utils import GUID, sql_aggs, unique_name, untyped_column
 from jx_sqlite.base_table import BaseTable
 from jx_sqlite.expressions._utils import SQLang
 from jx_sqlite.groupby_table import GroupbyTable
@@ -86,11 +86,13 @@ class QueryTable(GroupbyTable, Facts):
 
         return wrap([{c: v for c, v in zip(column_names, r)} for r in result.data])
 
-    def query(self, query):
+    def query(self, query=None):
         """
         :param query:  JSON Query Expression, SET `format="container"` TO MAKE NEW TABLE OF RESULT
         :return:
         """
+        if not query:
+            query = {}
         if not query.get('from'):
             query['from'] = self.name
         elif not startswith_field(query['from'], self.name):

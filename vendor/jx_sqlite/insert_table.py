@@ -11,24 +11,22 @@
 
 from __future__ import absolute_import, division, unicode_literals
 
-from collections import Mapping
-
 from jx_base import Column, generateGuid
-from jx_base.expressions import jx_expression
-from jx_sqlite import GUID, ORDER, PARENT, UID, get_if_type, get_jx_type, typed_column, untyped_column
+from jx_base.expressions import jx_expression, TRUE
+from jx_sqlite.utils import GUID, ORDER, PARENT, UID, get_if_type, get_jx_type, typed_column, untyped_column
 from jx_sqlite.base_table import BaseTable
-from jx_sqlite.expressions._utils import json_type_to_sql_type
+from jx_sqlite.expressions._utils import json_type_to_sql_type, SQLang
+from jx_sqlite.sqlite import json_type_to_sqlite_type, quote_column, quote_value, sql_alias
 from mo_collections.queue import Queue
-from mo_dots import Data, Null, concat_field, listwrap, startswith_field, unwrap, unwraplist, wrap, \
-    is_many
+from mo_dots import Data, Null, concat_field, listwrap, startswith_field, unwrap, wrap, \
+    is_many, is_data
 from mo_future import text, first
 from mo_json import STRUCT, NESTED, OBJECT
 from mo_logs import Log
-from mo_times import Date
 from mo_sql import SQL_AND, SQL_FROM, SQL_INNER_JOIN, SQL_NULL, SQL_SELECT, SQL_TRUE, SQL_UNION_ALL, SQL_WHERE, \
     sql_iso, sql_list, SQL_VALUES, SQL_INSERT, ConcatSQL, SQL_EQ, SQL_UPDATE, SQL_SET, SQL_ONE, SQL_DELETE, SQL_ON, \
     SQL_COMMA
-from jx_sqlite.sqlite import json_type_to_sqlite_type, quote_column, quote_value, sql_alias
+from mo_times import Date
 
 
 class InsertTable(BaseTable):
@@ -47,15 +45,16 @@ class InsertTable(BaseTable):
         :param command:  EXPECTING dict WITH {"set": s, "clear": c, "where": w} FORMAT
         """
         command = wrap(command)
+        clear_columns = set(listwrap(command['clear']))
 
         # REJECT DEEP UPDATES
-        touched_columns = command.set.keys() | set(listwrap(command['clear']))
+        touched_columns = command.set.keys() | clear_columns
         for c in self.schema.columns:
             if c.name in touched_columns and len(c.nested_path) > 1:
                 Log.error("Deep update not supported")
 
         # ADD NEW COLUMNS
-        where = jx_expression(command.where)
+        where = jx_expression(command.where) or TRUE
         _vars = where.vars()
         _map = {
             v: c.es_column
@@ -63,8 +62,8 @@ class InsertTable(BaseTable):
             for c in self.columns.get(v, Null)
             if c.jx_type not in STRUCT
         }
-        where_sql = where.map(_map).to_sql(self.schema)
-        new_columns = set(command.set.keys()) - set(self.columns.keys())
+        where_sql = where.map(_map).to_sql(self.schema)[0].sql.b
+        new_columns = set(command.set.keys()) - set(c.name for c in self.schema.columns)
         for new_column_name in new_columns:
             nested_value = command.set[new_column_name]
             ctype = get_jx_type(nested_value)
@@ -175,28 +174,35 @@ class InsertTable(BaseTable):
                         elif c.jx_type not in [c.jx_type for c in self.columns[c.name]]:
                             self.columns[column.name].add(column)
 
-        command = (
-            SQL_UPDATE + quote_column(abs_schema.fact) + SQL_SET +
+        command = ConcatSQL(
+            SQL_UPDATE,
+            quote_column(self.name),
+            SQL_SET,
             sql_list(
                 [
-                    quote_column(c) + SQL_EQ + quote_value(get_if_type(v, c.jx_type))
-                    for k, v in command.set.items()
-                    if get_jx_type(v) != "nested"
-                    for c in self.columns[k]
-                    if c.jx_type != "nested" and len(c.nested_path) == 1
-                ] +
+                    quote_column(c.es_column) + SQL_EQ + quote_value(get_if_type(v, c.jx_type))
+                    for c in self.schema.columns
+                    if c.jx_type != NESTED and len(c.nested_path) == 1
+                    for v in [command.set[c.name]]
+                    if v != None
+                ]+
                 [
-                    quote_column(c) + SQL_EQ + SQL_NULL
-                    for k in listwrap(command['clear'])
-                    if k in self.columns
-                    for c in self.columns[k]
-                    if c.jx_type != "nested" and len(c.nested_path) == 1
+                    quote_column(c.es_column) + SQL_EQ + SQL_NULL
+                    for c in self.schema.columns
+                    if (
+                        c.name in clear_columns and
+                        command.set[c.name]!=None and
+                        c.jx_type != NESTED and
+                        len(c.nested_path) == 1
+                    )
                 ]
-            ) +
-            SQL_WHERE + where_sql
+            ),
+            SQL_WHERE,
+            where_sql
         )
 
-        self.db.execute(command)
+        with self.db.transaction() as t:
+            t.execute(command)
 
     def upsert(self, doc, where):
         self.delete(where)
@@ -244,7 +250,7 @@ class InsertTable(BaseTable):
                 row = {GUID: guid, UID: uid, PARENT: parent_id, ORDER: order}
                 insertion.rows.append(row)
 
-            if isinstance(data, Mapping):
+            if is_data(data):
                 items = [(concat_field(full_path, k), v ) for k, v in wrap(data).leaves()]
             else:
                 # PRIMITIVE VALUES

@@ -107,6 +107,19 @@ class Queue(object):
                 self.queue.appendleft(value)
         return self
 
+    def push_all(self, values):
+        """
+        SNEAK values TO FRONT OF THE QUEUE
+        """
+        if self.closed and not self.allow_add_after_close:
+            Log.error("Do not push to closed queue")
+
+        with self.lock:
+            self._wait_for_queue_space()
+            if not self.closed:
+                self.queue.extendleft(values)
+        return self
+
     def pop_message(self, till=None):
         """
         RETURN TUPLE (message, payload) CALLER IS RESPONSIBLE FOR CALLING message.delete() WHEN DONE
@@ -223,7 +236,7 @@ class Queue(object):
             elif not self.queue:
                 return None
             else:
-                v =self.queue.pop()
+                v =self.queue.popleft()
                 if v is THREAD_STOP:  # SENDING A STOP INTO THE QUEUE IS ALSO AN OPTION
                     self.closed.go()
                 return v
@@ -406,10 +419,9 @@ class ThreadedQueue(Queue):
     ):
         if period !=None and not isinstance(period, (int, float, long)):
             Log.error("Expecting a float for the period")
-
+        period = coalesce(period, 1)  # SECONDS
         batch_size = coalesce(batch_size, int(max_size / 2) if max_size else None, 900)
         max_size = coalesce(max_size, batch_size * 2)  # REASONABLE DEFAULT
-        period = coalesce(period, 1)  # SECONDS
 
         Queue.__init__(self, name=name, max=max_size, silent=silent)
 

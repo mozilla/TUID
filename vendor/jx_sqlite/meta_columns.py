@@ -14,7 +14,7 @@ from jx_base import Column, Table, jx_expression
 from jx_base.meta_columns import META_COLUMNS_DESC, META_COLUMNS_NAME, SIMPLE_METADATA_COLUMNS
 from jx_base.schema import Schema
 from jx_python import jx
-from jx_sqlite import untyped_column
+from jx_sqlite.utils import untyped_column
 from jx_sqlite.expressions._utils import sql_type_to_json_type
 from mo_dots import Data, Null, coalesce, is_data, is_list, literal_field, startswith_field, tail_field, unwraplist, \
     wrap

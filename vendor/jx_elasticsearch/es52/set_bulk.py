@@ -67,13 +67,13 @@ def es_bulksetop(esq, frum, query):
         es_query,
         formatter,
         parent_thread=Null,
-    )
+    ).release()
 
     output = wrap(
         {
             "url": URL_PREFIX / (guid + ".json"),
             "status": URL_PREFIX / (guid + ".status.json"),
-            "meta": {"format": "list", "es_query": es_query, "limit": abs_limit},
+            "meta": {"format": query.format, "es_query": es_query, "limit": abs_limit},
         }
     )
     return output
@@ -102,6 +102,8 @@ def extractor(guid, abs_limit, esq, es_query, formatter, please_stop):
                     hits = result.hits.hits
                     chunk_limit = abs_limit - total
                     hits = hits[:chunk_limit]
+                    if len(hits) == 0:
+                        break
                     formatter.add(hits)
                     for b in formatter.bytes():
                         if b is DONE:
@@ -128,6 +130,8 @@ def extractor(guid, abs_limit, esq, es_query, formatter, please_stop):
                             result = esq.es.scroll(scroll_id)
                         continue
                     break
+                if please_stop:
+                    Log.error("Bulk download stopped for shutdown")
                 for b in formatter.footer():
                     output.write(b)
 
@@ -173,7 +177,7 @@ def extractor(guid, abs_limit, esq, es_query, formatter, please_stop):
 
 class ListFormatter(object):
     def __init__(self, abs_limit, select, query):
-        self.header = b"[\n"
+        self.header = b"{\"meta\":{\"format\":\"list\"},\"data\":[\n"
         self.count = 0
         self.abs_limit = abs_limit
         self.formatter = doc_formatter(select, query)
@@ -196,7 +200,7 @@ class ListFormatter(object):
                 yield DONE
 
     def footer(self):
-        yield b"\n]"
+        yield b"\n]}"
 
 
 DONE = object()
@@ -209,7 +213,7 @@ class TableFormatter(object):
         self.formatter = row_formatter(select)
         self.rows = None
         self.pre = (
-            b"{\n\"header\":" +
+            b"{\"meta\":{\"format\":\"table\"},\"header\":" +
             value2json(format_table_header(select, query)).encode('utf8') +
             b",\n\"data\":[\n"
         )

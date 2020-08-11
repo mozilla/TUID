@@ -9,7 +9,6 @@
 #
 from __future__ import absolute_import, division, unicode_literals
 
-from collections import Mapping
 from copy import copy
 from importlib import import_module
 
@@ -21,19 +20,21 @@ from jx_base.expressions import Expression, FALSE, LeavesOp, QueryOp as QueryOp_
 from jx_base.language import is_expression, is_op
 from jx_base.utils import is_variable_name
 from mo_dots import Data, FlatList, Null, coalesce, concat_field, is_container, is_data, is_list, listwrap, \
-    literal_field, relative_field, set_default, unwrap, unwraplist, wrap
+    literal_field, relative_field, set_default, unwrap, unwraplist, wrap, is_many
 from mo_future import is_text, text
 from mo_json import STRUCT
 from mo_json.typed_encoder import untype_path
 from mo_logs import Log
 from mo_math import AND, UNION, is_number
 
+BAD_SELECT = "Expecting `value` or `aggregate` in select clause not {{select}}"
 DEFAULT_LIMIT = 10
 MAX_LIMIT = 10000
 DEFAULT_SELECT = Data(name="count", value=jx_expression("."), aggregate="count", default=0)
 
 _jx = None
 _Column = None
+
 
 
 def _late_import():
@@ -215,7 +216,7 @@ class QueryOp(QueryOp_):
         _import_temper_limit()
         output.limit = temper_limit(query.limit, query)
 
-        if query.select or isinstance(query.select, (Mapping, list)):
+        if query.select or is_many(query.select) or is_data(query.select):
             output.select = _normalize_selects(query.select, query.frum, schema=schema)
         else:
             if query.edges or query.groupby:
@@ -340,7 +341,10 @@ def _normalize_select(select, frum, schema=None):
         return frum._normalize_select(canonical)
 
     output = []
-    if not select.value or select.value == ".":
+
+    if len(select) and not select.value:
+        Log.error(BAD_SELECT, select=select)
+    elif not select.value or select.value == ".":
         output.extend([
             set_default(
                 {
@@ -398,6 +402,8 @@ def _normalize_select_no_context(select, schema=None):
         output.name = coalesce(select.name, select.aggregate)
         if output.name:
             output.value = jx_expression(".", schema=schema)
+        elif len(select):
+            Log.error(BAD_SELECT, select=select)
         else:
             return Null
     elif is_text(select.value):
