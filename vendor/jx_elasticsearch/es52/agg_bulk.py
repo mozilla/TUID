@@ -31,7 +31,7 @@ from pyLibrary.aws.s3 import Connection
 DEBUG = False
 MAX_CHUNK_SIZE = 5000
 MAX_PARTITIONS = 200
-URL_PREFIX = URL("https://active-data-query-results.s3-us-west-2.amazonaws.com")
+URL_PREFIX = URL("") # URL Removed for Bug 1740336
 S3_CONFIG = Null
 
 
